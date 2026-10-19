@@ -26,6 +26,8 @@ ignore = ["PLR0913", "PLR2004", "ANN401"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR2004", "ANN"]
+# Notebook cell templates are embedded as raw strings; their line length is the notebook's.
+"scripts/kaggle_synth_notebook.py" = ["E501"]
 
 [tool.pyright]
 pythonVersion = "3.12"

@@ -7,3 +7,5 @@ build/
 recordings/
 bench/out/
 .env
+bench/synth/traces/
+bench/synth/prompts/
