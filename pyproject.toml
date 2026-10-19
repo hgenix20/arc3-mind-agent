@@ -1,0 +1,43 @@
+[project]
+name = "arcagent"
+version = "0.0.1"
+description = "ARC-AGI-3 agent: predict, simulate, verify, act, observe"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyright"]
+oracle = ["arc_agi", "arcengine"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["arcagent*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "A", "C4", "SIM", "RET", "PL", "RUF", "ANN"]
+ignore = ["PLR0913", "PLR2004", "ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004", "ANN"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["arcagent", "tests"]
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+venvPath = "C:/"
+venv = "arc-agent-venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
