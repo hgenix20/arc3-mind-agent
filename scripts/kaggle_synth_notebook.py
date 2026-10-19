@@ -41,8 +41,21 @@ import json, os, subprocess, sys, time, urllib.request
 from pathlib import Path
 
 WORK = Path("/kaggle/working")
-SITE = WORK / "vllm-site"
+SITE = Path("/tmp/vllm-site")  # outside /kaggle/working so the 5 GB wheel tree is not saved as output
 LOG = WORK / "vllm.log"
+# The CUDA driver library is off the default linker and loader paths on Kaggle GPU images.
+NVLIB = "/usr/local/nvidia/lib64"
+for var in ("LIBRARY_PATH", "LD_LIBRARY_PATH"):
+    os.environ[var] = os.pathsep.join(p for p in [NVLIB, os.environ.get(var, "")] if p)
+
+def root_cause(text: str) -> str:
+    lines = text.splitlines()
+    hits = [i for i, ln in enumerate(lines) if "EngineCore" in ln and ("Error" in ln or "error" in ln or "Exception" in ln)]
+    hits += [i for i, ln in enumerate(lines) if ln.strip().startswith(("ERROR", "RuntimeError", "ValueError", "ImportError", "ModuleNotFoundError", "OSError", "torch.OutOfMemoryError"))]
+    out = []
+    for i in sorted(set(hits))[:12]:
+        out.extend(lines[max(0, i - 3): i + 2])
+    return "\n".join(out) if out else text[-4000:]
 
 def find_input(slug: str) -> Path:
     owner, name = slug.split("/")
@@ -73,14 +86,14 @@ server = subprocess.Popen(cmd, env=env, stdout=LOG.open("w"), stderr=subprocess.
 deadline = time.time() + 1500
 while time.time() < deadline:
     if server.poll() is not None:
-        print(LOG.read_text()[-4000:]); raise RuntimeError("vllm exited")
+        print(root_cause(LOG.read_text())); raise RuntimeError("vllm exited")
     try:
         with urllib.request.urlopen("http://127.0.0.1:1234/v1/models", timeout=5) as r:
             print("server ready after", f"{time.time() - t0:.0f}s:", json.loads(r.read())["data"][0]["id"]); break
     except Exception:
         time.sleep(5)
 else:
-    print(LOG.read_text()[-4000:]); raise TimeoutError("vllm did not start")
+    print(root_cause(LOG.read_text())); raise TimeoutError("vllm did not start")
 """
 
 ARC_CELL = r"""
@@ -139,15 +152,20 @@ def main() -> None:
         ),
         code_cell(ARC_CELL % {"wheels": f"{COMP_DIR}/arc_agi_3_wheels"}),
     ]
-    for f in SOURCE_FILES:
-        rel = f.relative_to(ROOT).as_posix()
-        body = f.read_text(encoding="utf-8")
-        cells.append(
-            code_cell(
-                f"import os; os.makedirs({str(Path(rel).parent)!r}, exist_ok=True)\n"
-                f"%%writefile {rel}\n{body}"
-            )
+    # One cell writes every source file; paths are POSIX strings built here, so no
+    # host path separator can leak into the notebook.
+    sources = {f.relative_to(ROOT).as_posix(): f.read_text(encoding="utf-8") for f in SOURCE_FILES}
+    cells.append(
+        code_cell(
+            "from pathlib import Path\n"
+            f"FILES = {json.dumps(sources)}\n"
+            "for rel, body in FILES.items():\n"
+            "    p = Path('/kaggle/working') / rel\n"
+            "    p.parent.mkdir(parents=True, exist_ok=True)\n"
+            "    p.write_text(body, encoding='utf-8')\n"
+            "print('wrote', len(FILES), 'source files')\n"
         )
+    )
     cells.append(
         code_cell(
             RUN_CELL
@@ -162,17 +180,7 @@ def main() -> None:
         )
     )
 
-    # %%writefile must be the first line of a cell: split the mkdir into its own cell.
-    fixed: list[dict[str, object]] = []
-    for c in cells:
-        src = c["source"]
-        if isinstance(src, str) and "\n%%writefile " in src:
-            head, rest = src.split("\n%%writefile ", 1)
-            fixed.append(code_cell(head))
-            fixed.append(code_cell("%%writefile " + rest))
-        else:
-            fixed.append(c)
-
+    fixed = cells
     nb = {
         "cells": fixed,
         "metadata": {
