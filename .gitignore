@@ -9,3 +9,5 @@ bench/out/
 .env
 bench/synth/traces/
 bench/synth/prompts/
+bench/synth/code/
+bench/synth/*.json

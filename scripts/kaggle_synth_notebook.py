@@ -199,6 +199,10 @@ def main() -> None:
         "kernel_sources": [],
         "model_sources": [],
         "machine_shape": "NvidiaRtxPro6000",
+        # The wheelhouse holds cp312 wheels; Kaggle's current default image runs Python 3.13.
+        # Pin the image the Tufa and Franzen notebooks ran on (Python 3.12.13).
+        "docker_image_pinning_type": "original",
+        "docker_image": "gcr.io/kaggle-private-byod/python@sha256:57e612b484cf3df5026ee4dcc3cb176974b22b2bc0937fb1e16132a8be4cb13c",
     }
     (OUT / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(
