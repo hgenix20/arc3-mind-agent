@@ -124,7 +124,22 @@ Duck smoke-run detail (agent/human actions per level): ft09 4/43, 7/12,
 14/23, 22/28, 24/65, 16/37 (every level under the human count); vc33 10/7,
 12/18, 25/44, 19/61 then out of time; ls20 32/22, 145/123 then out of time.
 The harness reported 251 generated tokens/s over the job and 220k tokens for
-330 actions, about 670 tokens per action. A 25-game, one-pass
+330 actions, about 670 tokens per action.
+
+### Duck evaluation run v1 (baseline, 2026-10-20 14:35–16:37 UTC)
+
+`hgenix20/arc3-duck-eval` version 1: the unchanged harness on all 25 public
+games, one pass, 7254 s per game, 25 games admitted with 10 active streams
+(the competition gate). Mean score **41.47**, median 35.71, 6 games won
+(cd82, ft09, lp85, m0r0, r11l, sb26), 4592 actions, 4.3M generated tokens at
+588 tokens/s job-wide. Every unfinished game stopped on the time cap, so the
+score is still rising when the clock runs out; the competition rerun gives
+each game about 0.8 stream-hours against 2 here, which is consistent with
+the published 34.3 on the private games. Per-game and per-level records:
+`duck-runs/eval-v1-baseline-summary.txt`, `duck-runs/eval-v1-baseline-levels.txt`.
+Games stuck at level 0 or 1: sc25 (146 actions on level 1, human 36), sk48
+(80 actions), bp35, g50t, tn36, wa30, sp80. Efficiency on completed levels is
+mostly at or under the human count; the losses are levels never reached. A 25-game, one-pass
 evaluation variant (`hgenix20/arc3-duck-eval`, 7254 s per game, about 2.3
 GPU hours) is the per-game control for later changes.
 
