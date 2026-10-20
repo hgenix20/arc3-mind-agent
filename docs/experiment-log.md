@@ -147,10 +147,33 @@ mostly at or under the human count; the losses are levels never reached.
 |---|---|---|---|---|
 | baseline | arc3-duck-eval v1 | none | 41.47 | control, 2026-10-20 |
 | streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | **30.61** (2 won, 3119 actions, 2.4M tokens, 330 tokens/s) | refuted, and the cause is mechanical, see below |
-| baseline repeat | arc3-duck-eval v2 | none | pending (pushed 19:31 UTC) | measures the noise band; per-game swings between the two runs above (sc25 0 vs 46.7, cn04 14.3 vs 71.4) say it is wide |
+| baseline repeat | arc3-duck-eval v2 | none | **43.69** (6 won, 5117 actions, 4.1M tokens, 555 tokens/s) | 19:44–21:47 UTC; the noise measurement, see "Noise band" below |
 
-**streams16 (17:11–19:14 UTC).** Worse by 11 points, well outside the noise
-band, and the server log says why. The Mamba state cache keeps 60 slots at 5
+**Noise band (two identical baseline runs, 2026-10-20).** The means differ
+by 2.2 points, the games do not. The root mean square per-game difference is
+36 points; 7 of 25 games moved by more than 30 (ar25 58→100, m0r0 100→29,
+r11l 100→14, s5i5 58→3, sc25 0→96, tn36 4→58, vc33 21→54). Only four games
+were won in both runs (cd82, ft09, lp85, sb26). From the paired differences:
+per-game standard deviation of a single run about 25 points, standard error
+of the 25-game mean about 5, and the 95% band for the difference between two
+single runs about **±14 points**. A one-pass evaluation therefore cannot
+confirm a change worth less than about 14 points on the mean; the
+competition rerun, one pass over the private games, carries the same
+uncertainty on the leaderboard figure. Script: `scripts/duck_noise.py`
+(paths are the two summary files). Records: `duck-runs/eval-v2-baseline-summary.txt`,
+`duck-runs/eval-v2-baseline-levels.txt`.
+
+Consequences for the iteration plan: (1) a variant is judged on its
+mechanism (tokens generated, levels reached, prefill volume) as much as on
+its score; (2) a score comparison needs several passes or a paired design
+(same games, same seeds where the server allows); (3) the games that scored
+under 6 in all three runs (bp35, lf52, sk48, sp80, wa30, and su15 at 6–13)
+are the stable loss pool, about a quarter of the possible mean, and the
+only place where a change could show up above the noise in one run.
+
+**streams16 (17:11–19:14 UTC).** Worse by 11 to 13 points against the two
+baselines, at the edge of the noise band, so the score alone does not settle
+it; the server log does. The Mamba state cache keeps 60 slots at 5
 per request, so the server capped running requests at 12 regardless of the
 16 asked for, and the extra streams overran the prefix cache:
 
@@ -171,8 +194,8 @@ streams needs `--max-mamba-cache-size` raised in step, and that memory comes
 out of the KV pool (full token usage already reached 0.95 in this run).
 
 One run per variant cannot separate a few points from sampling noise (the
-synthesis runs showed this); treat differences under about 5 points as
-unresolved until repeated. A 25-game, one-pass
+synthesis runs showed this, and the two baseline runs measured it: treat
+differences under about 14 points as unresolved until repeated). A 25-game, one-pass
 evaluation variant (`hgenix20/arc3-duck-eval`, 7254 s per game, about 2.3
 GPU hours) is the per-game control for later changes.
 
