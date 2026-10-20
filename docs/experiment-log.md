@@ -116,7 +116,7 @@ interface; the competition rerun scores it from the gateway's record.
 
 | version | pushed | agent | offline (25 public games) | leaderboard |
 |---|---|---|---|---|
-| v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | pending |
+| v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | **0.11** public (submission 57437483, scored 2026-10-20) |
 
 ## Open items
 
