@@ -147,7 +147,7 @@ mostly at or under the human count; the losses are levels never reached.
 |---|---|---|---|---|
 | baseline | arc3-duck-eval v1 | none | 41.47 | control, 2026-10-20 |
 | streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | **30.61** (2 won, 3119 actions, 2.4M tokens, 330 tokens/s) | refuted, and the cause is mechanical, see below |
-| baseline repeat | arc3-duck-eval v2 | none | pending (pushed 19:50 UTC) | measures the noise band; per-game swings between the two runs above (sc25 0 vs 46.7, cn04 14.3 vs 71.4) say it is wide |
+| baseline repeat | arc3-duck-eval v2 | none | pending (pushed 19:31 UTC) | measures the noise band; per-game swings between the two runs above (sc25 0 vs 46.7, cn04 14.3 vs 71.4) say it is wide |
 
 **streams16 (17:11–19:14 UTC).** Worse by 11 points, well outside the noise
 band, and the server log says why. The Mamba state cache keeps 60 slots at 5
