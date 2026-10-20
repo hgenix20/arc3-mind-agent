@@ -15,7 +15,7 @@ Patches in the baseline build:
 Constraints: RTX PRO 6000, no internet, the same dataset and model sources as the
 reference, image pinned to the same Python 3.12 digest.
 
-Usage: python scripts/kaggle_duck_notebook.py [--slug SLUG] [--smoke-games ls20 ft09 vc33 | all]
+Usage: python scripts/kaggle_duck_notebook.py [--slug S] [--smoke-games ...|all] [--variant V]
 """
 
 from __future__ import annotations
@@ -98,6 +98,28 @@ def smoke_patches(smoke_games: list[str]) -> list[Patch]:
     ]
 
 
+VARIANTS: dict[str, list[Patch]] = {
+    "baseline": [],
+    "streams16": [
+        Patch(
+            cell=4,
+            old="'ARC3_MAX_ACTIVE_STREAMS': 10,\n",
+            new="'ARC3_MAX_ACTIVE_STREAMS': 16,  # hgenix20: streams16 variant\n",
+            why="16 active game streams instead of 10 (throughput is the published bottleneck)",
+        ),
+        Patch(
+            cell=12, old="    MAXREQ=10,\n", new="    MAXREQ=16,\n", why="server runs 16 requests"
+        ),
+        Patch(
+            cell=12,
+            old="    CUDAGRAPH_MAXBS=10,\n",
+            new="    CUDAGRAPH_MAXBS=16,\n",
+            why="CUDA graphs cover batch 16",
+        ),
+    ],
+}
+
+
 def apply(nb: dict[str, Any], patches: list[Patch]) -> None:
     for p in patches:
         cell = nb["cells"][p.cell]
@@ -107,9 +129,9 @@ def apply(nb: dict[str, Any], patches: list[Patch]) -> None:
         cell["source"] = src.replace(p.old, p.new)
 
 
-def build(slug: str, smoke_games: list[str], out: Path = OUT) -> Path:
+def build(slug: str, smoke_games: list[str], out: Path = OUT, variant: str = "baseline") -> Path:
     nb = json.loads(REFERENCE.read_text(encoding="utf-8"))
-    patches = smoke_patches(smoke_games)
+    patches = smoke_patches(smoke_games) + VARIANTS[variant]
     apply(nb, patches)
     cells = nb["cells"]
     changes = "\n".join(f"- cell {p.cell}: {p.why}" for p in patches)
@@ -156,9 +178,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--slug", default="arc3-duck-agent")
     ap.add_argument("--smoke-games", nargs="+", default=["ls20", "ft09", "vc33"])
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--variant", choices=sorted(VARIANTS), default="baseline")
     a = ap.parse_args(argv)
-    out = build(a.slug, a.smoke_games, Path(a.out))
-    print(f"wrote {out} (smoke games {a.smoke_games})")
+    out = build(a.slug, a.smoke_games, Path(a.out), a.variant)
+    print(f"wrote {out} (smoke games {a.smoke_games}, variant {a.variant})")
 
 
 if __name__ == "__main__":
