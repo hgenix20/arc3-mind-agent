@@ -146,7 +146,28 @@ mostly at or under the human count; the losses are levels never reached.
 | variant | kernel | change | mean score | notes |
 |---|---|---|---|---|
 | baseline | arc3-duck-eval v1 | none | 41.47 | control, 2026-10-20 |
-| streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | pending (pushed 17:08 UTC) | the published bottleneck is tokens per wall-clock hour; the eval has the same shape as the rerun (fixed wall clock, N streams) |
+| streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | **30.61** (2 won, 3119 actions, 2.4M tokens, 330 tokens/s) | refuted, and the cause is mechanical, see below |
+
+**streams16 (17:11–19:14 UTC).** Worse by 11 points, well outside the noise
+band, and the server log says why. The Mamba state cache keeps 60 slots at 5
+per request, so the server capped running requests at 12 regardless of the
+16 asked for, and the extra streams overran the prefix cache:
+
+| run | prefill batches | new prefill tokens | cached prefill tokens | cache hit |
+|---|---|---|---|---|
+| baseline (10 streams) | 2931 | 10.4M | 157.9M | 94% |
+| streams16 | 6672 | 47.5M | 47.1M | 50% |
+
+Each conversation turn re-prefilled from a cold start about half the time,
+the GPU spent its hours on prefill instead of decode (generated tokens fell
+from 4.3M to 2.4M in the same wall clock), the request queue sat at 4 on
+average, and in the final minutes the harness logged analyzer request
+timeouts on most games. Decode itself was unaffected (mean accept length
+2.64 vs 2.67, similar tokens per decode step). Per-game records:
+`duck-runs/eval-s16-summary.txt`, `duck-runs/eval-s16-levels.txt`. Lesson: with this model the stream count
+is bounded by the Mamba checkpoint cache, not by batch throughput; raising
+streams needs `--max-mamba-cache-size` raised in step, and that memory comes
+out of the KV pool (full token usage already reached 0.95 in this run).
 
 One run per variant cannot separate a few points from sampling noise (the
 synthesis runs showed this); treat differences under about 5 points as
