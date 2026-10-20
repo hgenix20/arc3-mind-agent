@@ -76,22 +76,28 @@ with open(out_path, "w", encoding="utf-8") as out:
     with open(data_path, encoding="utf-8") as f:
         data = json.load(f)
     for i, tr in enumerate(data):
-        rec = {"i": i, "exact": False, "cells_wrong": N * N, "error": None, "wrong": []}
+        rec = {"i": i, "exact": False, "cells_wrong": N * N, "error": None, "wrong": [],
+               "predicted_changes": 0, "predicted": []}
         try:
             got = step([row[:] for row in tr["before"]], tr["a"], tr["x"], tr["y"])
             if not (isinstance(got, list) and len(got) == N
                     and all(isinstance(r, list) and len(r) == N for r in got)):
                 raise TypeError("step() must return a 64x64 list of lists of int")
-            exp = tr["after"]
-            wrong = []
+            exp, bef = tr["after"], tr["before"]
+            wrong, predicted = [], []
             for y in range(N):
-                gr, er = got[y], exp[y]
+                gr, er, br = got[y], exp[y], bef[y]
                 for x in range(N):
-                    if gr[x] != er[x]:
-                        wrong.append([x, y, er[x], gr[x] if isinstance(gr[x], int) else -99])
+                    g = gr[x] if isinstance(gr[x], int) else -99
+                    if g != er[x]:
+                        wrong.append([x, y, er[x], g])
+                    if g != br[x]:
+                        predicted.append([x, y, br[x], g])
             rec["cells_wrong"] = len(wrong)
             rec["exact"] = not wrong
             rec["wrong"] = wrong[:MAX_WRONG]
+            rec["predicted_changes"] = len(predicted)
+            rec["predicted"] = predicted[:MAX_WRONG]
         except BaseException as exc:
             rec["error"] = _err(exc)
         emit(rec)
@@ -100,7 +106,10 @@ with open(out_path, "w", encoding="utf-8") as out:
 
 @dataclass(frozen=True, slots=True)
 class TransitionResult:
-    """Outcome of one prediction. ``wrong`` holds up to 20 ``(x, y, expected, got)``."""
+    """Outcome of one prediction. ``wrong`` holds up to 20 ``(x, y, expected, got)``;
+    ``predicted`` holds up to 20 ``(x, y, before, got)`` cells the candidate changed and
+    ``predicted_changes`` counts all of them, so a repair turn can show the model what
+    its own code did, not only where it was wrong."""
 
     split: str
     index: int
@@ -108,6 +117,8 @@ class TransitionResult:
     cells_wrong: int
     error: str | None
     wrong: tuple[tuple[int, int, int, int], ...] = ()
+    predicted_changes: int = 0
+    predicted: tuple[tuple[int, int, int, int], ...] = ()
 
 
 @dataclass(slots=True)
@@ -192,6 +203,16 @@ def _rate(rs: list[TransitionResult]) -> float:
     return sum(r.exact for r in rs) / len(rs) if rs else 0.0
 
 
+def _cells(raw: object) -> tuple[tuple[int, int, int, int], ...]:
+    """A runner cell list ``[[x, y, a, b], ...]`` as a tuple of int 4-tuples; absent -> ()."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        (int(w[0]), int(w[1]), int(w[2]), int(w[3]))
+        for w in raw  # pyright: ignore[reportUnknownVariableType]
+    )
+
+
 def verify(code: str, trace: Trace, timeout_s: float = DEFAULT_TIMEOUT_S) -> VerifyResult:
     """Score ``code`` on the train and held-out splits of ``trace`` in one subprocess."""
     train, held = trace.train, trace.heldout
@@ -205,12 +226,6 @@ def verify(code: str, trace: Trace, timeout_s: float = DEFAULT_TIMEOUT_S) -> Ver
             err = load_error or ("timeout" if timed_out else "no result (runner died)")
             results.append(TransitionResult(split, idx, False, CELLS, err))
             continue
-        wrong_raw = rec.get("wrong") or []
-        assert isinstance(wrong_raw, list)
-        wrong = tuple(
-            (int(w[0]), int(w[1]), int(w[2]), int(w[3]))
-            for w in wrong_raw  # pyright: ignore[reportUnknownVariableType]
-        )
         err_val = rec.get("error")
         results.append(
             TransitionResult(
@@ -219,7 +234,9 @@ def verify(code: str, trace: Trace, timeout_s: float = DEFAULT_TIMEOUT_S) -> Ver
                 exact=bool(rec["exact"]),
                 cells_wrong=int(str(rec["cells_wrong"])),
                 error=None if err_val is None else str(err_val),
-                wrong=wrong,
+                wrong=_cells(rec.get("wrong")),
+                predicted_changes=int(str(rec.get("predicted_changes") or 0)),
+                predicted=_cells(rec.get("predicted")),
             )
         )
     tr = [r for r in results if r.split == "train"]

@@ -83,7 +83,9 @@ cmd = [sys.executable, "-m", "vllm.entrypoints.openai.api_server", "--model", st
        "--max-model-len", "65536", "--enable-prefix-caching", "--reasoning-parser", "qwen3",
        "--generation-config", "vllm", "--gpu-memory-utilization", "0.92"]
 server = subprocess.Popen(cmd, env=env, stdout=LOG.open("w"), stderr=subprocess.STDOUT)
-deadline = time.time() + 1500
+# Weight loading from the Kaggle input disk varied 2.4x between runs (v4 ready in 535 s,
+# v5 killed at 1500 s with warmup finished and the server seconds from ready).
+deadline = time.time() + 3600
 while time.time() < deadline:
     if server.poll() is not None:
         print(root_cause(LOG.read_text())); raise RuntimeError("vllm exited")
@@ -115,7 +117,11 @@ print(" ".join(cmd))
 r = subprocess.run(cmd, env=env, cwd="/kaggle/working")
 print("exit", r.returncode)
 if os.path.exists("/kaggle/working/results.json"):
-    print(json.dumps(json.load(open("/kaggle/working/results.json")).get("summary", {}), indent=1)[:6000])
+    doc = json.load(open("/kaggle/working/results.json"))
+    for game, g in doc["games"].items():
+        f = g.get("final") or {}
+        print(game, "final:", {k: f.get(k) for k in ("round", "exact_rate_heldout", "cell_accuracy",
+              "no_code", "finish_reason", "reasoning_chars", "reply_chars", "completion_tokens")})
 """
 
 

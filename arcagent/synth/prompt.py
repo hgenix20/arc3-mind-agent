@@ -119,6 +119,8 @@ def _render_mismatch(trace: Trace, m: TransitionResult) -> str:
         f"  observed: {summary_line(t, m.index)}",
         f"  true change: {render_diff(t.grid_before, t.grid_after, cap=MISMATCH_DIFF_CAP)}",
     ]
+    if m.error is None:
+        lines.append(f"  your change: {_render_cells(m.predicted, m.predicted_changes)}")
     if m.wrong:
         cells = "; ".join(f"({x},{y}) expected {_hex(e)} got {_hex(g)}" for x, y, e, g in m.wrong)
         more = m.cells_wrong - len(m.wrong)
@@ -126,16 +128,29 @@ def _render_mismatch(trace: Trace, m: TransitionResult) -> str:
     return "\n".join(lines)
 
 
+def _render_cells(cells: tuple[tuple[int, int, int, int], ...], total: int) -> str:
+    """``(x,y) old->new`` list in the diff format; ``(nothing)`` when the candidate changed
+    no cell, which is the most common wrong answer and must be visible as such."""
+    if total == 0:
+        return "(nothing)"
+    body = "; ".join(f"({x},{y}) {_hex(a)}->{_hex(b)}" for x, y, a, b in cells)
+    more = total - len(cells)
+    return body + (f"; ... and {more} more" if more > 0 else "")
+
+
 def build_messages(
     trace: Trace,
     max_transitions: int,
     prior_code: str | None = None,
     mismatches: list[TransitionResult] | None = None,
+    exact_train: tuple[int, int] | None = None,
 ) -> list[Message]:
     """System + user messages; with ``prior_code``, adds the assistant turn and a repair turn.
 
     ``mismatches`` must index ``trace.train`` (as ``verify`` produces them);
-    at most ``MAX_MISMATCHES`` are shown.
+    at most ``MAX_MISMATCHES`` are shown. ``exact_train`` is ``(exact, total)``
+    over the training split and opens the repair turn with a score line, so the
+    model can tell a partial model from a broken one.
     """
     msgs: list[Message] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -148,22 +163,30 @@ def build_messages(
         return msgs
     msgs.append({"role": "assistant", "content": f"```python\n{prior_code.strip()}\n```"})
     shown = (mismatches or [])[:MAX_MISMATCHES]
+    score = ""
+    if exact_train is not None:
+        k, n = exact_train
+        score = f" It reproduced {k} of {n} training transitions exactly."
     if shown:
         body = "\n\n".join(_render_mismatch(trace, m) for m in shown)
         intro = (
-            f"Your module was run on the observed transitions. {len(shown)} of the "
+            f"Your module was run on the observed transitions.{score} {len(shown)} of the "
             "transitions it got wrong are listed below (indices are training transitions; "
-            "some may be later than the ones shown above)."
+            "some may be later than the ones shown above). For each, 'true change' is what "
+            "the game did, 'your change' is what your module did to the same grid."
         )
     else:
         body = "(no training mismatches; it still fails to generalize to later transitions)"
-        intro = "Your module was run on the observed transitions."
+        intro = f"Your module was run on the observed transitions.{score}"
     repair = (
         f"{intro}\n\n{body}\n\n"
         "Fix the underlying rules so that these and similar transitions come out right. "
         "Do not special-case these examples by index, position or exact grid; a rule that "
-        "only matches the listed cases will fail on unseen ones. Reply with exactly one "
-        "```python fenced block containing the complete corrected module."
+        "only matches the listed cases will fail on unseen ones. "
+        "First write at most five plain lines: which rule in your module produced the wrong "
+        "cells, and what you are changing. Then reply with exactly one ```python fenced "
+        "block containing the complete corrected module. Returning the module with no "
+        "change to its logic wastes this round."
     )
     msgs.append({"role": "user", "content": repair})
     return msgs

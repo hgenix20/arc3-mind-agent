@@ -293,6 +293,199 @@ def test_run_fake_end_to_end(env_dir: Path, tmp_path: Path) -> None:
     assert list((tmp_path / "traces").glob("*.npz"))
 
 
+def test_request_body_disables_thinking() -> None:
+    body = synth_run.request_body("m", [{"role": "user", "content": "x"}], seed=42)
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["max_tokens"] == synth_run.MAX_TOKENS
+    assert body["model"] == "m"
+    assert body["seed"] == 42
+    seeds = {synth_run.request_seed(s, r, a) for s in (0, 1) for r in (1, 2, 3) for a in (0, 1)}
+    assert len(seeds) == 12  # distinct per (trace seed, round, attempt)
+
+
+def test_parse_completion_reads_finish_reason_and_reasoning() -> None:
+    doc = {
+        "choices": [
+            {
+                "finish_reason": "length",
+                "message": {"content": "", "reasoning_content": "thinking " * 10},
+            }
+        ],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 6000},
+    }
+    comp = synth_run.parse_completion(doc, 1.5)
+    assert comp.text == ""
+    assert comp.finish_reason == "length"
+    assert comp.reasoning_chars == 90
+    assert (comp.prompt_tokens, comp.completion_tokens, comp.seconds) == (5, 6000, 1.5)
+    # the v4 Kaggle failure shape, minus the usage field, still parses
+    comp = synth_run.parse_completion({"choices": [{"message": {"content": None}}]}, 0.0)
+    assert comp.text == "" and comp.finish_reason == "" and comp.reasoning_chars == 0
+    with pytest.raises(KeyError):
+        synth_run.parse_completion({"choices": [{}]}, 0.0)
+
+
+def test_run_game_stops_after_a_reply_without_code(tmp_path: Path) -> None:
+    calls = 0
+
+    def no_code_chat(_messages: list[synth_run.Message], _seed: int) -> synth_run.Completion:
+        nonlocal calls
+        calls += 1
+        return synth_run.Completion("I thought about it.", 10, 6000, 2.0, "length", 1234)
+
+    rec = synth_run.run_game(
+        _synthetic_trace(10), no_code_chat, rounds=3, max_transitions=5, root=tmp_path
+    )
+    assert calls == 2  # one re-sample with the next seed, then the game stops
+    assert len(rec["rounds"]) == 1
+    r = rec["rounds"][0]
+    assert r["no_code"] is True
+    assert r["attempts"] == 2
+    assert r["prompt_tokens"] == 20  # accounting sums over attempts
+    assert (tmp_path / "replies" / "syn-r1-retry0.txt").exists()
+    assert rec["final"] is None
+    assert r["finish_reason"] == "length"
+    assert r["reasoning_chars"] == 1234
+    assert r["reply_chars"] == len("I thought about it.")
+    assert r["load_error"]
+    assert (tmp_path / "replies" / "syn-r1.txt").read_text(
+        encoding="utf-8"
+    ) == "I thought about it."
+    assert (tmp_path / "code" / "syn-r1.py").read_text(encoding="utf-8") == synth_run.NO_CODE
+    assert "none" in synth_run.format_table({"games": {"syn": rec}})
+
+
+def test_same_program_ignores_comments_and_formatting() -> None:
+    a = "def step(g, a, x=-1, y=-1):\n    return g\n"
+    b = "# a comment\ndef step(g, a, x=-1, y=-1):\n\n    return g  # same\n"
+    c = "def step(g, a, x=-1, y=-1):\n    return [r[:] for r in g]\n"
+    assert synth_run.same_program(a, b)
+    assert not synth_run.same_program(a, c)
+    assert synth_run.same_program("def (", "def (")
+    assert not synth_run.same_program("def (", a)
+
+
+def test_verify_records_the_candidates_own_change() -> None:
+    tr = _synthetic_trace(10)
+    # paints (5,5) every step: wrong everywhere, but a visible change of exactly one cell
+    code = "def step(g, a, x=-1, y=-1):\n    n = [r[:] for r in g]\n    n[5][5] = 7\n    return n\n"
+    res = verify(code, tr)
+    r0 = res.results[0]
+    assert r0.predicted_changes == 1
+    assert r0.predicted == ((5, 5, 0, 7),)
+    identity = verify(IDENTITY_CODE, tr).results[0]
+    assert identity.predicted_changes == 0 and identity.predicted == ()
+
+
+def test_repair_turn_shows_score_and_own_change() -> None:
+    tr = _synthetic_trace(10)
+    res = verify(IDENTITY_CODE, tr)
+    k = sum(r.exact for r in res.results if r.split == "train")
+    rep = build_messages(tr, 40, IDENTITY_CODE, res.mismatches, exact_train=(k, len(tr.train)))
+    turn = rep[3]["content"]
+    assert f"It reproduced {k} of {len(tr.train)} training transitions exactly." in turn
+    assert "your change: (nothing)" in turn
+    assert "at most five plain lines" in turn
+    assert "wastes this round" in turn
+    # without a score the line is absent, and a candidate that changes cells lists them
+    code = "def step(g, a, x=-1, y=-1):\n    n = [r[:] for r in g]\n    n[5][5] = 7\n    return n\n"
+    rep = build_messages(tr, 40, code, verify(code, tr).mismatches)
+    assert "reproduced" not in rep[3]["content"]
+    assert "your change: (5,5) 0->7" in rep[3]["content"]
+
+
+def test_run_game_stops_when_the_repair_is_the_same_program(tmp_path: Path) -> None:
+    calls = 0
+    first = f"```python\n{IDENTITY_CODE}```"
+    again = "I changed nothing of substance.\n```python\n# new comment\n" + IDENTITY_CODE + "```"
+
+    def chat(_messages: list[synth_run.Message], _seed: int) -> synth_run.Completion:
+        nonlocal calls
+        calls += 1
+        return synth_run.Completion(first if calls == 1 else again, 1, 1, 0.1, "stop", 0)
+
+    rec = synth_run.run_game(_synthetic_trace(10), chat, rounds=3, max_transitions=5, root=tmp_path)
+    assert calls == 2
+    assert [r["unchanged"] for r in rec["rounds"]] == [False, True]
+    # the round-2 prompt carried the round-1 score line
+    r2 = json.loads((tmp_path / "prompts" / "syn-r2.json").read_text(encoding="utf-8"))
+    assert "training transitions exactly" in r2[3]["content"]
+    assert "same" in synth_run.format_table({"games": {"syn": rec}})
+
+
+def test_run_game_resamples_once_when_the_reply_has_no_code(tmp_path: Path) -> None:
+    seeds: list[int] = []
+    paint = (
+        "def step(g, a, x=-1, y=-1):\n    n = [r[:] for r in g]\n    n[5][5] = 7\n    return n\n"
+    )
+
+    def chat(_messages: list[synth_run.Message], seed: int) -> synth_run.Completion:
+        seeds.append(seed)
+        if len(seeds) == 1:
+            return synth_run.Completion(
+                "Let's try... no. Let's try... no.", 5, 16000, 9.0, "length", 0
+            )
+        return synth_run.Completion(f"```python\n{paint}```", 5, 100, 1.0, "stop", 0)
+
+    tr = _synthetic_trace(10)
+    rec = synth_run.run_game(tr, chat, rounds=1, max_transitions=5, root=tmp_path)
+    assert seeds == [synth_run.request_seed(tr.seed, 1, 0), synth_run.request_seed(tr.seed, 1, 1)]
+    r = rec["rounds"][0]
+    assert r["no_code"] is False and r["attempts"] == 2
+    assert r["completion_tokens"] == 16100 and r["seconds"] == 10.0
+    assert "n[5][5] = 7" in (tmp_path / "code" / "syn-r1.py").read_text(encoding="utf-8")
+    assert "Let's try" in (tmp_path / "replies" / "syn-r1-retry0.txt").read_text(encoding="utf-8")
+    assert rec["final"] is r
+
+
+def test_final_is_the_round_that_fits_train_best(tmp_path: Path) -> None:
+    paint = (
+        "def step(g, a, x=-1, y=-1):\n    n = [r[:] for r in g]\n    n[5][5] = 7\n    return n\n"
+    )
+    replies = [f"```python\n{IDENTITY_CODE}```", f"```python\n{paint}```", "no fence", "no fence"]
+
+    def chat(_messages: list[synth_run.Message], _seed: int) -> synth_run.Completion:
+        return synth_run.Completion(replies.pop(0), 1, 1, 0.1, "stop", 0)
+
+    rec = synth_run.run_game(_synthetic_trace(10), chat, rounds=3, max_transitions=5, root=tmp_path)
+    assert [r["no_code"] for r in rec["rounds"]] == [False, False, True]
+    # identity is exact on the odd (no-change) steps, paint on none: round 1 fits train best
+    assert rec["rounds"][0]["exact_rate_train"] > rec["rounds"][1]["exact_rate_train"]
+    assert rec["final"]["round"] == 1
+    assert rec["final"]["code_path"].endswith("syn-r1.py")
+    assert 0.0 < rec["rounds"][1]["cell_accuracy_train"] < 1.0
+
+
+def test_select_final_prefers_train_fit_then_train_cells_then_earliest() -> None:
+    def rnd(
+        n: int, train: float, cells: float, held: float, no_code: bool = False
+    ) -> dict[str, object]:
+        return {
+            "round": n,
+            "exact_rate_train": train,
+            "cell_accuracy_train": cells,
+            "exact_rate_heldout": held,
+            "no_code": no_code,
+        }
+
+    def pick(*rounds: dict[str, object]) -> int:
+        final = synth_run.select_final(list(rounds))
+        assert final is not None
+        return int(str(final["round"]))
+
+    # a later round that fits train better wins even with a lower held-out score
+    assert pick(rnd(1, 0.5, 0.99, 0.9), rnd(2, 0.6, 0.98, 0.1)) == 2
+    # a regressing repair does not replace the better earlier round (vc33 in run v8)
+    assert pick(rnd(1, 0.56, 0.99, 0.53), rnd(2, 0.45, 0.99, 0.47)) == 1
+    # equal exact rate: train cell accuracy decides, then the earliest round
+    assert pick(rnd(1, 0.0, 0.980, 0.0), rnd(2, 0.0, 0.984, 0.0)) == 2
+    assert pick(rnd(1, 0.0, 0.98, 0.0), rnd(2, 0.0, 0.98, 0.0)) == 1
+    # rounds without code never win; none with code -> None
+    assert pick(rnd(1, 0.2, 0.9, 0.2), rnd(2, 0.0, 0.0, 0.0, True)) == 1
+    assert synth_run.select_final([rnd(1, 0.0, 0.0, 0.0, True)]) is None
+    assert synth_run.select_final([{"round": 1, "error": "boom"}]) is None
+
+
 def test_run_dry_run_writes_prompts(env_dir: Path, tmp_path: Path) -> None:
     out = tmp_path / "results.json"
     argv = ["--env-dir", str(env_dir), "--games", "vc33", "--steps", "40", "--dry-run"]

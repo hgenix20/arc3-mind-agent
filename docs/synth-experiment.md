@@ -51,18 +51,45 @@ All outputs go next to `--out`: `traces/` (npz + json sidecar, git-ignored),
    full, then one summary line and a cell diff per transition. A transition
    that changes more than 60 cells is shown as a full next grid instead, at
    most twice per prompt. Repair turns append the prior code as an assistant
-   message and up to 10 training mismatches (true change, wrong cells with
-   expected and predicted color, or the exception) with an instruction to fix
-   the rules and not special-case examples.
+   message, a score line (`reproduced k of n training transitions exactly`),
+   and up to 10 training mismatches, each with the true change, the
+   candidate's own change (`your change`, `(nothing)` when it changed no
+   cell), and the wrong cells with expected and predicted color, or the
+   exception. The instruction asks for at most five lines of diagnosis
+   before the code fence and says that an unchanged module wastes the round.
+
+   Why: in Kaggle run v6 the repair turn showed only expected-vs-got cells
+   and no score, and on all three games the model returned its module with
+   comment-only edits in rounds 2 and 3.
 3. **Verify** (`verify.py`). The candidate runs in `python -I` in a fresh temp
    dir with a 20 s wall limit for all transitions, environment reduced to
    `SYSTEMROOT`, and `socket` replaced with a stub that raises. Results stream
    to a JSON-lines file, so a timeout keeps finished transitions and marks the
    rest `timeout`. Candidate code never runs in the harness process.
 4. **Loop** (`run.py`). Round 1 synthesizes; while held-out exact rate is
-   below 0.95 and rounds remain, the next round repairs. Requests go to
-   `<endpoint>/chat/completions` with `requests`, temperature 0.2, max_tokens
-   6000, timeout 600 s.
+   below 0.95 and rounds remain, the next round repairs. A reply without a
+   code fence ends the game's rounds (`no_code`): there is no code to repair.
+   So does a repair whose module has the same AST as the previous round's
+   (`unchanged`; comment and formatting edits count as no change): the same
+   program gets the same feedback and, at temperature 0.2, the same reply.
+   Requests go to `<endpoint>/chat/completions` with `requests`, temperature
+   0.2, max_tokens 16000, timeout 900 s, a per-request `seed`
+   (`trace_seed*1000 + round*10 + attempt`, so a run is reproducible on a
+   server that honors it; v6 and v7 got different round-1 replies to a
+   byte-identical prompt without one), and
+   `chat_template_kwargs: {"enable_thinking": false}`. A reply without a code
+   fence is re-sampled once with the next seed (`attempts` = 2); only if
+   that also lacks a fence does the game stop. Every raw reply is saved to
+   `replies/<game>-r<round>.txt`, a discarded attempt as
+   `replies/<game>-r<round>-retry<n>.txt`. Token and time accounting in the
+   round record sums over attempts.
+
+   Why thinking is off: Kaggle run v4 (2026-10-19, Qwen3.6-27B-FP8 behind
+   vLLM `--reasoning-parser qwen3`, 25 games, max_tokens 6000) returned 75
+   replies that all used exactly 6000 completion tokens with empty
+   `content`, so every candidate was the no-code stub. The run recorded
+   neither `finish_reason` nor `reasoning_content`, so the thinking-budget
+   explanation is inferred from the token counts; v5 records both.
 
 ## Rendering
 
@@ -87,13 +114,22 @@ capped at 60 with `... and N more`.
         round, error,                       # error: str when the call failed
         exact_rate_train, exact_rate_heldout,
         cell_accuracy,                      # held-out cells, crashes count as all wrong
+        cell_accuracy_train,                # same over training cells; the tie-break for "final"
         crashed,                            # transitions with an exception, bad shape or timeout, both splits
         timed_out, load_error,
+        no_code,                            # true when the reply had no code fence; the game stops here
+        unchanged,                          # true when the module's AST equals the previous round's; the game stops here
+        attempts,                           # model calls this round: 2 when the first reply had no fence
         prompt_tokens, completion_tokens,   # from the response usage field, 0 if absent
+        finish_reason,                      # server value ("stop", "length"), "" if absent
+        reasoning_chars,                    # len(reasoning_content) if the server split thinking out, else 0
+        reply_chars,                        # len(content)
         seconds,                            # wall time of the HTTP call
         prompt_chars, code_path
       }],
-      "final": <last scored round or null>,
+      "final": <the round with code that fits the training split best: highest
+                exact_rate_train, then cell_accuracy_train, earliest on a tie; null
+                if no round produced code. Selection never reads held-out.>,
       "dry_run": {prompt_chars_r1, prompt_chars_repair_sample}   # --dry-run only, no rounds
     }
   }
