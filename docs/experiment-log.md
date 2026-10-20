@@ -139,7 +139,18 @@ the published 34.3 on the private games. Per-game and per-level records:
 `duck-runs/eval-v1-baseline-summary.txt`, `duck-runs/eval-v1-baseline-levels.txt`.
 Games stuck at level 0 or 1: sc25 (146 actions on level 1, human 36), sk48
 (80 actions), bp35, g50t, tn36, wa30, sp80. Efficiency on completed levels is
-mostly at or under the human count; the losses are levels never reached. A 25-game, one-pass
+mostly at or under the human count; the losses are levels never reached.
+
+### Duck experiments (one variable per run, judged on the 25-game evaluation)
+
+| variant | kernel | change | mean score | notes |
+|---|---|---|---|---|
+| baseline | arc3-duck-eval v1 | none | 41.47 | control, 2026-10-20 |
+| streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | pending (pushed 17:08 UTC) | the published bottleneck is tokens per wall-clock hour; the eval has the same shape as the rerun (fixed wall clock, N streams) |
+
+One run per variant cannot separate a few points from sampling noise (the
+synthesis runs showed this); treat differences under about 5 points as
+unresolved until repeated. A 25-game, one-pass
 evaluation variant (`hgenix20/arc3-duck-eval`, 7254 s per game, about 2.3
 GPU hours) is the per-game control for later changes.
 
