@@ -117,6 +117,16 @@ interface; the competition rerun scores it from the gateway's record.
 | version | pushed | agent | offline (25 public games) | leaderboard |
 |---|---|---|---|---|
 | v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | **0.11** public (submission 57437483, scored 2026-10-20) |
+| explore (not pushed) | 2026-10-20 | `ExplorerPolicy`: state graph, UCB over action kinds, frontier routing | 6 levels at 300 actions, 7 at 1000; scorecard 0.36 either way | not submitted (one slot per day; the duck kernel takes the next) |
+| duck v1 | 2026-10-20 13:52 | Franzen's Milestone 2 notebook unchanged except a 3-game interactive smoke run (`hgenix20/arc3-duck-agent`) | smoke run only | pending: submit after 00:00 UTC 2026-10-21 |
+
+Kameron's instruction on 2026-10-20 was to iterate until the score reaches 80.
+The public leaderboard's top entry stands at 68.91 (Tufa Labs), the best public
+notebook at 34.3; every scoring entry is an open-weight LLM in a Python tool
+loop. The plan of record is therefore: the published harness as the LLM layer
+(credited, Apache-2.0), our own changes on top as named-cell patches, one
+leaderboard reading per day, the model-free explorer kept as the fallback
+agent and as the fast layer of the stack.
 
 ## Open items
 

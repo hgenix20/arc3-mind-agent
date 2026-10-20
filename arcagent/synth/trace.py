@@ -145,17 +145,10 @@ def background_color(grid: Grid) -> int:
     return min(counts, key=lambda c: (-counts[c], c))
 
 
-def click_targets(
-    grid: Grid, limit: int = MAX_CLICK_TARGETS, rng: random.Random | None = None
-) -> list[tuple[int, int]]:
-    """Click coordinates ``(x, y)`` for ACTION6.
+def components(grid: Grid) -> list[list[tuple[int, int]]]:
+    """4-connected single-color components of non-background color, as ``(y, x)`` cells.
 
-    One target per 4-connected single-color component of non-background
-    color, at most ``limit``. Without ``rng`` the largest components are
-    taken; with ``rng`` a uniform sample of components (still listed largest
-    first), so repeated probing covers small objects such as buttons too.
-    The target is the component cell nearest its centroid, so it lies on the
-    object even for non-convex shapes. With no components, a 4x4 lattice.
+    Components are listed by their first cell in row-major scan order.
     """
     bg = background_color(grid)
     h, w = grid.shape
@@ -177,6 +170,22 @@ def click_targets(
                         seen[ny, nx] = True
                         stack.append((ny, nx))
             comps.append(cells)
+    return comps
+
+
+def click_targets(
+    grid: Grid, limit: int = MAX_CLICK_TARGETS, rng: random.Random | None = None
+) -> list[tuple[int, int]]:
+    """Click coordinates ``(x, y)`` for ACTION6.
+
+    One target per 4-connected single-color component of non-background
+    color, at most ``limit``. Without ``rng`` the largest components are
+    taken; with ``rng`` a uniform sample of components (still listed largest
+    first), so repeated probing covers small objects such as buttons too.
+    The target is the component cell nearest its centroid, so it lies on the
+    object even for non-convex shapes. With no components, a 4x4 lattice.
+    """
+    comps = components(grid)
     if not comps:
         step = GRID_SIZE // 4
         return [

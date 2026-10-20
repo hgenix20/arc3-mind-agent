@@ -15,7 +15,8 @@ of runtime, no internet, per-level score `min(human_actions / agent_actions,
 |---|---|---|
 | frame conversion | `arcagent/core/frames.py` | `FrameDataRaw`-like object to `Observation`; no toolkit import |
 | play loop | `arcagent/agent/play.py` | `play_game(env, policy, game_id, max_actions, deadline)`; uses only `reset`/`step`/`observation_space`; stops on WIN, budget, deadline, or three consecutive failed steps; returns `GameResult` |
-| policy | `arcagent/synth/trace.py` `ProbePolicy` | the trace collector's probe policy as a stateful chooser, so a trace and a baseline game are the same action sequence for the same seed |
+| policy `probe` | `arcagent/synth/trace.py` `ProbePolicy` | the trace collector's probe policy as a stateful chooser, so a trace and a baseline game are the same action sequence for the same seed |
+| policy `explore` | `arcagent/agent/explore.py` `ExplorerPolicy` | model-free state-graph exploration: untried (state, action) pairs first, ranked by a UCB over action kinds (clicks keyed by the color under the cursor), shortest known path back to a frontier state otherwise; the graph is cleared at each level change, the priors are kept |
 | runner | `arcagent/agent/submit.py` | one scorecard, every game in sorted order, `results.json` + `submission.parquet`; `--mode auto` picks competition inside `KAGGLE_IS_COMPETITION_RERUN` |
 | notebook | `scripts/kaggle_agent_notebook.py` | builds `build/kaggle-agent/` (CPU, no internet, Python 3.12 image, competition data attached) |
 
@@ -27,7 +28,7 @@ notebook ships only `core/`, `synth/trace.py` and `agent/`.
 Offline on the public games (what the Kaggle commit run does):
 
 ```
-python -m arcagent.agent.submit --mode offline --env-dir C:\arc-study\data\environment_files --out bench/agent
+python -m arcagent.agent.submit --mode offline --policy explore --env-dir C:\arc-study\data\environment_files --out bench/agent
 ```
 
 Build, push, watch, submit:
@@ -63,6 +64,28 @@ trip, so 110 games at 300 actions fit the limit by a wide margin.
 
 ## Baseline numbers (offline, 2026-10-20)
 
-Probe policy, seed 0: 25 games, 2 levels completed (r11l 1/6, vc33 1/7),
-scorecard score 0.19 (per-game scores are percentages; the Kaggle leaderboard
-shows a random agent at 0.18). This is the eligibility baseline, not a result.
+Scorecard scores are percentages (the Kaggle leaderboard shows a random agent
+at 0.18). Seed 0, 25 public games:
+
+| policy | actions per game | levels completed | scorecard |
+|---|---|---|---|
+| probe | 300 | 2 (r11l, vc33) | 0.19 |
+| explore | 300 | 6 (g50t, lf52, lp85, r11l, tn36, vc33) | 0.36 |
+| explore | 1000 | 7 (+ m0r0) | 0.36 |
+
+The explorer plateaus: more actions find almost no further levels, and the
+levels it does finish cost several times the human count, so each is worth
+a few percent of its game at most. A blind explorer has no goal; the LLM
+layer (`duck` below) is where the leaderboard points are.
+
+## The LLM layer: `hgenix20/arc3-duck-agent`
+
+`scripts/kaggle_duck_notebook.py` derives a second kernel from Daniel
+Franzen's public Milestone 2 notebook (`third_party/franzen-m2/`, Apache-2.0
+at github.com/da-fr/arc-agi-3-solution; a Duck-harness fork serving
+Qwen3.8-Flash-Next INT4 through the Pennyroyal SGLang build, 34.3 public
+leaderboard as published). Every change we make is a named-cell patch in that
+script. The baseline build changes only the interactive commit: three games,
+one pass, so a version costs about half a GPU hour instead of nine; the
+competition rerun branch is untouched. Attach the same two datasets and two
+models as the reference (the generator writes them into the metadata).

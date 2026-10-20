@@ -11,8 +11,8 @@ Modes:
 - ``auto``: ``competition`` when ``KAGGLE_IS_COMPETITION_RERUN`` is truthy,
   else ``offline``. The Kaggle notebook uses this.
 
-Flow: open one scorecard, play each game in sorted order with a fresh
-``ProbePolicy`` (seed ``--seed + index``), close the scorecard, then write
+Flow: open one scorecard, play each game in sorted order with a fresh policy
+(``--policy``: ``probe`` or ``explore``; seed ``--seed + index``), close the scorecard, then write
 ``results.json`` (every ``GameResult``, the scorecard as returned, timings) and
 ``submission.parquet`` (one row per game: ``row_id``, ``game_id``,
 ``end_of_game``, ``score``) under ``--out``.
@@ -39,10 +39,12 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
-from arcagent.agent.play import GameResult, play_game
+from arcagent.agent.explore import ExplorerPolicy
+from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.synth.trace import ProbePolicy
 
 MODES = ("auto", "offline", "competition")
+POLICIES = ("probe", "explore")
 DEFAULT_ENV_DIR = r"C:\arc-study\data\environment_files"
 DEFAULT_MAX_ACTIONS = 300
 DEFAULT_GAME_SECONDS = 240.0
@@ -181,6 +183,15 @@ def write_parquet(rows: Sequence[Mapping[str, Any]], path: Path) -> None:
     pq.write_table(table, str(path))
 
 
+def make_policy(name: str, seed: int) -> Policy:
+    """A fresh policy by name (``POLICIES``) for one game; raises ``ValueError`` otherwise."""
+    if name == "probe":
+        return ProbePolicy(seed)
+    if name == "explore":
+        return ExplorerPolicy(seed)
+    raise ValueError(f"unknown policy {name!r}; choose from {POLICIES}")
+
+
 def play_all(
     arcade: Any,
     games: Sequence[str],
@@ -189,6 +200,7 @@ def play_all(
     max_actions: int,
     game_seconds: float,
     total_seconds: float,
+    policy: str = "probe",
     clock: Callable[[], float] = time.monotonic,
     report: Callable[[str], None] = print,
 ) -> tuple[list[GameResult], list[dict[str, Any]], dict[str, Any] | None]:
@@ -211,7 +223,7 @@ def play_all(
                     raise RuntimeError("arcade.make returned None")
                 r = play_game(
                     env,
-                    ProbePolicy(seed + i),
+                    make_policy(policy, seed + i),
                     game_id,
                     max_actions=max_actions,
                     deadline=min(now + game_seconds, run_deadline),
@@ -246,6 +258,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--env-dir", default=os.environ.get("ARC_ENV_DIR", DEFAULT_ENV_DIR))
     p.add_argument("--games", nargs="*", default=None, help="4-char ids; offline only")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--policy", choices=POLICIES, default="probe")
     p.add_argument("--max-actions", type=int, default=DEFAULT_MAX_ACTIONS)
     p.add_argument("--game-seconds", type=float, default=DEFAULT_GAME_SECONDS)
     p.add_argument("--total-seconds", type=float, default=DEFAULT_TOTAL_SECONDS)
@@ -277,6 +290,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         max_actions=args.max_actions,
         game_seconds=args.game_seconds,
         total_seconds=args.total_seconds,
+        policy=args.policy,
     )
     rows = submission_rows(results, scorecard)
     write_parquet(rows, out / "submission.parquet")
@@ -287,7 +301,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
             "max_actions": args.max_actions,
             "game_seconds": args.game_seconds,
             "total_seconds": args.total_seconds,
-            "policy": "ProbePolicy",
+            "policy": args.policy,
         },
         "started_unix": started,
         "elapsed_seconds": round(time.time() - started, 1),

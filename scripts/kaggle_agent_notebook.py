@@ -10,7 +10,7 @@ interactive commit, through the Kaggle gateway during the competition rerun
 Constraints: no internet, CPU only (the probe baseline needs no GPU, so it does not
 touch the RTX pool), image pinned to Python 3.12 to match the cp312 wheels.
 
-Usage: python scripts/kaggle_agent_notebook.py [--slug arc3-agent-probe-baseline] [--max-actions 300]
+Usage: python scripts/kaggle_agent_notebook.py [--slug SLUG] [--policy probe|explore] [--max-actions 300]
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ RUN_CELL = r"""
 import json, os, subprocess, sys
 from pathlib import Path
 env = dict(os.environ, PYTHONPATH="/kaggle/working")
-cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto",
+cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", %(policy)r,
        "--env-dir", %(env_dir)r, "--max-actions", %(max_actions)r,
        "--game-seconds", %(game_seconds)r, "--total-seconds", %(total_seconds)r,
        "--out", "/kaggle/working"]
@@ -90,6 +90,7 @@ def md_cell(src: str) -> dict[str, object]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--slug", default="arc3-agent-probe-baseline")
+    ap.add_argument("--policy", choices=["probe", "explore"], default="probe")
     ap.add_argument("--max-actions", default="300")
     ap.add_argument("--game-seconds", default="240")
     ap.add_argument("--total-seconds", default=str(8 * 3600))
@@ -117,6 +118,7 @@ def main() -> None:
             RUN_CELL
             % {
                 "env_dir": f"{COMP_DIR}/environment_files",
+                "policy": a.policy,
                 "max_actions": a.max_actions,
                 "game_seconds": a.game_seconds,
                 "total_seconds": a.total_seconds,

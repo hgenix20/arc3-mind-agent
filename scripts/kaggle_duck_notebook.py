@@ -1,0 +1,160 @@
+"""Build our Kaggle kernel from Franzen's Milestone 2 notebook by named-cell patches.
+
+Intent: the LLM layer of the agent is Daniel Franzen's Duck-derived harness
+(see ``third_party/franzen-m2/NOTICE.md``). This script turns the unchanged
+reference notebook into ``build/kaggle-duck/`` for ``kaggle kernels push``.
+Every change we make is a ``Patch`` below, applied by exact string replacement
+on one cell, so the diff against the reference is this file.
+
+Patches in the baseline build:
+- cell 0 (markdown): attribution header for our copy.
+- cell 16 (code): the interactive "Save & Run" commit plays only ``--smoke-games``
+  once (the reference plays all 25 games four times, nine GPU hours per commit).
+  The competition rerun branch (``TRUE_SUBMISSION``) is untouched.
+
+Constraints: RTX PRO 6000, no internet, the same dataset and model sources as the
+reference, image pinned to the same Python 3.12 digest.
+
+Usage: python scripts/kaggle_duck_notebook.py [--slug SLUG] [--smoke-games ls20 ft09 vc33]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+REFERENCE = ROOT / "third_party" / "franzen-m2" / "arc-agi-3-milestone-2-solution.ipynb"
+OUT = ROOT / "build" / "kaggle-duck"
+USERNAME = "hgenix20"
+COMPETITION = "arc-prize-2026-arc-agi-3"
+DOCKER_IMAGE = (
+    "gcr.io/kaggle-private-byod/python@sha256:"
+    "57e612b484cf3df5026ee4dcc3cb176974b22b2bc0937fb1e16132a8be4cb13c"
+)
+DATASET_SOURCES = ["dfranzen/pennyroyal-v253", "dfranzen/taaf-kaggle-source-bundle-copy"]
+MODEL_SOURCES = [
+    "dfranzen/albucino-qwen3-8-flash-next-drafter/Transformers/default/1",
+    "dfranzen/intel-qwen3.8-flash-next-w4a16-autoround/Transformers/default/1",
+]
+PUBLIC_GAMES = [
+    "ar25", "bp35", "cd82", "cn04", "dc22", "ft09", "g50t", "ka59", "lf52", "lp85",
+    "ls20", "m0r0", "r11l", "re86", "s5i5", "sb26", "sc25", "sk48", "sp80", "su15",
+    "tn36", "tr87", "tu93", "vc33", "wa30",
+]  # fmt: skip
+
+HEADER = """### ARC3 duck agent (hgenix20)
+
+This kernel is Kameron Green's copy of Daniel Franzen's public Milestone 2 notebook
+(`dfranzen/arc-agi-3-milestone-2-solution`, Apache-2.0 at github.com/da-fr/arc-agi-3-solution),
+itself built on Tufa Labs' Duck harness. Credit for the harness, the patch, the serving
+stack and the model choice goes to them. Our changes are applied as named-cell patches by
+`scripts/kaggle_duck_notebook.py` in the `arc-agent` repository; this version's changes are
+listed in the cell below. The original header follows.
+
+---
+
+"""
+
+
+@dataclass(frozen=True)
+class Patch:
+    """Replace ``old`` (which must occur exactly once) with ``new`` in cell ``cell``."""
+
+    cell: int
+    old: str
+    new: str
+    why: str
+
+
+def smoke_patches(smoke_games: list[str]) -> list[Patch]:
+    unknown = sorted(set(smoke_games) - set(PUBLIC_GAMES))
+    if unknown:
+        raise ValueError(f"not public games: {unknown}")
+    excluded = [g for g in PUBLIC_GAMES if g not in smoke_games]
+    return [
+        Patch(
+            cell=16,
+            old="demo_excluded_games = [] if TRUE_SUBMISSION else []\n",
+            new=(
+                "# hgenix20: an interactive commit is a smoke test, not a benchmark.\n"
+                f"SMOKE_EXCLUDED = {excluded!r}\n"
+                "demo_excluded_games = [] if TRUE_SUBMISSION else SMOKE_EXCLUDED\n"
+            ),
+            why=f"interactive commits play only {smoke_games}",
+        ),
+        Patch(
+            cell=16,
+            old="bm.n_passes = 4\n",
+            new="bm.n_passes = 1  # hgenix20: one pass in the interactive commit\n",
+            why="one pass in the interactive commit",
+        ),
+    ]
+
+
+def apply(nb: dict, patches: list[Patch]) -> None:
+    for p in patches:
+        cell = nb["cells"][p.cell]
+        src = "".join(cell["source"])
+        if src.count(p.old) != 1:
+            raise ValueError(f"cell {p.cell}: expected exactly one match for {p.old!r}")
+        cell["source"] = src.replace(p.old, p.new)
+
+
+def build(slug: str, smoke_games: list[str]) -> Path:
+    nb = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    patches = smoke_patches(smoke_games)
+    apply(nb, patches)
+    cells = nb["cells"]
+    changes = "\n".join(f"- cell {p.cell}: {p.why}" for p in patches)
+    cells[0]["source"] = HEADER + "".join(cells[0]["source"])
+    cells.insert(
+        1,
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": f"**Changes in this version (hgenix20):**\n\n{changes}\n",
+        },
+    )
+    for c in cells:
+        if c["cell_type"] == "code":
+            c["outputs"] = []
+            c["execution_count"] = None
+    nb["metadata"].pop("papermill", None)
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "notebook.ipynb").write_text(json.dumps(nb, indent=1), encoding="utf-8")
+    meta = {
+        "id": f"{USERNAME}/{slug}",
+        "title": slug.replace("-", " ").replace("arc3", "ARC3", 1),
+        "code_file": "notebook.ipynb",
+        "language": "python",
+        "kernel_type": "notebook",
+        "is_private": True,
+        "enable_gpu": True,
+        "enable_tpu": False,
+        "enable_internet": False,
+        "dataset_sources": DATASET_SOURCES,
+        "competition_sources": [COMPETITION],
+        "kernel_sources": [],
+        "model_sources": MODEL_SOURCES,
+        "machine_shape": "NvidiaRtxPro6000",
+        "docker_image_pinning_type": "original",
+        "docker_image": DOCKER_IMAGE,
+    }
+    (OUT / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return OUT
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--slug", default="arc3-duck-agent")
+    ap.add_argument("--smoke-games", nargs="+", default=["ls20", "ft09", "vc33"])
+    a = ap.parse_args(argv)
+    out = build(a.slug, a.smoke_games)
+    print(f"wrote {out} (smoke games {a.smoke_games})")
+
+
+if __name__ == "__main__":
+    main()
