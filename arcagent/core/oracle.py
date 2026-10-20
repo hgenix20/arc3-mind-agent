@@ -18,14 +18,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
+from arcagent.core.frames import observation_from_frame
 from arcagent.core.types import (
     COORD_ACTION_ID,
     GRID_SIZE,
     RESET_ID,
     Action,
-    Grid,
     Observation,
     Phase,
 )
@@ -42,22 +40,6 @@ _LOG = logging.getLogger(__name__)
 _GAME_ACTIONS: dict[int, Any] = {
     i: getattr(_GameAction, "RESET" if i == 0 else f"ACTION{i}") for i in range(8)
 }
-
-
-def _to_grid(frame: list[Any]) -> Grid:
-    """Last animation frame of a step as a padded (64, 64) int8 grid."""
-    g = np.full((GRID_SIZE, GRID_SIZE), -1, dtype=np.int8)
-    if not frame:
-        return g
-    arr = np.asarray(frame[-1], dtype=np.int8)
-    h, w = arr.shape[:2]
-    g[:h, :w] = arr
-    return g
-
-
-def _phase(state: Any) -> Phase:
-    name = getattr(state, "name", str(state))
-    return Phase(name.split(".")[-1])
 
 
 class OracleModel:
@@ -92,13 +74,7 @@ class OracleModel:
             data = {"x": action.x, "y": action.y}
         game_action = _GAME_ACTIONS[action.id]
         fd = self._game.perform_action(_ActionInput(id=game_action, data=data), raw=True)
-        obs = Observation(
-            grid=_to_grid(list(fd.frame)),
-            phase=_phase(fd.state),
-            levels_completed=int(fd.levels_completed),
-            win_levels=int(fd.win_levels),
-            available_actions=tuple(int(a) for a in fd.available_actions),
-        )
+        obs = observation_from_frame(fd)
         self._obs = obs
         return obs
 

@@ -28,6 +28,9 @@ ignore = ["PLR0913", "PLR2004", "ANN401"]
 "tests/*" = ["PLR2004", "ANN"]
 # Notebook cell templates are embedded as raw strings; their line length is the notebook's.
 "scripts/kaggle_synth_notebook.py" = ["E501"]
+"scripts/kaggle_agent_notebook.py" = ["E501"]
+# Embedded CSS/JS strings for the figure export; same reason.
+"scripts/render_planner_figures.py" = ["E501"]
 
 [tool.pyright]
 pythonVersion = "3.12"

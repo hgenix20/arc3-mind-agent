@@ -24,7 +24,15 @@ from pathlib import Path
 
 import numpy as np
 
-from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, RESET_ID, Action, Grid, Phase
+from arcagent.core.types import (
+    COORD_ACTION_ID,
+    GRID_SIZE,
+    RESET_ID,
+    Action,
+    Grid,
+    Observation,
+    Phase,
+)
 
 TRAIN_FRACTION_NUM = 7
 TRAIN_FRACTION_DEN = 10
@@ -195,6 +203,34 @@ def _expand(action_id: int, grid: Grid, rng: random.Random) -> list[Action]:
     return [Action(action_id)]
 
 
+class ProbePolicy:
+    """The probe policy as a stateful chooser: one ``choose`` per executed action.
+
+    Deterministic for a given seed and observation sequence. RESET whenever
+    the game is terminal or offers no other action; otherwise with
+    probability ``RANDOM_PROB`` a uniform random expansion of a uniform random
+    available action, else the next item of a queue that cycles through every
+    available action in order (rebuilt from the current grid when empty).
+    The playing agent uses the same class, so a trace and a baseline game are
+    the same action sequence for the same seed.
+    """
+
+    def __init__(self, seed: int = 0) -> None:
+        self.rng = random.Random(seed)
+        self.queue: list[Action] = []
+
+    def choose(self, obs: Observation) -> Action:
+        avail = [a for a in obs.available_actions if a != RESET_ID]
+        if obs.phase in (Phase.GAME_OVER, Phase.WIN) or not avail:
+            self.queue = []
+            return Action(RESET_ID)
+        if self.rng.random() < RANDOM_PROB:
+            return self.rng.choice(_expand(self.rng.choice(avail), obs.grid, self.rng))
+        if not self.queue:
+            self.queue = [act for a in avail for act in _expand(a, obs.grid, self.rng)]
+        return self.queue.pop(0)
+
+
 def collect_trace(env_dir: str | Path, game: str, steps: int, seed: int = 0) -> Trace:
     """Run the probe policy for ``steps`` actions and return the trace.
 
@@ -207,22 +243,12 @@ def collect_trace(env_dir: str | Path, game: str, steps: int, seed: int = 0) -> 
 
     if steps < 1:
         raise ValueError(f"steps must be >= 1, got {steps}")
-    rng = random.Random(seed)
+    policy = ProbePolicy(seed)
     model = OracleModel.load(env_dir, game, seed=seed)
     obs = model.observe()
-    queue: list[Action] = []
     transitions: list[Transition] = []
     for i in range(steps):
-        avail = [a for a in obs.available_actions if a != RESET_ID]
-        if obs.phase in (Phase.GAME_OVER, Phase.WIN) or not avail:
-            action = Action(RESET_ID)
-            queue = []
-        elif rng.random() < RANDOM_PROB:
-            action = rng.choice(_expand(rng.choice(avail), obs.grid, rng))
-        else:
-            if not queue:
-                queue = [act for a in avail for act in _expand(a, obs.grid, rng)]
-            action = queue.pop(0)
+        action = policy.choose(obs)
         after = model.step(action)
         transitions.append(
             Transition(

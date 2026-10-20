@@ -22,7 +22,7 @@ Held-out transitions never enter any prompt.
 | v6 | 2026-10-19 21:49 | server deadline 3600 s; 3 games | **first working run**: every reply `finish_reason=stop`, real code; repair rounds 2 and 3 returned comment-only edits on all three games |
 | v7 | 2026-10-20 02:08 | repair turn: score line, `your change` per mismatch, diagnose-first instruction; AST-identical repair ends the game | repair rounds now change logic with a written diagnosis; one reply looped to the 16000 cap with no fence; identical round-1 prompt vs v6 gave a different reply (no per-request seed) |
 | v8 | 2026-10-20 02:58 | per-request `seed`; one re-sample on a no-fence reply; `final` skips no-code rounds | ft09 solved (1.00 held-out); retry fired once and recovered; vc33 regressed under repair |
-| (code) | 2026-10-20 | `final` = round with the best training fit (exact, then cell accuracy, earliest on tie) | not yet run on Kaggle; on v8's data it selects ft09 r2, vc33 r1, ls20 r2 |
+| v9 | 2026-10-20 04:20 | `final` = round with the best training fit (exact, then cell accuracy, earliest on tie); same seeds as v8 | best ls20 so far (0.25, repair improved it twice); vc33 regressed again and the policy kept the 0.53 round; ft09 did not reproduce v8's 1.00 (0.89 = identity); every round-1 reply differed from v8's despite identical prompts and seeds |
 
 ## Held-out exact match per round
 
@@ -34,6 +34,10 @@ Identity baseline (predict "nothing changes"): ls20 0.00, ft09 0.89, vc33 0.00.
 | v6 | 0.22 | 0.22 | 0.22 | 0.69 | 0.86 | 0.86 | 0.42 | 0.42 | 0.42 |
 | v7 | 0.00 | 0.03 | 0.03* | 0.69 | 0.69 | 0.00† | 0.50 | 0.50 | 0.53 |
 | v8 | 0.00 | 0.00 | 0.00 | 0.92‡ | **1.00** | – | 0.53 | 0.47 | 0.39 |
+| v9 | 0.17 | 0.19 | **0.25** | 0.89 | 0.89 | 0.89 | 0.53 | 0.53 | 0.39 |
+
+Selected `final` under the train-fit policy (v9): ls20 r3, ft09 r3, vc33 r2.
+On v8's data the same policy would select ft09 r2 (1.00), vc33 r1 (0.53), ls20 r2.
 
 \* round 3 was AST-identical to round 2 (`unchanged`), the game stopped there.
 † no code fence after 16000 tokens (two formulas alternating); scored as a load failure.
@@ -49,9 +53,16 @@ v8 ls20 0.9838 / ft09 1.0000 / vc33 0.9855 (r1).
 | v6 | comment only | rewrite | comment only | `cmp` of code files; prompt diff r2 vs r3 differed only inside the prior code |
 | v7 | logic changed | logic changed | logic changed | `unchanged` flag (AST compare) false on all three |
 | v8 | logic changed | logic changed, solved | logic changed, worse | same |
+| v9 | logic changed, better twice | logic changed, flat | logic changed, worse in r3 | same |
 
 Repair deltas, held-out exact (r1 to best later round): v6 +0.00 / +0.17 / +0.00;
-v7 +0.03 / +0.00 / +0.03; v8 +0.00 / +0.08 / −0.06 (vc33 fell each round).
+v7 +0.03 / +0.00 / +0.03; v8 +0.00 / +0.08 / −0.06 (vc33 fell each round);
+v9 +0.08 / +0.00 / +0.00 (vc33 r3 fell to 0.39 again; `final` kept r2).
+
+ls20 in v9 is the clearest case of train/held-out divergence: train exact
+0.81 → 0.71 → 0.89 while held-out went 0.17 → 0.19 → 0.25. The held-out
+split is the last 30% of the trace in time; rules that fit the first 84
+transitions do not carry to the last 36.
 
 ## Reply accounting
 
@@ -61,6 +72,7 @@ v7 +0.03 / +0.00 / +0.03; v8 +0.00 / +0.08 / −0.06 (vc33 fell each round).
 | v6 | 9 | 0 | 0 | – | 82 |
 | v7 | 9 | 1 (16000) | 1 | – | 149 |
 | v8 | 9 (+1 retry) | 1 (16000, discarded) | 1 | 1 | 233 |
+| v9 | 9 | 0 | 0 | 0 | 198 |
 
 ## Infrastructure timeline (seconds from notebook start)
 
@@ -71,6 +83,7 @@ v7 +0.03 / +0.00 / +0.03; v8 +0.00 / +0.08 / −0.06 (vc33 fell each round).
 | v6 | 295 | 1855 | 2835 |
 | v7 | – | – | ~2700 |
 | v8 | 297 | 1837 | ~3900 |
+| v9 | 299 | 1779 | ~3480 |
 
 Weight loading from the Kaggle input disk varied 2.4x between runs; the
 server deadline is 3600 s since v6.
@@ -80,19 +93,46 @@ server deadline is 3600 s since v6.
 v6 and v7 sent a byte-identical round-1 prompt for ls20 and received
 different replies (11,239 vs 4,245 completion tokens; 0.22 vs 0.00 held-out).
 vLLM was started with a global seed but requests carried none. From v8 every
-request carries `seed = trace_seed*1000 + round*10 + attempt`. Reproducibility
-is testable only from v8 onward (v8 vs v9 should match byte for byte).
+request carries `seed = trace_seed*1000 + round*10 + attempt` (the test on
+`request_body` proves it is sent; vLLM 0.19 does not log request params by
+default, so the server side is unconfirmed).
+
+**v8 vs v9, same code, same prompts, same seeds: all three round-1 replies
+differ byte for byte**, and ft09 went from solved (1.00) to the identity
+baseline (0.89). A per-request seed does not make this server reproducible
+across runs. The likely cause is kernel-level nondeterminism in the FP8
+attention and prefix-caching path (logits differ in the last bits, and once
+one sampled token differs the rest of the reply diverges); this is not
+proven here. Consequence for every comparison in this log: a single run per
+condition cannot separate a change in the harness from sampling noise. The
+honest unit is several runs per condition, or temperature 0 with the
+caveat that greedy decoding is what looped in v7.
+
+## Agent submissions
+
+The competition entry is a separate notebook, `hgenix20/arc3-agent-probe-baseline`
+(see `agent-submission.md`). It plays every game through the public action
+interface; the competition rerun scores it from the gateway's record.
+
+| version | pushed | agent | offline (25 public games) | leaderboard |
+|---|---|---|---|---|
+| v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | pending |
 
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
-  track. The probe is a private notebook, not a submission; an agent that
-  uses the synthesized models has to exist and be submitted first.
+  track. The probe-policy agent above is that submission; the agent that
+  plans against synthesized models is the next step.
 - The paper may not report training-set performance; this log's train
   columns are for our own diagnosis only.
-- ls20 is unsolved at 0.00 in every run; the model never finds the moving
-  5x5 pattern. vc33's repair regresses: the diagnoses run to 6–9k characters
-  and the rewrite overreaches. Both are candidates for a different feedback
-  form (fewer, larger mismatches; or showing the predicted grid in full).
+- ls20 reached 0.25 held-out in v9 (0.89 train) after 0.00 in v7 and v8 on
+  the same prompt: the gap between runs is sampling, not the harness. vc33's
+  round-3 repair regressed to 0.39 in both v8 and v9 (diagnoses of 6–9k
+  characters, the rewrite overreaches); the train-fit `final` absorbs the
+  damage but does not prevent it. Both remain candidates for a different
+  feedback form (fewer, larger mismatches; or the predicted grid in full).
+- Reproducibility: per-request seeds did not reproduce replies across runs
+  (see above). Before any claim that a harness change helped, run each
+  condition several times; v6–v9 are one run each.
 - All code under this repo is to be released under MIT-0/CC0 before private
   scores, per the competition rules.

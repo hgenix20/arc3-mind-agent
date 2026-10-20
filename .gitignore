@@ -11,3 +11,5 @@ bench/synth/traces/
 bench/synth/prompts/
 bench/synth/code/
 bench/synth/*.json
+bench/agent/
+bench/agent-*/
