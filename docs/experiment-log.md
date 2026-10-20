@@ -163,6 +163,18 @@ uncertainty on the leaderboard figure. Script: `scripts/duck_noise.py`
 (paths are the two summary files). Records: `duck-runs/eval-v2-baseline-summary.txt`,
 `duck-runs/eval-v2-baseline-levels.txt`.
 
+Why the loss pool is stable: the harness's priority gate. With 10 slots for
+25 games, Franzen's patch ranks games by the level reached, the value of the
+levels remaining and the actions and tokens spent per level (env
+`ARC3_PRIORITY_*`, tuned by replaying his own runs) and parks the expensive
+ones. In the repeat run sk48 made no model call for 81 minutes between two
+analysis steps (20:08 to 21:29 UTC) while holding no slot, then ran out of
+clock on level 2; its transcript ends mid-derivation of a world model
+(validated 62 of 63 transitions) with a server read timeout. The 19 games
+that end as "gave_up" are the time cap, not a decision by the model. A change
+aimed at those games has to buy them stream time, which the gate takes from
+games that are scoring; the gate's parameters are the lever, not the prompt.
+
 Consequences for the iteration plan: (1) a variant is judged on its
 mechanism (tokens generated, levels reached, prefill volume) as much as on
 its score; (2) a score comparison needs several passes or a paired design
