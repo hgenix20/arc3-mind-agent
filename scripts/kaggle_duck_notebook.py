@@ -15,7 +15,7 @@ Patches in the baseline build:
 Constraints: RTX PRO 6000, no internet, the same dataset and model sources as the
 reference, image pinned to the same Python 3.12 digest.
 
-Usage: python scripts/kaggle_duck_notebook.py [--slug SLUG] [--smoke-games ls20 ft09 vc33]
+Usage: python scripts/kaggle_duck_notebook.py [--slug SLUG] [--smoke-games ls20 ft09 vc33 | all]
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 REFERENCE = ROOT / "third_party" / "franzen-m2" / "arc-agi-3-milestone-2-solution.ipynb"
@@ -70,6 +71,9 @@ class Patch:
 
 
 def smoke_patches(smoke_games: list[str]) -> list[Patch]:
+    """``smoke_games``: 4-char public game ids, or ``["all"]`` for a 25-game evaluation run."""
+    if smoke_games == ["all"]:
+        smoke_games = list(PUBLIC_GAMES)
     unknown = sorted(set(smoke_games) - set(PUBLIC_GAMES))
     if unknown:
         raise ValueError(f"not public games: {unknown}")
@@ -94,7 +98,7 @@ def smoke_patches(smoke_games: list[str]) -> list[Patch]:
     ]
 
 
-def apply(nb: dict, patches: list[Patch]) -> None:
+def apply(nb: dict[str, Any], patches: list[Patch]) -> None:
     for p in patches:
         cell = nb["cells"][p.cell]
         src = "".join(cell["source"])
@@ -103,7 +107,7 @@ def apply(nb: dict, patches: list[Patch]) -> None:
         cell["source"] = src.replace(p.old, p.new)
 
 
-def build(slug: str, smoke_games: list[str]) -> Path:
+def build(slug: str, smoke_games: list[str], out: Path = OUT) -> Path:
     nb = json.loads(REFERENCE.read_text(encoding="utf-8"))
     patches = smoke_patches(smoke_games)
     apply(nb, patches)
@@ -123,8 +127,8 @@ def build(slug: str, smoke_games: list[str]) -> Path:
             c["outputs"] = []
             c["execution_count"] = None
     nb["metadata"].pop("papermill", None)
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "notebook.ipynb").write_text(json.dumps(nb, indent=1), encoding="utf-8")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "notebook.ipynb").write_text(json.dumps(nb, indent=1), encoding="utf-8")
     meta = {
         "id": f"{USERNAME}/{slug}",
         "title": slug.replace("-", " ").replace("arc3", "ARC3", 1),
@@ -143,16 +147,17 @@ def build(slug: str, smoke_games: list[str]) -> Path:
         "docker_image_pinning_type": "original",
         "docker_image": DOCKER_IMAGE,
     }
-    (OUT / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    return OUT
+    (out / "kernel-metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    return out
 
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--slug", default="arc3-duck-agent")
     ap.add_argument("--smoke-games", nargs="+", default=["ls20", "ft09", "vc33"])
+    ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args(argv)
-    out = build(a.slug, a.smoke_games)
+    out = build(a.slug, a.smoke_games, Path(a.out))
     print(f"wrote {out} (smoke games {a.smoke_games})")
 
 

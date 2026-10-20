@@ -118,7 +118,15 @@ interface; the competition rerun scores it from the gateway's record.
 |---|---|---|---|---|
 | v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | **0.11** public (submission 57437483, scored 2026-10-20) |
 | explore (not pushed) | 2026-10-20 | `ExplorerPolicy`: state graph, UCB over action kinds, frontier routing | 6 levels at 300 actions, 7 at 1000; scorecard 0.36 either way | not submitted (one slot per day; the duck kernel takes the next) |
-| duck v1 | 2026-10-20 13:52 | Franzen's Milestone 2 notebook unchanged except a 3-game interactive smoke run (`hgenix20/arc3-duck-agent`) | smoke run only | pending: submit after 00:00 UTC 2026-10-21 |
+| duck v1 | 2026-10-20 13:52 | Franzen's Milestone 2 notebook unchanged except a 3-game interactive smoke run (`hgenix20/arc3-duck-agent`) | smoke (ls20, ft09, vc33; 870 s per game): mean 42.75; ft09 6/6 levels at 87 actions (score 100), vc33 3/7 (21.4), ls20 2/7 (6.8); server ready at 12 min, 27 min total | pending: submit after 00:00 UTC 2026-10-21 |
+
+Duck smoke-run detail (agent/human actions per level): ft09 4/43, 7/12,
+14/23, 22/28, 24/65, 16/37 (every level under the human count); vc33 10/7,
+12/18, 25/44, 19/61 then out of time; ls20 32/22, 145/123 then out of time.
+The harness reported 251 generated tokens/s over the job and 220k tokens for
+330 actions, about 670 tokens per action. A 25-game, one-pass
+evaluation variant (`hgenix20/arc3-duck-eval`, 7254 s per game, about 2.3
+GPU hours) is the per-game control for later changes.
 
 Kameron's instruction on 2026-10-20 was to iterate until the score reaches 80.
 The public leaderboard's top entry stands at 68.91 (Tufa Labs), the best public
