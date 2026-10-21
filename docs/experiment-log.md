@@ -118,13 +118,65 @@ interface; the competition rerun scores it from the gateway's record.
 |---|---|---|---|---|
 | v1 | 2026-10-20 12:18 | probe policy, 300 actions per game, CPU | 2 levels (r11l, vc33), scorecard 0.19 | **0.11** public (submission 57437483, scored 2026-10-20) |
 | explore (not pushed) | 2026-10-20 | `ExplorerPolicy`: state graph, UCB over action kinds, frontier routing | 6 levels at 300 actions, 7 at 1000; scorecard 0.36 either way | not submitted (one slot per day; the duck kernel takes the next) |
-| duck v1 | 2026-10-20 13:52 | Franzen's Milestone 2 notebook unchanged except a 3-game interactive smoke run (`hgenix20/arc3-duck-agent`) | smoke (ls20, ft09, vc33; 870 s per game): mean 42.75; ft09 6/6 levels at 87 actions (score 100), vc33 3/7 (21.4), ls20 2/7 (6.8); server ready at 12 min, 27 min total | submitted 2026-10-21 00:04 UTC (submission 57457365), score pending |
+| duck v1 | 2026-10-20 13:52 | Franzen's Milestone 2 notebook unchanged except a 3-game interactive smoke run (`hgenix20/arc3-duck-agent`) | smoke (ls20, ft09, vc33; 870 s per game): mean 42.75; ft09 6/6 levels at 87 actions (score 100), vc33 3/7 (21.4), ls20 2/7 (6.8); server ready at 12 min, 27 min total | submitted 2026-10-21 00:04 UTC (submission 57457365): **0.00**, "Succeeded" within an hour of a 9-hour budget. The gateway's 15-minute idle rule ended the run before the model server answered; see "Why duck v1 scored 0.00" below |
+| duck v2 | 2026-10-21 01:21 | v1 plus `scripts/duck_keepalive.py` (the warm-up game repeats its RESET every 5 min until the first model action) and a 60-minute first-request grace (was 15) | smoke run pending | for the 2026-10-22 slot |
 
 Duck smoke-run detail (agent/human actions per level): ft09 4/43, 7/12,
 14/23, 22/28, 24/65, 16/37 (every level under the human count); vc33 10/7,
 12/18, 25/44, 19/61 then out of time; ls20 32/22, 145/123 then out of time.
 The harness reported 251 generated tokens/s over the job and 220k tokens for
 330 actions, about 670 tokens per action.
+
+### Why duck v1 scored 0.00 (2026-10-21)
+
+The rerun was marked "Succeeded" with 0.00 within an hour of submission; a
+healthy rerun of this notebook uses most of its 9 hours, and copies of the
+same notebook by other users scored 29 to 31 on the same day (competition
+Code tab, sorted by last run). Kaggle shows no rerun log, so the cause comes
+from the gateway's rules and our own startup timeline.
+
+The rule: a scorecard with no move for 15 minutes is closed and the run ends
+with the score so far. The toolkit's `ScorecardManager` has `STALE_MINUTES`
+= 15 (arc_agi 0.9.8, `scorecard.py`), the docs say "Scorecards auto close
+after 15 minutes", and Jeroen Cottaar (Duck author, first on the
+leaderboard) wrote in competition discussion 750173: a run with no move for
+15 minutes ends with the score so far, so start a thread that issues a RESET
+to one game every 10 minutes until startup. Two other posters in that thread
+tie their 0.00 runs to slow dataset and model loading in the rerun (2 to 3
+times slower than an interactive run, one run ending after about 30
+minutes), and a third thread (750981) reports the same notebook version
+dropping from 32.76 to 24.03 between Oct 16 and Oct 19, every run completing
+9 hours with a keep-alive move in place.
+
+Our timeline fits. Franzen's notebook releases the benchmark at 12 minutes
+(`SERVER_STARTUP_TIMEOUT`) and the harness spends one RESET on one game at
+that moment (`ARC3_WARMUP_ACTION_GAMES=1`). The next move is the first model
+action, which needs the server up plus one full reply. In our four
+interactive runs the server became ready 12.8, 12.5, 17.4 and 15.6 minutes
+after notebook start (serve.log "ready to roll" against the benchmark start,
+which is 12 minutes after notebook start), leaving five to twelve minutes
+for the first reply before the idle rule, and a rerun host that loads the
+185 GB of weights twice as slowly has none. The first analyzer
+request also gives up after a 900 s grace plus ten failures, which would end
+every game within about 35 minutes on a slow host even without the idle
+rule.
+
+The fix (duck v2): `scripts/duck_keepalive.py`, copied verbatim into a new
+notebook cell by the generator, wraps the harness's game session so the
+warm-up game repeats its RESET every 5 minutes until any game executes a
+model-chosen action, then plays normally (6 unit tests against a stub
+session; the real class cannot be imported off Kaggle). Cost: a few RESET
+actions on one game's first level. The first-request grace goes from 900 to
+3600 s. Both are in every build, not a variant, because they only act while
+the server is loading. The lesson for the paper: the public notebook as
+published is one slow disk away from a zero, and the only way to know is the
+leaderboard.
+
+An independent noise study by Francise Liang (discussion 750885, 2026-10-19)
+matches ours: the same code twice gave means 47.30 and 48.92 at two passes
+per game with a per-game difference sd of 24 points, 14 streams instead of
+10 gave 29.90 against 47.30, and 2 of their 12 submissions came back
+"Succeeded" at 0.00 with the unmodified notebook among them.
 
 ### Duck evaluation run v1 (baseline, 2026-10-20 14:35–16:37 UTC)
 
