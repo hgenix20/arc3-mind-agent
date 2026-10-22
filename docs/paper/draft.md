@@ -86,7 +86,9 @@ notebook with no internet on one RTX PRO 6000.
 (`hgenix20/arc3-agent-probe-baseline`, submission 57437483) scored 0.11 on
 the public leaderboard on 2026-10-20; the model-free explorer scores 0.36
 offline on the 25 public games (not yet submitted); the LLM-layer kernel
-`hgenix20/arc3-duck-agent` is pending.]
+`hgenix20/arc3-duck-agent` scored 0.00 as published (submission 57457365,
+idle-rule termination) and 27.22 with the keep-alive cell (submission
+57527194, 2026-10-22).]
 
 Held-out exact-match rate of the selected candidate, 36 held-out
 transitions per game, identity baseline in parentheses:
