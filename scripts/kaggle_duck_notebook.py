@@ -153,6 +153,17 @@ VARIANTS: dict[str, list[Patch]] = {
             why="CUDA graphs cover batch 16",
         ),
     ],
+    "spec4": [
+        Patch(
+            cell=12,
+            old="    SPEC_STEPS=3,\n",
+            new="    SPEC_STEPS=4,  # hgenix20: spec4 variant\n",
+            why=(
+                "draft 4 tokens per step instead of 3; baseline mean accept length is 2.67"
+                " of 4, so a longer draft may raise decoded tokens per step"
+            ),
+        ),
+    ],
 }
 
 

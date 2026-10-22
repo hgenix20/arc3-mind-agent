@@ -201,6 +201,7 @@ mostly at or under the human count; the losses are levels never reached.
 | baseline | arc3-duck-eval v1 | none | 41.47 | control, 2026-10-20 |
 | streams16 | arc3-duck-eval-s16 v1 | 16 active streams and server requests (CUDA graphs to batch 16) instead of 10 | **30.61** (2 won, 3119 actions, 2.4M tokens, 330 tokens/s) | refuted, and the cause is mechanical, see below |
 | baseline repeat | arc3-duck-eval v2 | none | **43.69** (6 won, 5117 actions, 4.1M tokens, 555 tokens/s) | 19:44–21:47 UTC; the noise measurement, see "Noise band" below |
+| spec4 | arc3-duck-eval-spec4 v1 | speculative decoding drafts 4 tokens per step instead of 3 (`SPEC_STEPS`) | running, pushed 2026-10-22 23:41 UTC | judged on the mechanism: generated tokens/s and mean accept length against the two baselines (555 and 588 tokens/s, accept 2.67); the score alone can't resolve under ±14 |
 
 **Noise band (two identical baseline runs, 2026-10-20).** The means differ
 by 2.2 points, the games do not. The root mean square per-game difference is
