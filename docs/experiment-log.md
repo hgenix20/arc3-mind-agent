@@ -273,6 +273,25 @@ loop. The plan of record is therefore: the published harness as the LLM layer
 leaderboard reading per day, the model-free explorer kept as the fallback
 agent and as the fast layer of the stack.
 
+### Mind entry (stack + Genix Mind + offline LLM), from 2026-10-23
+
+The Franzen-derived duck kernel is out of the entry. The agent is our own:
+the mind's loops in `arcagent/mind/`, the planner in `arcagent/plan/planner.py`,
+and Qwen3.6-27B-FP8 served inside the notebook (kernel `hgenix20/arc3-mind-agent`).
+
+| date | version | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-23 | v1 | public eval, 25 games, 8.5 h budget | 13 | 0.32 | 263 LLM calls, 184 programs admitted, 113 dropped, prediction accuracy 0.97; 470,704 actions |
+| 2026-10-23 | v1 | submission 57565016 | pending | | Kameron's go; submitted from the v1 commit |
+
+v1 sits at the explorer's level (offline EXPLORER 0.36 on the same 25 games),
+so the model-written programs aren't completing levels the explorer can't yet.
+Every level it finished took far more actions than the human counts. v1 predates
+the final fix wave (fallback parquet when vLLM or the run fails, scaled eval
+budget, bounded sleep, sandbox startup). Known open cost: duplicate programs
+are admitted under new ids, and VOI scores each copy on every step.
+Logs: `bench/evals/2026-10-23-full-v1/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
