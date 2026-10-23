@@ -3,9 +3,12 @@
 Noise is judged per object track, never per cell. A track is noise when either
 rule fires:
 
-* its change descriptor was identical under two different action ids, or
+* its (non-move) change descriptor was identical under two different action ids, or
 * it had a non-move change on each of the last ``WINDOW`` transitions, and those
   transitions span two or more action ids.
+
+Moves never count toward either rule: masking a player that two actions move the same
+way would blind the agent.
 
 The descriptor is ``(kind, dx, dy, color)``. A reshape descriptor leaves out the new
 signature and the size delta: ``Change`` carries only the new sig (a hash), so the
@@ -52,7 +55,7 @@ class NoiseMask:
         old = before.by_id()
         flagged: list[int] = []
         for c in diff.changes:
-            if c.kind != "same":
+            if c.kind not in ("same", "moved"):
                 self._by_descriptor.setdefault(c.id, {}).setdefault(_descriptor(c), set()).add(
                     action_id
                 )

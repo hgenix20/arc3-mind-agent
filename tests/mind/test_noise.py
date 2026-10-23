@@ -68,3 +68,11 @@ def test_reset_tracks_keeps_cells_and_forgets_history() -> None:
     m.reset_tracks()
     assert m.noisy_ids == frozenset() and m.cells >= BAR_CELLS
     assert m.observe(_scene(), 3, reshape_diff(7, -1)) == []
+
+
+def test_same_move_under_two_actions_is_never_noise() -> None:
+    m = NoiseMask()
+    for _ in range(3):
+        for a in (1, 5):
+            m.observe(_scene(), a, move_diff(1, 0, -1))
+    assert m.noisy_ids == frozenset()
