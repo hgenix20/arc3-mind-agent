@@ -59,12 +59,17 @@ Past the game or run deadline: no search, no tests, no vetoes; follow the plan o
 Executive turn (slice 2, only with a ``chat``; without one the agent is slice 1 exactly):
 
 - Wake rules, noted while a move is processed and checked after the move is chosen, in
-  ``WAKE_ORDER``: level start (the first frame of the game or of a new level, not the
-  restart after a game over); a miss that matters (``plan_breaks`` stopped a plan);
-  plan finished or blocked (a vetoed step or a click whose thing is gone); a goal
-  excluded, ruled out or stalled; a fact turning broken; no plan and no test (the move
-  fell back to B0). No wake while a plan holds (the chosen branch is ``plan`` or
-  ``follow``), while a turn is in flight, or once turns are off for the game.
+  ``WAKE_ORDER``: level start (the first frame of the game or of a new level); game
+  over (the first frame after the RESET that follows one; the prompt's wake text adds
+  ``last attempt ended in game over after N moves``); a miss that matters
+  (``plan_breaks`` stopped a plan); plan finished or blocked (a vetoed step or a click
+  whose thing is gone); a goal excluded, ruled out or stalled; a fact turning broken;
+  no plan and no test (the move fell back to B0); long stretch (``LONG_STRETCH_MOVES``
+  moves since the last turn started on this level, or since the level started). No
+  wake while a plan holds (the chosen branch is ``plan`` or ``follow``), while a turn
+  is in flight, or once turns are off for the game. Spacing: after a turn finishes
+  (applied, failed, timed out or stale) the next wake needs ``MIN_MOVES_BETWEEN_TURNS``
+  moves, except level start and game over; a wake suppressed this way logs nothing.
 - Budgets: ``MAX_TURNS_PER_LEVEL`` and ``MAX_TURNS_PER_GAME`` turns, and no turn
   starts past ``1 - SYNTH_CUTOFF_FRACTION`` (75%) of the game's budget (agent start to
   the game or run deadline). The turn's seed is ``seed * 1000 + call``.
@@ -73,8 +78,9 @@ Executive turn (slice 2, only with a ``chat``; without one the agent is slice 1 
   older than ``TURN_DEADLINE_S`` is abandoned (``exec_failed`` reason ``timeout``) and
   its result ignored. ``ImagesRejected`` logs ``exec_failed`` ``images rejected`` and
   turns stop for the game. Any other failure logs ``exec_failed`` with the reason and
-  costs nothing else. A reply asked before the last level change or game over (the
-  level epoch) is logged as ``exec_stale`` and not applied.
+  costs nothing else. A turn asked before the last level change or game over (the
+  level epoch) is logged as ``exec_stale`` and never applied: dropped at the next poll,
+  finished or not, so the new level or attempt can wake at once.
 - Applying a reply: goals enter ``GoalBook`` with source ``"llm"`` (a goal already
   known keeps its status and source) and every open one the reply named moves ahead
   of the other open goals; new goals then go through ``rule_out`` and
@@ -143,9 +149,12 @@ TURN_DEADLINE_S = 30.0  # a turn older than this is abandoned
 TURN_MAX_TOKENS = 1024  # reply budget per turn (the HTTP chat's max_tokens)
 MAX_TURNS_PER_LEVEL = 8
 MAX_TURNS_PER_GAME = 40
+MIN_MOVES_BETWEEN_TURNS = 6  # moves from a finished turn to the next wake (spacing)
+LONG_STRETCH_MOVES = 40  # moves without a turn on one level before "long stretch" wakes
 TURN_SEED_STRIDE = 1000  # a turn's seed is seed * TURN_SEED_STRIDE + call
 WAKE_ORDER = (
     "level start",
+    "game over",
     "miss that matters",
     "plan finished",
     "plan blocked",
@@ -154,7 +163,9 @@ WAKE_ORDER = (
     "goal stalled",
     "fact broken",
     "no plan and no test",
+    "long stretch",
 )
+_UNSPACED = frozenset({"level start", "game over"})  # wakes exempt from the spacing rule
 _GOAL_WAKES = frozenset({"excluded", "ruled_out", "stalled"})
 _DIRS: dict[tuple[int, int], str] = {
     (-1, 0): "left",
@@ -164,9 +175,11 @@ _DIRS: dict[tuple[int, int], str] = {
 }
 
 __all__ = [
+    "LONG_STRETCH_MOVES",
     "MAX_ERROR_CHARS",
     "MAX_TURNS_PER_GAME",
     "MAX_TURNS_PER_LEVEL",
+    "MIN_MOVES_BETWEEN_TURNS",
     "TURN_DEADLINE_S",
     "TURN_MAX_TOKENS",
     "WAKE_ORDER",
@@ -391,6 +404,11 @@ class FluidAgent:
         self._turns_off = False  # the server rejected images: no more turns this game
         self._epoch = 0  # bumps on every level change and game over
         self._level_start = True  # the next fresh frame starts a level
+        self._attempt_from = 0  # step of the current attempt's first frame
+        self._died_after: int | None = None  # moves in the attempt a game over just ended
+        self._wake_text = ""  # the prompt's wake line when it says more than the reason
+        self._turn_done = -MIN_MOVES_BETWEEN_TURNS  # step the last turn finished
+        self._stretch_from = 0  # step of the last turn start or level start on this level
         self._moves: deque[str] = deque(maxlen=MOVE_LOG_LINES)
         self._changed: set[int] = set()  # ids changed this level
         self._last_grid: Grid | None = None
@@ -414,6 +432,7 @@ class FluidAgent:
         frame = frame_hash(obs.grid)
         self._programs, self._vetoes, self._scene_ok = [], set(), False
         self._notes, self._wake = set(), None
+        self._wake_text = ""
         self._baseline.observe(obs)
         try:
             choice = self._mind_step(obs)
@@ -499,9 +518,18 @@ class FluidAgent:
         self._keep(full, scene)
         self._fresh, self._pred = False, None
         self._prev_grid = None
+        self._attempt_from = self._action_no
         if self._level_start:
             self._level_start = False
+            self._stretch_from = self._action_no
             self._notes.add("level start")
+        elif self._died_after is not None:
+            self._notes.add("game over")
+            self._wake_text = (
+                f"game over (last attempt ended in game over after {self._died_after} "
+                f"move{'' if self._died_after == 1 else 's'})"
+            )
+        self._died_after = None
         return scene
 
     def _keep(self, full: Scene, scene: Scene) -> None:
@@ -529,6 +557,7 @@ class FluidAgent:
                 )
                 self._log_facts(keys, snap, move)
             self._log.event("game_over", step=move, level=obs.levels_completed)
+            self._died_after = move - self._attempt_from + 1
             if self._last_scene is not None:
                 self._moves.append(f"{move} {_action_name(action, self._last_scene)} -> game over")
         self._epoch += 1
@@ -800,22 +829,17 @@ class FluidAgent:
 
     def _maybe_turn(self, obs: Observation, scene: Scene, choice: _Choice) -> None:
         """Start a turn when a wake rule fired, no plan holds and the budgets allow it."""
-        if self._turns_off or self._turn is not None or choice.branch in ("plan", "follow"):
-            return
-        reason = wake_reason(self._notes)
-        if reason is None or self._calls >= MAX_TURNS_PER_GAME:
-            return
-        if self._turns_level >= MAX_TURNS_PER_LEVEL:
+        reason = self._wake_reason(choice)
+        chat, pool = self._chat, self._pool
+        if reason is None or chat is None or pool is None:
             return
         now = self._clock()
         if now >= self._deadline - SYNTH_CUTOFF_FRACTION * (self._deadline - self._started):
             return
-        chat, pool = self._chat, self._pool
-        if chat is None or pool is None:
-            return
         call = self._calls
         self._calls += 1
         self._turns_level += 1
+        self._stretch_from = self._action_no
         inp = self._turn_input(obs, scene, reason)
         self._log.event("wake", step=self._action_no, reason=reason)
         self._wake = reason
@@ -823,8 +847,21 @@ class FluidAgent:
             fut = pool.submit(_run_turn, chat, inp, self.seed * TURN_SEED_STRIDE + call)
         except RuntimeError as exc:  # a shut-down pool costs this turn, not the game
             self._log_failed(call, f"submit failed: {exc}")
+            self._turn_done = self._action_no
             return
         self._turn = _Turn(fut, call, self._epoch, obs.levels_completed, now, scene)
+
+    def _wake_reason(self, choice: _Choice) -> str | None:
+        """This move's wake reason after the plan, in-flight, spacing and count rules."""
+        if self._turns_off or self._turn is not None or choice.branch in ("plan", "follow"):
+            return None
+        if self._calls >= MAX_TURNS_PER_GAME or self._turns_level >= MAX_TURNS_PER_LEVEL:
+            return None
+        if self._action_no - self._stretch_from >= LONG_STRETCH_MOVES:
+            self._notes.add("long stretch")
+        reason = wake_reason(self._notes)
+        spaced = self._action_no - self._turn_done >= MIN_MOVES_BETWEEN_TURNS
+        return reason if reason in _UNSPACED or spaced else None
 
     def _turn_input(self, obs: Observation, scene: Scene, reason: str) -> TurnInput:
         sigs = {t.sig for t in scene.things}
@@ -845,7 +882,7 @@ class FluidAgent:
             questions=tuple(question(label, subject) for label, subject in self._frontier),
             moves=tuple(self._moves),
             level=obs.levels_completed,
-            wake=reason,
+            wake=self._wake_text if reason == "game over" else reason,
             movers=mover_sigs(self.mem),
             changed=frozenset(self._changed),
         )
@@ -856,12 +893,16 @@ class FluidAgent:
         if turn is None:
             return
         if not turn.future.done():
-            if self._clock() - turn.started > TURN_DEADLINE_S:
+            if turn.epoch != self._epoch:
                 turn.future.cancel()
-                self._turn = None
+                self._turn, self._turn_done = None, self._action_no
+                self._log_stale(turn)
+            elif self._clock() - turn.started > TURN_DEADLINE_S:
+                turn.future.cancel()
+                self._turn, self._turn_done = None, self._action_no
                 self._log_failed(turn.call, "timeout")
             return
-        self._turn = None
+        self._turn, self._turn_done = None, self._action_no
         try:
             reply, seconds = turn.future.result()
         except ImagesRejected:
@@ -872,9 +913,7 @@ class FluidAgent:
             self._log_failed(turn.call, f"{type(exc).__name__}: {exc}")
             return
         if turn.epoch != self._epoch:
-            self._log.event(
-                "exec_stale", step=self._action_no, call=turn.call, asked_level=turn.level
-            )
+            self._log_stale(turn)
             return
         failed = next((d for d in reply.dropped if d.startswith("turn failed:")), None)
         if failed is not None and not (reply.goals or reply.plan or reply.test):
@@ -926,6 +965,9 @@ class FluidAgent:
         if new:
             self._log_goals(book.rule_out(list(self._history.values())), "ruled_out")
             self._log_goals(book.note_reached(scene), "excluded")
+
+    def _log_stale(self, turn: _Turn) -> None:
+        self._log.event("exec_stale", step=self._action_no, call=turn.call, asked_level=turn.level)
 
     def _log_failed(self, call: int, reason: str) -> None:
         self._log.event(

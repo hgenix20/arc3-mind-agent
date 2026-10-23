@@ -611,12 +611,17 @@ def test_wake_reasons_log_in_order(tmp_path: Path) -> None:
 
     game = FakeGame(player=(2, 2), target=(30, 30), walls=BOX, lava=[])
     agent = make_llm_agent(tmp_path, chat, SyncPool(), seed=2)
-    play(game, agent, max_steps=20)
+    play(game, agent, max_steps=80)
     agent.close()
     recs = records(tmp_path)
     wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
-    assert wakes[:3] == [(0, "level start"), (3, "plan finished"), (5, "no plan and no test")]
-    assert len(wakes) == fluid.MAX_TURNS_PER_LEVEL  # the per-level budget
+    # The plan finishes at step 3, inside the spacing window of the turn collected at
+    # step 1, so that wake is suppressed; then B0 fallbacks wake every 7 moves (each
+    # turn is collected one move after it starts, and the next needs 6 more).
+    gap = fluid.MIN_MOVES_BETWEEN_TURNS + 1
+    expect = [(0, "level start")]
+    expect += [(gap * i, "no plan and no test") for i in range(1, fluid.MAX_TURNS_PER_LEVEL)]
+    assert wakes == expect
     assert chat_seeds == [2000 + i for i in range(fluid.MAX_TURNS_PER_LEVEL)]
     acts = [r for r in recs if r["type"] == "action"]
     assert [a["why"] for a in acts[1:3]] == ["llm plan", "llm plan"]
@@ -628,12 +633,58 @@ def test_wake_reasons_log_in_order(tmp_path: Path) -> None:
     assert recs[-1]["type"] == "game_end" and recs[-1]["turns"] == len(wakes)
 
 
+def test_game_over_wakes_right_after_the_reset(tmp_path: Path) -> None:
+    prompts: list[str] = []
+
+    def chat(messages: list[VMessage], seed: int) -> Completion:
+        del seed
+        prompts.append(_prompt_text(messages))
+        return _completion("{}")
+
+    # Lava right above the player: the first test (A1) dies.
+    game = FakeGame(player=(2, 2), target=(2, 8), walls=[], lava=[(2, 1)])
+    agent = make_llm_agent(tmp_path, chat, SyncPool())
+    play(game, agent, max_steps=12)
+    agent.close()
+    assert game.game_overs == 1
+    recs = records(tmp_path)
+    wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
+    # step 0 dies, step 1 is the RESET, step 2 is the restart frame (spacing exempt)
+    assert wakes[:2] == [(0, "level start"), (2, "game over")]
+    assert "Wake: game over (last attempt ended in game over after 1 move)" in prompts[1]
+    assert [r["asked_level"] for r in recs if r["type"] == "exec_stale"] == [0]
+
+
+def test_long_stretch_wakes_after_many_moves_without_a_turn(tmp_path: Path) -> None:
+    chat, seeds = counting_chat()
+    game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
+    agent = make_llm_agent(tmp_path, chat, SyncPool())
+    play(game, agent, max_steps=2)  # level start: turn 0, collected on step 1
+    # Pretend the level has gone on without turns; spacing is already satisfied.
+    step = agent._action_no  # pyright: ignore[reportPrivateUsage]
+    agent._stretch_from = step - fluid.LONG_STRETCH_MOVES + 1  # pyright: ignore[reportPrivateUsage]
+    agent._turn_done = step - fluid.MIN_MOVES_BETWEEN_TURNS  # pyright: ignore[reportPrivateUsage]
+    play(game, agent, max_steps=1)  # 39 moves since the last turn: no wake yet
+    assert len(seeds) == 1
+    step = agent._action_no  # pyright: ignore[reportPrivateUsage]
+    agent._stretch_from = step - fluid.LONG_STRETCH_MOVES  # pyright: ignore[reportPrivateUsage]
+    play(game, agent, max_steps=1)
+    agent.close()
+    recs = records(tmp_path)
+    wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
+    assert wakes == [(0, "level start"), (step, "long stretch")]
+    assert len(seeds) == 2
+    acts = [r for r in recs if r["type"] == "action"]
+    assert all(a["branch"] == "learn" for a in acts)  # no plan held on these moves
+
+
 def test_wake_reason_takes_the_first_rule_in_order() -> None:
     assert fluid.wake_reason(set()) is None
     assert fluid.wake_reason({"fact broken", "plan finished"}) == "plan finished"
     assert fluid.wake_reason({"no plan and no test", "level start"}) == "level start"
     assert fluid.WAKE_ORDER[0] == "level start"
-    assert fluid.WAKE_ORDER[-1] == "no plan and no test"
+    assert fluid.WAKE_ORDER[1] == "game over"
+    assert fluid.WAKE_ORDER[-1] == "long stretch"
 
 
 def test_a_turn_past_its_deadline_is_abandoned(tmp_path: Path) -> None:
