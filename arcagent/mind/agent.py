@@ -581,6 +581,7 @@ class MindAgent:
             replay={pid: list(ht) for pid, ht in report.replay.items()},
             goal_confirmed=report.goal_confirmed,
             dropped=report.dropped,
+            replay_skipped=report.replay_skipped,
         )
 
     def close(self) -> None:

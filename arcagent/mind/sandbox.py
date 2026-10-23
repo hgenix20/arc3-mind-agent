@@ -25,9 +25,11 @@ Contract:
   ``(0, n)``, an error string, a plan with no actions) without starting a
   worker, counting a restart or blaming a program. A synthesis call still
   running on a pool thread when its game ends hits this path.
-- Thread-safe: every public method holds one re-entrant lock, because the
-  game's thread and its synthesis call (on a pool thread) share the sandbox.
-  Without it two requests on the one pipe could take each other's replies.
+- Thread-safe: every request holds one re-entrant lock, because the game's
+  thread and its synthesis call (on a pool thread) share the sandbox. Without
+  it two requests on the one pipe could take each other's replies. ``score``
+  takes it per chunk so a long score does not hold the other thread for every
+  chunk's deadline in a row.
 
 Isolation is best-effort (restricted builtins and imports, reduced
 environment, a 2 GB address-space cap on Linux), not a security boundary.
@@ -322,21 +324,28 @@ class ProgramSandbox:
         deadline and a long history cannot time out a correct program. A chunk that fails
         (timeout, crash, unknown pid) stops scoring and the result is ``(0, len(steps))``,
         the same as a single failed request; a timeout also drops the program as usual.
+        The lock is taken per chunk, not for the whole score, so the other thread
+        sharing the sandbox waits at most one chunk's deadline. A program unloaded
+        between chunks fails the next chunk like an unknown pid.
         """
+        if not steps:
+            return (0, 0)
+        total = 0
+        for lo in range(0, len(steps), SCORE_CHUNK):
+            wire = [
+                [_rows(s.before), _wire(s.action), frame_hash(s.after)]
+                for s in steps[lo : lo + SCORE_CHUNK]
+            ]
+            hits = self._score_chunk(pid, wire)
+            if not isinstance(hits, int):
+                return (0, len(steps))
+            total += hits
+        return (total, len(steps))
+
+    def _score_chunk(self, pid: str, wire: list[list[Any]]) -> object:
+        """One score request under the lock; the worker's hit count, or anything else on failure."""
         with self._lock:
-            if not steps:
-                return (0, 0)
-            total = 0
-            for lo in range(0, len(steps), SCORE_CHUNK):
-                wire = [
-                    [_rows(s.before), _wire(s.action), frame_hash(s.after)]
-                    for s in steps[lo : lo + SCORE_CHUNK]
-                ]
-                hits = self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
-                if not isinstance(hits, int):
-                    return (0, len(steps))
-                total += hits
-            return (total, len(steps))
+            return self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
 
     def plan(
         self,

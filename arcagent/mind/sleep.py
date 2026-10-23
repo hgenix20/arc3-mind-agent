@@ -14,6 +14,11 @@ Invariants:
   A program that sleep drops is unloaded and removed from procedural and held.
 - Gating is ``admit_program`` with its default thresholds; no model decides.
 - With no recorded steps there is no evidence, so replay leaves stores as they are.
+- Replay is bounded by time: once ``budget_s`` (default ``SLEEP_BUDGET_S``) has
+  passed since sleep started, the programs not yet scored are listed in
+  ``replay_skipped`` and keep their current place (procedural or held, still
+  loaded). The check runs before each program, so one program's score can
+  overrun the budget by up to its own request deadlines.
 
 Failure modes: a program that times out or crashes during replay scores as a
 total miss and is dropped; nothing here raises on model code.
@@ -22,7 +27,9 @@ total miss and is dropped; nothing here raises on model code.
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from arcagent.mind.memory import GameStore, WorkingMemory, all_steps
@@ -33,11 +40,16 @@ from arcagent.mind.wisdom import admit_program
 
 # Read from wisdom so consolidation and replay can never disagree on "pass".
 ADMIT_FIT = cast(float, inspect.signature(admit_program).parameters["admit_fit"].default)
+# Seconds a sleep may spend replaying; it runs on the game's thread between two actions.
+SLEEP_BUDGET_S = 20.0
 
 
 @dataclass(frozen=True, slots=True)
 class SleepReport:
-    """What one sleep did. ``replay`` maps every re-scored program to ``(hits, trials)``."""
+    """What one sleep did. ``replay`` maps every re-scored program to ``(hits, trials)``.
+
+    ``replay_skipped`` lists the programs left unscored when the time budget ran out.
+    """
 
     reason: str
     steps_compacted: int
@@ -45,6 +57,7 @@ class SleepReport:
     replay: dict[str, tuple[int, int]]
     goal_confirmed: list[str]
     dropped: list[str]
+    replay_skipped: list[str] = field(default_factory=list[str])
 
 
 def sleep(
@@ -53,8 +66,12 @@ def sleep(
     store: GameStore,
     belief: Belief,
     sandbox: ProgramSandbox,
+    *,
+    budget_s: float = SLEEP_BUDGET_S,
+    clock: Callable[[], float] = time.monotonic,
 ) -> SleepReport:
     """Run one sleep cycle; see the module docstring for the contract."""
+    t0 = clock()
     # 1. Compaction. Evidence only on level_up: the last step's frames are the
     # transition into the solved state.
     episode = wm.clear_level()
@@ -75,8 +92,13 @@ def sleep(
     steps = all_steps(store, wm)
     replay: dict[str, tuple[int, int]] = {}
     dropped: list[str] = []
+    skipped: list[str] = []
     if steps:
-        for pid in [*store.procedural, *store.held]:
+        queue = [*store.procedural, *store.held]
+        for i, pid in enumerate(queue):
+            if clock() - t0 >= budget_s:
+                skipped = queue[i:]
+                break
             program = store.procedural[pid][0] if pid in store.procedural else store.held[pid]
             hits, trials = sandbox.score(pid, steps)
             replay[pid] = (hits, trials)
@@ -106,4 +128,4 @@ def sleep(
             at_before = sandbox.goal(pids, before)
             confirmed = [p for p in pids if at_after[p] is True and at_before[p] is False]
 
-    return SleepReport(reason, len(episode), consolidated, replay, confirmed, dropped)
+    return SleepReport(reason, len(episode), consolidated, replay, confirmed, dropped, skipped)

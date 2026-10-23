@@ -9,6 +9,7 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 
+import arcagent.mind.sandbox as sandbox_module
 from arcagent.core.types import GRID_SIZE, Action, Grid, Phase
 from arcagent.mind.perception import frame_hash
 from arcagent.mind.sandbox import ProgramSandbox
@@ -353,3 +354,33 @@ def test_closed_sandbox_fails_like_a_dead_program() -> None:
     # No worker was respawned and nothing was blamed for the closed pipe.
     assert sb.restarts == 0 and sb.dropped == {}
     sb.close()  # still safe twice
+
+
+def test_score_releases_the_lock_between_chunks(
+    sb: ProgramSandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A long score must let the other thread (game or synthesis) in between chunks.
+    monkeypatch.setattr(sandbox_module, "SCORE_CHUNK", 2)
+    sb.load("good", GOOD)
+    steps = [_step(i, zeros(), Action(1), good_after(1)) for i in range(4)]
+    original = sb._score_chunk  # pyright: ignore[reportPrivateUsage]  # wrapped to observe the lock
+    helper_done = threading.Event()
+    waited: list[bool] = []
+
+    def helper() -> None:
+        sb.goal(["good"], zeros())
+        helper_done.set()
+
+    calls: list[int] = []
+
+    def chunk(pid: str, wire: list[list[object]]) -> object:
+        calls.append(len(wire))
+        if len(calls) == 1:
+            threading.Thread(target=helper, daemon=True).start()
+        else:  # the helper needs the lock; it can only finish if score let go of it
+            waited.append(helper_done.wait(3.0))
+        return original(pid, wire)
+
+    monkeypatch.setattr(sb, "_score_chunk", chunk)
+    assert sb.score("good", steps) == (4, 4)
+    assert calls == [2, 2] and waited == [True]

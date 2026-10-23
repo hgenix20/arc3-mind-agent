@@ -394,7 +394,7 @@ def test_level_up_runs_sleep_and_transfer(tmp_path: Path, sandbox: ProgramSandbo
     i_up = kinds.index("level_up")
     assert kinds[i_up + 1 : i_up + 3] == ["sleep", "transfer"]
     recs = records(tmp_path)
-    assert recs[i_up + 1]["reason"] == "level_up"
+    assert recs[i_up + 1]["reason"] == "level_up" and recs[i_up + 1]["replay_skipped"] == []
     # Null transfer carries nothing; the next level starts from an empty belief and wakes.
     assert recs[i_up + 2]["carried"] == []
     later = actions_of(recs[i_up:])

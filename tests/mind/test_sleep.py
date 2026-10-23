@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 
 import numpy as np
 import pytest
@@ -137,3 +137,35 @@ def test_goal_confirmed_needs_true_after_and_false_before(sb: ProgramSandbox) ->
     belief.add(prog("g", GOAL_AT_3, has_goal=True), hits=10, trials=10)
     wm.steps = [good_step(0, 3)]
     assert sleep("game_end", wm, store, belief, sb).goal_confirmed == []
+
+
+def test_replay_stops_when_the_budget_is_spent(
+    sb: ProgramSandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wm, store, belief = WorkingMemory(), GameStore(), Belief(sb)
+    for pid in ("a", "b", "c"):
+        assert sb.load(pid, GOOD) is None
+        store.held[pid] = prog(pid, GOOD)
+    wm.steps = [good_step(0), good_step(1, 2)]
+    now = [0.0]
+    real_score = sb.score
+
+    def slow_score(pid: str, steps: Sequence[Step]) -> tuple[int, int]:
+        now[0] += 15.0  # each replay costs 15 s of a 20 s budget
+        return real_score(pid, steps)
+
+    monkeypatch.setattr(sb, "score", slow_score)
+    report = sleep("level_up", wm, store, belief, sb, budget_s=20.0, clock=lambda: now[0])
+    assert set(report.replay) == {"a", "b"} and report.replay_skipped == ["c"]
+    # The unscored program keeps its place; the scored ones were promoted as usual.
+    assert "c" in store.held and "c" not in store.procedural
+    assert {"a", "b"} <= set(store.procedural) and report.dropped == []
+
+
+def test_replay_skips_nothing_within_the_default_budget(sb: ProgramSandbox) -> None:
+    wm, store, belief = WorkingMemory(), GameStore(), Belief(sb)
+    assert sb.load("h", GOOD) is None
+    store.held["h"] = prog("h", GOOD)
+    wm.steps = [good_step(0)]
+    report = sleep("game_end", wm, store, belief, sb)
+    assert report.replay == {"h": (1, 1)} and report.replay_skipped == []
