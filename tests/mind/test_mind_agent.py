@@ -20,6 +20,7 @@ from arcagent.mind.config import CONFIGS, MindConfig, build_modules
 from arcagent.mind.modules.base import NullTransfer, NullVoi
 from arcagent.mind.modules.inhibition import DisconfirmInhibition
 from arcagent.mind.modules.metacognition import ConfidenceMetacognition
+from arcagent.mind.modules.voi import DisagreementVoi
 from arcagent.mind.perception import frame_hash
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
@@ -31,6 +32,7 @@ from arcagent.synth.run import Chat, Completion
 ROW = 32
 FLOOR, PLAYER, GOAL, PIT = 1, 2, 3, 4
 START, GOAL_X = 4, 60
+FORK_X = 12
 ACTION_KEYS = {"level", "step", "frame_hash", "action", "branch", "why", "programs"} | {
     "vetoes",
     "voi",
@@ -223,8 +225,8 @@ def test_configs_and_module_factory() -> None:
     full = build_modules(CONFIGS["FULL"])
     assert isinstance(full.metacognition, ConfidenceMetacognition)
     assert isinstance(full.inhibition, DisconfirmInhibition)
-    # VOI and transfer are nulls until their real modules land.
-    assert isinstance(full.voi, NullVoi) and isinstance(full.transfer, NullTransfer)
+    assert isinstance(full.voi, DisagreementVoi) and isinstance(full.transfer, NullTransfer)
+    assert isinstance(build_modules(CONFIGS["B0"]).voi, NullVoi)
     with pytest.raises(dataclasses.FrozenInstanceError):
         CONFIGS["FULL"].k = 2  # pyright: ignore[reportAttributeAccessIssue]  # frozen on purpose
 
@@ -615,3 +617,30 @@ def test_cutoff_scales_to_a_short_game_budget(tmp_path: Path, sandbox: ProgramSa
         play(agent2, Corridor(), 40)
         agent2.close()
     assert calls2 == []
+
+
+def test_voi_drives_learn_actions_with_two_disagreeing_programs(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    # Both programs fit every explore step (the walk stays left of column 12); they
+    # part ways only on action 2 from column 12 on, so VOI has something to separate
+    # once the agent wanders there.
+    # Neither has a goal(), so the executive cannot plan to the goal and VOI decides.
+    no_goal = TRUE_RULES[: TRUE_RULES.index("def goal")]
+    stalls = no_goal.replace("q = p + 1", f"q = p + 1 if p < {FORK_X} else p")
+
+    def chat(messages: list[Message], seed: int) -> Completion:
+        return reply(no_goal if seed % 2 == 0 else stalls)
+
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], chat)
+    game = Corridor(pit_visible=False, win_levels=99)
+    obs = game.obs()
+    for _ in range(300):
+        obs = game.step(agent.choose(obs))
+        if any(a["branch"] == "learn" and a["voi"] for a in actions_of(records(tmp_path))):
+            break
+    agent.close()
+    learn = [a for a in actions_of(records(tmp_path)) if a["branch"] == "learn" and a["voi"]]
+    assert learn, "no learn action with a non-empty voi map"
+    assert all(len(k.split(",")) == 3 for a in learn for k in a["voi"])
+    assert any(v > 0 for a in learn for v in a["voi"].values())
