@@ -266,3 +266,48 @@ def test_plan_breaks_when_the_mover_lands_elsewhere() -> None:
     before, pred, t = plan_case()
     after, _ = t.update(_grid({(2, 3): 1, (6, 2): 4, (30, 30): 7}), frozenset())
     assert fluid.plan_breaks(pred, before, after, [], frozenset({PSIG}), frozenset({PSIG}))
+
+
+class ShyGame(FakeGame):
+    """FakeGame whose target jumps 3 cells right when the player comes within distance 2."""
+
+    def step(self, action: Action) -> Observation:
+        obs = super().step(action)
+        px, py = self.player
+        tx, ty = self.target
+        if self.phase == Phase.NOT_FINISHED and abs(px - tx) + abs(py - ty) == 2:
+            self.target = (min(tx + 3, 63), ty)
+            return self.observe()
+        return obs
+
+
+def test_goal_stalls_after_two_failed_attempts(tmp_path: Path) -> None:
+    game = ShyGame(player=(2, 2), target=(12, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=40)
+    agent.close()
+    events = [r for r in records(tmp_path) if r["type"] == "goal"]
+    stalled = [e for e in events if e["status"] == "stalled"]
+    assert stalled, events
+    goal = stalled[0]["id"]
+    plans = [
+        r
+        for r in records(tmp_path)
+        if r["type"] == "action" and r["branch"] == "plan" and r["why"] == f"goal {goal}"
+    ]
+    assert 2 <= len(plans) <= 3
+    assert agent.goals.status[next(g for g in agent.goals.status if g.id() == goal)] == "stalled"
+
+
+def test_stalled_goals_reopen_on_level_change(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    g = fluid.Goal("reach", a=PSIG, b=TSIG)
+    agent.goals.status[g] = "open"
+    agent.note_failed(g)
+    assert agent.goals.status[g] == "open"
+    agent.note_failed(g)
+    assert agent.goals.status[g] == "stalled"
+    agent.reopen_goals()
+    assert agent.goals.status[g] == "open"
+    kinds = [(r["id"], r["status"]) for r in records(tmp_path) if r["type"] == "goal"]
+    assert (g.id(), "stalled") in kinds and (g.id(), "open") in kinds

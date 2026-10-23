@@ -153,7 +153,7 @@ def test_tags_follow_effects() -> None:
 def test_click_labels_use_the_clicked_sig_and_self() -> None:
     s0, _, _ = transition({(5, 5): 2}, {(5, 5): 2})
     thing = thing_at(s0, 5, 5)
-    assert action_label(Action(6, 5, 5), s0) == f"A6:{thing.sig}"
+    assert action_label(Action(6, 5, 5), s0) == f"A6:{thing.sig}@0"
     assert action_label(Action(6, 60, 60), s0) == "A6:none"
     assert action_label(Action(3), s0) == "A3"
 
@@ -268,7 +268,7 @@ def test_click_subject_is_self_and_others_keep_their_sig() -> None:
     s0, _, keys = learn_plain(
         mem, {(5, 5): 2, (20, 20): 7}, {(5, 5): 3, (20, 20): 7}, Action(6, 5, 5), 0
     )
-    label = f"A6:{thing_at(s0, 5, 5).sig}"
+    label = f"A6:{thing_at(s0, 5, 5).sig}@0"
     other = thing_at(s0, 20, 20)
     assert keys == [(label, "self", "any"), (label, other.sig, "any")]
     assert fact(mem, (label, "self", "any")).effects == (Effect("recolor", color=3),)
@@ -544,3 +544,23 @@ def test_walkable_color_never_becomes_a_blocker() -> None:
     # the no-change onto walkable floor is a miss of the move fact, never a blocked fact
     assert fact(mem, ("A3", psig, "any")).misses == 1
     assert mem.get(("A3", psig, "blocked")) is None
+
+
+# --- click labels carry the ring color (Task 8d) --------------------------------------
+
+
+def test_click_label_names_the_ring_around_the_clicked_thing() -> None:
+    g = np.zeros((64, 64), dtype=np.int8)
+    g[10:30, 10:30] = 2  # a 400-cell panel: terrain
+    g[15, 15] = 3  # a tile inside the panel
+    g[50, 50] = 3  # an identical tile on the background
+    g[40, 5:8] = 6  # a bar whose ring is mostly the 5x1 strip of color 7 around it
+    g[39, 4:9] = 7
+    g[41, 4:9] = 7
+    s = Tracker().update(g, frozenset())[0]
+    tile = thing_at(s, 15, 15).sig
+    assert action_label(Action(6, 15, 15), s) == f"A6:{tile}@2"
+    assert action_label(Action(6, 50, 50), s) == f"A6:{tile}@0"
+    bar = thing_at(s, 5, 40).sig
+    assert action_label(Action(6, 6, 40), s) == f"A6:{bar}@7"
+    assert action_label(Action(6, 60, 60), s) == "A6:none"

@@ -60,9 +60,9 @@ def test_click_game_tests_each_untried_clicked_sig_once() -> None:
     s = scene_of({(5, 5): 2, (20, 20): 3})
     clicks = [Action(6, 5, 5), Action(6, 20, 20)]
     mem = FactMemory()
-    know(mem, f"A6:{SIG_A}", "self", Effect("none"))
+    know(mem, f"A6:{SIG_A}@0", "self", Effect("none"))
     t = choose_test(s, clicks, mem, [], set(), None)
-    assert t is not None and action_label(t.action, s) == f"A6:{SIG_B}"
+    assert t is not None and action_label(t.action, s) == f"A6:{SIG_B}@0"
 
 
 def test_never_repeats_a_settled_test() -> None:
@@ -155,3 +155,33 @@ def test_many_clicks_on_many_things_is_fast() -> None:
     start = time.monotonic()
     t = choose_test(s, clicks, FactMemory(), [], set(), None)
     assert t is not None and time.monotonic() - start < 2.0
+
+
+# --- clicks by place, borrowed click predictions (Task 8d) ----------------------------
+
+
+def test_identical_tiles_in_different_places_get_their_own_tests() -> None:
+    g = np.zeros((64, 64), dtype=np.int8)
+    g[10:30, 10:30] = 2
+    g[15, 15] = 3
+    g[50, 50] = 3
+    s = Tracker().update(g, frozenset())[0]
+    inert = action_label(Action(6, 50, 50), s)
+    mem = FactMemory()
+    know(mem, inert, "self", Effect("none"))
+    know(mem, inert, s.things[0].sig, Effect("none"))  # the other tile, under that click
+    t = choose_test(s, [Action(6, 50, 50), Action(6, 15, 15)], mem, [], set(), None)
+    assert t is not None and t.action == Action(6, 15, 15)
+
+
+def test_borrowed_click_prediction_counts_as_unknown_for_the_tester() -> None:
+    s = scene_of({(5, 5): 3, (20, 20): 4, (30, 30): 5})
+    label = action_label(Action(6, 5, 5), s)
+    mem = FactMemory()
+    know(mem, label, "self", Effect("recolor", color=6))
+    know(mem, label, f"c4:{DOT}", Effect("none"))  # c5:DOT borrows this sibling's fact
+    t = choose_test(s, [Action(6, 5, 5)], mem, [], set(), None)
+    assert t is not None and t.action == Action(6, 5, 5)
+    assert "c5:" in t.question
+    know(mem, label, f"c5:{DOT}", Effect("none"))
+    assert choose_test(s, [Action(6, 5, 5)], mem, [], set(), None) is None

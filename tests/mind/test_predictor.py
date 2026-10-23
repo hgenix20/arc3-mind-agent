@@ -328,8 +328,8 @@ def test_borrowed_fact_miss_fails_check_without_blaming_the_sibling() -> None:
 def test_click_uses_self_subject() -> None:
     before = scene_of({(5, 5): 1, (9, 9): 2})
     mem = mem_with(
-        ((f"A6:{PSIG}", "self", "any"), Effect("recolor", color=6)),
-        ((f"A6:{PSIG}", f"c2:{DOT}", "any"), Effect("none")),
+        ((f"A6:{PSIG}@0", "self", "any"), Effect("recolor", color=6)),
+        ((f"A6:{PSIG}@0", f"c2:{DOT}", "any"), Effect("none")),
     )
     p = predict(before, Action(6, 5, 5), mem)
     assert at(p.scene, f"c6:{DOT}") == [(5, 5)]
@@ -501,3 +501,12 @@ def test_assume_still_covers_broken_side_facts_but_not_protected_ones() -> None:
     break_fact(mem, ("A3", PSIG, "any"))
     lost = predict(scene, Action(3), mem, assume_still=frozenset({PSIG}))
     assert lost.scene is None and ("A3", PSIG) in lost.unknown
+
+
+def test_spawns_false_predicts_no_spawn() -> None:
+    key = ("A5", SPAWN, "any")
+    appear = Effect("appear", sig=PSIG, at=(1, 1))
+    mem = mem_with((("A5", PSIG, "any"), Effect("none")), (key, appear))
+    mem.record(key, (appear,), 1)
+    p = predict(scene_of({(5, 5): 1}), Action(5), mem, spawns=False)
+    assert at(p.scene, PSIG) == [(5, 5)] and key not in p.used

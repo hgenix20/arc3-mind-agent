@@ -7,7 +7,10 @@ play; a goal that holds on a logged frame (``rule_out``) or on the current frame
 ``ruled_out`` or ``excluded``; a goal true in the frame before a level-up is ``confirmed``
 and its form is carried to the next level as the first hypothesis. Only open goals change
 status, and ``propose`` skips every goal already in ``status``, so a refuted guess is not
-re-proposed within a game and a confirmed form is never excluded.
+re-proposed within a game and a confirmed form is never excluded. A goal whose plans keep
+failing is ``stalled`` (``stall``, called by the agent after repeated failed attempts in
+one level) and ``open`` leaves it out; ``reopen_stalled`` puts it back in play on a
+level change. A confirmed form can stall too, for the rest of its level.
 
 Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``match`` and
 ``count`` are evaluated but never proposed. ``mover_sigs`` and ``goal_sigs`` name the sigs
@@ -23,18 +26,17 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from arcagent.core.types import GRID_SIZE, Grid
-from arcagent.mind.facts import FactMemory
+from arcagent.mind.facts import FactMemory, clicked_sig
 from arcagent.mind.objects import Scene, Thing
 
 GoalKind = Literal["reach", "clear", "match", "count"]
-GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed"]
+GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
 MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
 MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
 _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
-_CLICK_PREFIX = "A6:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,7 +121,7 @@ def _sig_color(sig: str) -> int | None:
 def _subject_sig(subject: str, label: str) -> str | None:
     """The sig a fact is about: the subject itself, or the clicked sig for ``self``."""
     if subject == "self":
-        sig = label[len(_CLICK_PREFIX) :] if label.startswith(_CLICK_PREFIX) else ""
+        sig = clicked_sig(label) or ""
         return sig if _sig_color(sig) is not None else None
     return subject if _sig_color(subject) is not None else None
 
@@ -182,6 +184,7 @@ class GoalBook:
     status: dict[Goal, GoalStatus] = field(default_factory=dict[Goal, GoalStatus])
     confirmed_forms: list[Goal] = field(default_factory=list[Goal])
     sources: dict[Goal, str] = field(default_factory=dict[Goal, str])
+    stalled_forms: set[Goal] = field(default_factory=set[Goal])
 
     def propose(self, scene: Scene, mem: FactMemory, *, source: str) -> list[Goal]:
         """Add the heuristic guesses not yet in ``status``; return the new ones in order.
@@ -248,6 +251,26 @@ class GoalBook:
                 self.confirmed_forms.append(g)
         return out
 
+    def stall(self, goal: Goal) -> bool:
+        """Set an open goal (or a confirmed form) aside; True when it was in play."""
+        if self.status.get(goal) == "open":
+            self.status[goal] = "stalled"
+            return True
+        if goal in self.confirmed_forms and goal not in self.stalled_forms:
+            self.stalled_forms.add(goal)
+            return True
+        return False
+
+    def reopen_stalled(self) -> list[Goal]:
+        """Put every stalled goal back in play (a level change); return them in order."""
+        out = [g for g, s in self.status.items() if s == "stalled"]
+        for g in out:
+            self.status[g] = "open"
+        out += [g for g in self.confirmed_forms if g in self.stalled_forms and g not in out]
+        self.stalled_forms.clear()
+        return out
+
     def open(self) -> list[Goal]:
-        """Confirmed forms first, then open goals in insertion order."""
-        return list(self.confirmed_forms) + list(self._open_goals())
+        """Confirmed forms first, then open goals in insertion order; stalled ones left out."""
+        forms = [g for g in self.confirmed_forms if g not in self.stalled_forms]
+        return forms + list(self._open_goals())

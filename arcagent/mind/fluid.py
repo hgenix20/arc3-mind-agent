@@ -23,7 +23,11 @@ Per ``choose(obs)``, in order:
    count; spawn and other side objects don't), or a mover that ended somewhere other
    than predicted. A game over or level change always ends the plan (steps 1 and 2).
    Every other miss is only logged and learned. A plan with steps left gives the next
-   step (branch ``follow``). Plan steps are predicted with ``assume_still`` set to the
+   step (branch ``follow``). A plan or follow step whose plan breaks while its goal
+   doesn't hold is a failed attempt; after ``STALL_AFTER`` failed attempts in one level
+   the goal is stalled (``GoalBook.stall``, goal event ``stalled``) and search stops
+   offering it. A level change reopens stalled goals (goal event ``open``) and clears
+   the counts. Plan steps are predicted with ``assume_still`` set to the
    mover sigs plus the goal's sigs, so the check covers what the plan relies on.
 5. Else ``goals.propose`` and ``search`` over ``goals.open()``; a found plan starts
    (branch ``plan``, why ``goal <id>``). A goal that already holds at the root is
@@ -86,6 +90,7 @@ from arcagent.mind.search import PlanStep, search
 from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, choose_test, veto
 from arcagent.mind.types import ActionKey, Branch
 
+STALL_AFTER = 2  # failed attempts at one goal in one level before it is set aside
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 _PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT})  # the veto reasons a plan step honors
 _EMPTY_DIFF = SceneDiff((), 0)
@@ -203,6 +208,7 @@ class FluidAgent:
         self._pred: Prediction | None = None
         self._plan: list[PlanStep] = []
         self._plan_goal: Goal | None = None
+        self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         self._history: dict[tuple[tuple[str, int, int], ...], Scene] = {}
         self._tried: Tried = set()
         self._frontier: tuple[tuple[str, str], ...] = ()
@@ -336,6 +342,7 @@ class FluidAgent:
         self._log_facts(keys, snap, move)
         self._log_goals(self.goals.level_up(before), "confirmed")
         self._log.event("level_up", step=move, level=obs.levels_completed)
+        self.reopen_goals()
         self._restart()
         self.mem.new_level()
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
@@ -370,10 +377,13 @@ class FluidAgent:
         if pred is not None:
             _, missed = check(pred, before_s, diff, ignore=noisy, after=after)
             self._score(pred, set(missed))
-            if self._plan:
+            goal = self._plan_goal
+            if goal is not None:
                 movers, protected = self._protected(before_s)
                 if plan_breaks(pred, before_s, after, [*missed, *broke], movers, protected):
                     self._plan = []
+                    if not goal.holds(after):
+                        self.note_failed(goal)
         self._log_goals(self.goals.note_reached(after), "excluded")
         return after
 
@@ -402,6 +412,18 @@ class FluidAgent:
             self._plan_goal = None
             self._pred = predict(scene, choice.action, self.mem)
         return choice
+
+    def note_failed(self, goal: Goal) -> None:
+        """Count a failed plan attempt; stall the goal at ``STALL_AFTER`` in this level."""
+        n = self._failed.get(goal, 0) + 1
+        self._failed[goal] = n
+        if n >= STALL_AFTER and self.goals.stall(goal):
+            self._log_goals([goal], "stalled")
+
+    def reopen_goals(self) -> None:
+        """Level change: stalled goals are back in play and failure counts restart."""
+        self._failed.clear()
+        self._log_goals(self.goals.reopen_stalled(), "open")
 
     def _protected(self, scene: Scene) -> tuple[frozenset[str], frozenset[str]]:
         """(mover sigs, mover sigs plus the plan goal's sigs) for the plan rules."""

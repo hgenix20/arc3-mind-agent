@@ -186,3 +186,30 @@ def test_negative_recolor_and_non_ascii_sigs_are_ignored() -> None:
     mem.record(("A6:c4:ab", "self", "any"), (Effect("recolor", color=-1),), 1)
     mem.record(("A3", "c\u0663:ab", "any"), (Effect("disappear"),), 1)
     assert GoalBook().propose(BASE, mem, source="heuristic") == []
+
+
+# --- stalled goals (Task 8d) ----------------------------------------------------------
+
+
+def test_stalled_goal_leaves_open_and_reopens() -> None:
+    book = GoalBook()
+    g = Goal("reach", a=PSIG, b=T1SIG)
+    h = Goal("reach", a=PSIG, b=T2SIG)
+    book.status[g] = "open"
+    book.status[h] = "open"
+    assert book.stall(g) and book.status[g] == "stalled"
+    assert book.open() == [h]
+    assert not book.stall(g)  # already stalled
+    assert book.propose(BASE, FactMemory(), source="x") == [] or g not in book.open()
+    assert book.reopen_stalled() == [g]
+    assert book.status[g] == "open" and g in book.open()
+
+
+def test_stalled_confirmed_form_is_skipped_until_reopened() -> None:
+    book = GoalBook()
+    g = Goal("reach", a=PSIG, b=T1SIG)
+    book.status[g] = "open"
+    book.level_up(ON_T1)
+    assert book.open() == [g]
+    assert book.stall(g) and book.open() == []
+    assert book.reopen_stalled() == [g] and book.open() == [g]

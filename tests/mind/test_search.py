@@ -7,7 +7,7 @@ import itertools
 import numpy as np
 
 from arcagent.core.types import Action, Grid
-from arcagent.mind.facts import Effect, FactMemory, learn
+from arcagent.mind.facts import SPAWN, Effect, FactMemory, learn
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Tracker, shape_of
 from arcagent.mind.search import search
@@ -162,3 +162,28 @@ def test_search_still_stops_on_an_unknown_mover() -> None:
     mem = moves((1, 2, 3))
     r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
     assert r.goal is None and ("A4", PSIG) in r.frontier
+
+
+def test_side_objects_that_change_do_not_multiply_states() -> None:
+    side = f"c5:{DOT}"
+    plain = scene_of({(2, 2): 1, (40, 2): 4})
+    busy = scene_of({(2, 2): 1, (40, 2): 4, (30, 30): 5})
+    mem = moves((1, 2, 3, 4))
+    for i in (1, 2, 3, 4):  # every action flips the side object 5 <-> 6
+        mem.record((f"A{i}", side, "any"), (Effect("recolor", color=6),), 0)
+        mem.record((f"A{i}", f"c6:{DOT}", "any"), (Effect("recolor", color=5),), 0)
+    goal = [reach(PSIG, TSIG)]
+    a = search(plain, simple_actions, mem, goal, time_s=60)
+    b = search(busy, simple_actions, mem, goal, time_s=60)
+    assert a.stop == b.stop == "found" and len(a.plan) == len(b.plan) == 37
+    assert b.nodes == a.nodes
+
+
+def test_search_never_predicts_spawns() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4})
+    mem = moves((1, 2, 3, 4))
+    for move in range(3):
+        mem.record(("A4", SPAWN, "any"), (Effect("appear", sig=TSIG, at=(3, 3)),), move)
+    r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
+    assert r.stop == "found" and len(r.plan) == 3
+    assert all(("A4", SPAWN, "any") not in step.expect.used for step in r.plan)

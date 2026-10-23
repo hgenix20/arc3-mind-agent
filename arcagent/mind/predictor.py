@@ -33,7 +33,8 @@ Movement rules, matching what ``facts.learn`` records:
   ``SPAWN_MIN_HITS`` hits (a single appear is often a tracking artifact, such as a thing
   uncovered when the player steps off it). Spawn is never an unknown pair: with no spawn
   fact, a broken one or too few hits, no spawn is predicted (an unpredicted appear still
-  fails ``check`` with no key to blame).
+  fails ``check`` with no key to blame). ``spawns=False`` skips spawn facts entirely
+  (search uses it: a predicted spawn only adds states).
 - ``game_over`` is set when a fact predicts it outright, or when a thing that moves
   lands on (``touch:c``) or next to (``near:c``) a color with a non-broken death fact
   ``("any", sig, context)`` in the scene before the move.
@@ -115,11 +116,21 @@ class _Run:
     """State of one ``predict`` call."""
 
     def __init__(
-        self, scene: Scene, action: Action, mem: FactMemory, protect: frozenset[str] | None
+        self,
+        scene: Scene,
+        action: Action,
+        mem: FactMemory,
+        protect: frozenset[str] | None,
+        spawns: bool = True,
     ) -> None:
         self.scene = scene
         self.mem = mem
-        self.label = action_label(action, scene)
+        self.spawns = spawns
+        self._owner: Owner | None = None
+        click = action.id == COORD_ACTION_ID
+        self.label = (
+            action_label(action, scene, self.owner) if click else action_label(action, scene)
+        )
         clicked = -1
         if action.id == COORD_ACTION_ID:
             point = (action.x, action.y)
@@ -139,7 +150,6 @@ class _Run:
         self.movers: set[int] = set()
         self._pushable: dict[int, Fact | None] = {}
         self.shift: dict[int, tuple[int, int]] = {}
-        self._owner: Owner | None = None
         self._by_id: dict[int, Thing] | None = None
         # thing id -> other ids its game-over touch test ignores (mates, pushed things)
         self.skip: dict[int, frozenset[int]] = {}
@@ -439,6 +449,8 @@ def _toggle(run: _Run) -> None:
 
 
 def _spawn(run: _Run) -> list[Thing]:
+    if not run.spawns:
+        return []
     key = (run.label, SPAWN, "any")
     fact = run.mem.get(key)
     if fact is None or fact.status == "broken" or fact.hits < SPAWN_MIN_HITS:
@@ -512,13 +524,15 @@ def predict(
     mem: FactMemory,
     *,
     assume_still: frozenset[str] | None = None,
+    spawns: bool = True,
 ) -> Prediction:
     """Predict the scene after ``action``, or the (label, subject) pairs with no fact.
 
     ``assume_still`` is the set of protected sigs: when given, a thing outside it with no
-    usable fact stays as it is and its pair is listed in ``assumed``.
+    usable fact stays as it is and its pair is listed in ``assumed``. ``spawns=False``
+    predicts no spawn at all.
     """
-    run = _Run(scene, action, mem, assume_still)
+    run = _Run(scene, action, mem, assume_still, spawns)
     movers = _base(run)
     if movers:
         run.movers = set(movers)

@@ -332,12 +332,49 @@ def _clicked(scene: Scene, action: Action) -> Thing | None:
     return next((t for t in scene.things if point in t.cells), None)
 
 
-def action_label(action: Action, before: Scene) -> str:
-    """``"A3"`` for a simple action; ``"A6:<clicked sig>"`` or ``"A6:none"`` for a click."""
+def click_ring(scene: Scene, thing: Thing, owner: Owner | None = None) -> int:
+    """Most common color on the one-cell ring just outside ``thing``'s bbox.
+
+    Each ring cell reads ``color_at`` (a covering thing's color, else the terrain's);
+    off-board and padding cells don't vote. Ties go to the lower color; -1 when no cell
+    votes. Pass ``owner=cell_owner(scene)`` when one is at hand.
+    """
+    xs = [x for x, _ in thing.cells]
+    ys = [y for _, y in thing.cells]
+    x0, x1, y0, y1 = min(xs) - 1, max(xs) + 1, min(ys) - 1, max(ys) + 1
+    ring = [(x, y) for x in range(x0, x1 + 1) for y in (y0, y1)]
+    ring += [(x, y) for y in range(y0 + 1, y1) for x in (x0, x1)]
+    table = cell_owner(scene) if owner is None else owner
+    votes: Counter[int] = Counter()
+    for c in ring:
+        color = color_at(scene, table, c)
+        if color >= 0:
+            votes[color] += 1
+    return min(votes, key=lambda c: (-votes[c], c)) if votes else -1
+
+
+def action_label(action: Action, before: Scene, owner: Owner | None = None) -> str:
+    """``"A3"`` for a simple action; ``"A6:<clicked sig>@<ring>"`` or ``"A6:none"``.
+
+    ``ring`` is ``click_ring`` of the clicked thing: identical things in different places
+    (inside a bordered panel or out on the background) are different click labels, since
+    a click's effect often depends on where the thing sits. ``owner`` is an optional
+    ``cell_owner(before)`` to reuse.
+    """
     if action.id != COORD_ACTION_ID:
         return f"A{action.id}"
     thing = _clicked(before, action)
-    return "A6:none" if thing is None else f"A6:{thing.sig}"
+    if thing is None:
+        return "A6:none"
+    return f"A6:{thing.sig}@{click_ring(before, thing, owner)}"
+
+
+def clicked_sig(label: str) -> str | None:
+    """The clicked sig in a click label (``"A6:<sig>@<ring>"``); None otherwise or for none."""
+    if not label.startswith("A6:"):
+        return None
+    sig = label[3:].partition("@")[0]
+    return None if sig == "none" else sig
 
 
 def cell_owner(scene: Scene) -> dict[Cell, tuple[int, int]]:

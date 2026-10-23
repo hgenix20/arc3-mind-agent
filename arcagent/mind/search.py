@@ -15,8 +15,12 @@ Branch rules:
 - A prediction with no scene (an unknown fact of a protected sig) ends that branch; its
   ``unknown`` pairs join the frontier in first-met order, with no duplicates.
 - A prediction that ends the game is never expanded and never counts as reaching a goal.
-- A prediction whose scene key equals its parent's changes nothing and is dropped.
-- Scenes are deduped by ``Scene.key()``.
+- Predictions never include spawns (``spawns=False``): a spawned thing only adds states.
+- Scenes are deduped on a key restricted to the protected things: ``(sig, x, y)`` of each
+  thing whose sig is protected or whose color is a ``clear``/``count`` goal color. Side
+  objects predicted to change therefore can't multiply the state space. With nothing
+  protected, the full ``Scene.key()`` is used.
+- A prediction whose key equals its parent's changes nothing that matters and is dropped.
 - ``match`` goals need a grid, so slice 1 search skips them.
 
 Bounded two ways: ``time_s`` of wall clock (read from ``clock`` before every expansion)
@@ -98,6 +102,15 @@ def search(
     start = clock()
     live = [g for g in goals if g.kind != "match"]
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
+    colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
+
+    def key_of(s: Scene) -> tuple[tuple[str, int, int], ...]:
+        if not protect and not colors:
+            return s.key()
+        return tuple(
+            sorted((t.sig, t.x, t.y) for t in s.things if t.sig in protect or t.color in colors)
+        )
+
     frontier: dict[tuple[str, str], None] = {}
 
     def done(
@@ -113,20 +126,20 @@ def search(
     if hit is not None:
         return done("found", 0, 0, hit)
 
-    seen = {scene.key()}
+    seen = {key_of(scene)}
     queue: deque[tuple[Scene, tuple[PlanStep, ...]]] = deque([(scene, ())])
     nodes = 0
     deepest = 0
     while queue:
         current, plan = queue.popleft()
         deepest = max(deepest, len(plan))
-        parent_key = current.key()
+        parent_key = key_of(current)
         for action in actions(current):
             if clock() - start >= time_s:
                 return done("time", nodes, deepest)
             if nodes >= max_nodes:
                 return done("nodes", nodes, deepest)
-            pred = predict(current, action, mem, assume_still=protect)
+            pred = predict(current, action, mem, assume_still=protect, spawns=False)
             nodes += 1
             if pred.scene is None:
                 for pair in pred.unknown:
@@ -134,7 +147,7 @@ def search(
                 continue
             if pred.game_over:
                 continue
-            key = pred.scene.key()
+            key = key_of(pred.scene)
             if key == parent_key or key in seen:
                 continue
             seen.add(key)
