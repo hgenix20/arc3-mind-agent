@@ -689,3 +689,20 @@ def test_mind_run_synthesis_pool_has_two_threads_per_game_slot(tmp_path: Path) -
         assert run.pool._max_workers == 6  # pyright: ignore[reportAttributeAccessIssue]  # stdlib private size
     finally:
         run.close()
+
+
+def test_mind_policy_refuses_a_log_dir_with_earlier_logs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> RecordingArcade:
+        calls.append("make_arcade")
+        return RecordingArcade(calls)
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "ls20-1.jsonl").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(FileExistsError, match=r"ls20-1.jsonl"):
+        submit.main(["--mode", "offline", "--policy", "mind", "--replay", "--out", str(tmp_path)])
+    assert calls == []  # nothing started, no scorecard opened

@@ -22,7 +22,9 @@ scorecard (``arcagent.agent.scheduler``), each with a fresh ``MindAgent`` on
 the ``--config`` ablation config. All games share one ``Synthesizer`` over the
 model server at ``--endpoint`` (every reply recorded under ``--replies-dir``),
 and one synthesis thread pool of ``2 * --workers`` threads; each game gets its own
-sandbox and its run log at ``<log-dir>/<game>.jsonl``.
+sandbox and its run log at ``<log-dir>/<game>.jsonl``. A log dir that already
+holds ``.jsonl`` files raises ``FileExistsError`` before anything starts, so
+one dir never mixes two runs.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
@@ -573,6 +575,12 @@ def main(
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     mode = resolve_mode(args.mode)
     out = Path(args.out)
+    if args.policy == "mind":
+        # Each game's log is created fresh (RunLog refuses an existing file); fail here,
+        # before any game starts, instead of once per game inside the scheduler.
+        earlier = sorted(p.name for p in Path(args.log_dir).glob("*.jsonl"))
+        if earlier:
+            raise FileExistsError(f"{args.log_dir} already holds run logs: {earlier[:5]}")
     out.mkdir(parents=True, exist_ok=True)
     started = time.time()
     arcade = make_arcade(mode, args.env_dir, out)

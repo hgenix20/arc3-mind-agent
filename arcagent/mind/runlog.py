@@ -52,11 +52,16 @@ def _plain(value: object) -> object:
 
 
 class RunLog:
-    """Append-only JSONL writer for one game (single-threaded use)."""
+    """Append-only JSONL writer for one game (single-threaded use).
+
+    Creates ``path``; raises ``FileExistsError`` if it already exists, so every
+    log holds exactly one run.
+    """
 
     def __init__(self, path: Path, game: str, config: str, seed: int) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh: IO[str] = path.open("a", encoding="utf-8", newline="\n")
+        # "x": a second run into the same path would mix two runs in one log.
+        self._fh: IO[str] = path.open("x", encoding="utf-8", newline="\n")
         self._game = game
         self._config = config
         self._seed = seed

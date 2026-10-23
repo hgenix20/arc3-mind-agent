@@ -66,3 +66,12 @@ def test_runlog_rejects_unserializable_fields(tmp_path: Path) -> None:
     with pytest.raises(TypeError):
         log.event("plan", bad=object())
     log.close()
+
+
+def test_runlog_refuses_an_existing_file(tmp_path: Path) -> None:
+    # Appending would mix two runs in one game's log.
+    path = tmp_path / "g.jsonl"
+    path.write_text('{"type": "action"}\n', encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        RunLog(path, game="g", config="c", seed=0)
+    assert path.read_text(encoding="utf-8") == '{"type": "action"}\n'
