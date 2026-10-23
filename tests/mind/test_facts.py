@@ -1,0 +1,305 @@
+"""Tests for the fact memory, its table of contents, and learning from a transition."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from arcagent.core.types import Action, Grid
+from arcagent.mind.facts import (
+    Effect,
+    Fact,
+    FactKey,
+    FactMemory,
+    action_label,
+    learn,
+)
+from arcagent.mind.objects import Scene, SceneDiff, Thing, Tracker
+
+Cells = dict[tuple[int, int], int]
+
+
+def grid_with(cells: Cells, bg: int = 0) -> Grid:
+    g = np.full((64, 64), bg, dtype=np.int8)
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def transition(before: Cells, after: Cells) -> tuple[Scene, Scene, SceneDiff]:
+    t = Tracker()
+    s0, _ = t.update(grid_with(before), frozenset())
+    s1, d = t.update(grid_with(after), frozenset())
+    assert d is not None
+    return s0, s1, d
+
+
+def thing_at(scene: Scene, x: int, y: int) -> Thing:
+    return next(t for t in scene.things if (x, y) in t.cells)
+
+
+def fact(mem: FactMemory, key: FactKey) -> Fact:
+    f = mem.get(key)
+    assert f is not None, key
+    return f
+
+
+def learn_plain(
+    mem: FactMemory, before: Cells, after: Cells, action: Action, move: int
+) -> tuple[Scene, Scene, list[FactKey]]:
+    s0, s1, d = transition(before, after)
+    keys = learn(mem, s0, action, d, move=move, level_up=False, game_over=False, after=s1)
+    return s0, s1, keys
+
+
+# --- record, status, text -------------------------------------------------------------
+
+
+def test_new_fact_then_hits_until_solid() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:aaaa", "any")
+    assert mem.record(key, (Effect("move", dx=-1),), 0) == "new"
+    for i in range(1, 5):
+        assert fact(mem, key).status == "thin"
+        assert mem.record(key, (Effect("move", dx=-1),), i) == "hit"
+    assert fact(mem, key).status == "solid" and fact(mem, key).evidence == [0, 1, 2, 3, 4]
+
+
+def test_two_unabsorbed_misses_break_a_fact() -> None:
+    mem = FactMemory()
+    key = ("A1", "c1:aaaa", "any")
+    mem.record(key, (Effect("move", dy=-1),), 0)
+    assert mem.record(key, (Effect("recolor", color=3),), 1) == "miss"
+    assert fact(mem, key).status == "thin"
+    mem.record(key, (Effect("disappear"),), 2)
+    f = fact(mem, key)
+    assert f.status == "broken" and f.effects == (Effect("move", dy=-1),) and f.misses == 2
+
+
+def test_effect_text_and_fact_line() -> None:
+    assert Effect("move", dx=-1).text() == "moves 1 cell left"
+    assert Effect("move", dy=3).text() == "moves 3 cells down"
+    assert Effect("none").text() == "no change"
+    assert Effect("slide", dx=1).text() == "slides right until blocked"
+    assert Effect("teleport", at=(4, 7)).text() == "teleports to (4, 7)"
+    mem = FactMemory()
+    key = ("A3", "c1:ab12cdef01", "any")
+    for i in range(6):
+        mem.record(key, (Effect("move", dx=-1),), i)
+    assert fact(mem, key).line() == "A3 c1:ab12.. any: moves 1 cell left [solid 6/0]"
+
+
+# --- table of contents and lookup -----------------------------------------------------
+
+
+def test_toc_finds_facts_by_behavior_and_borrows_for_siblings() -> None:
+    mem = FactMemory()
+    mem.record(("A1", "c2:shape1", "any"), (Effect("move", dy=-1),), 0)
+    assert [f.key for f in mem.by_tag("move")] == [("A1", "c2:shape1", "any")]
+    found = mem.lookup("A1", "c5:shape1", "any")  # same shape, new color
+    assert found is not None
+    f, borrowed = found
+    assert borrowed and f.effects[0].kind == "move"
+    found = mem.lookup("A1", "c2:other", "any")  # same color, new shape
+    assert found is not None and found[1]
+
+
+def test_lookup_order_exact_then_any_then_sibling_then_action_wide() -> None:
+    mem = FactMemory()
+    assert mem.lookup("A2", "c1:s", "blocked") is None
+    mem.record(("A2", "any", "any"), (Effect("appear", sig="c4:x", at=(1, 1)),), 0)
+    found = mem.lookup("A2", "c1:s", "blocked")
+    assert found is not None and found[0].key == ("A2", "any", "any") and not found[1]
+    mem.record(("A2", "c7:s", "any"), (Effect("none"),), 1)
+    found = mem.lookup("A2", "c1:s", "blocked")
+    assert found is not None and found[0].key == ("A2", "c7:s", "any") and found[1]
+    mem.record(("A2", "c1:s", "any"), (Effect("move", dx=1),), 2)
+    found = mem.lookup("A2", "c1:s", "blocked")
+    assert found is not None and found[0].key == ("A2", "c1:s", "any") and not found[1]
+    mem.record(("A2", "c1:s", "blocked"), (Effect("none"),), 3)
+    found = mem.lookup("A2", "c1:s", "blocked")
+    assert found is not None and found[0].key == ("A2", "c1:s", "blocked")
+
+
+def test_broken_facts_are_not_borrowed() -> None:
+    mem = FactMemory()
+    key = ("A1", "c2:shape1", "any")
+    mem.record(key, (Effect("move", dy=-1),), 0)
+    mem.record(key, (Effect("none"),), 1)
+    mem.record(key, (Effect("none"),), 2)
+    assert mem.lookup("A1", "c5:shape1", "any") is None
+
+
+def test_tags_follow_effects() -> None:
+    mem = FactMemory()
+    mem.record(("A1", "c1:a", "any"), (Effect("disappear"),), 0)
+    mem.record(("A1", "c2:a", "any"), (Effect("recolor", color=4),), 0)
+    mem.record(("A1", "any", "any"), (Effect("appear", sig="c3:b"),), 0)
+    mem.record(("A1", "c3:a", "blocked"), (Effect("none"),), 0)
+    mem.record(("A1", "c4:a", "any"), (Effect("slide", dx=1),), 0)
+    assert fact(mem, ("A1", "c1:a", "any")).tags == {"collect"}
+    assert fact(mem, ("A1", "c2:a", "any")).tags == {"toggle"}
+    assert fact(mem, ("A1", "any", "any")).tags == {"spawn"}
+    assert fact(mem, ("A1", "c3:a", "blocked")).tags == {"no_effect", "block"}
+    assert fact(mem, ("A1", "c4:a", "any")).tags == {"move", "moves until blocked"}
+    assert [f.key for f in mem.by_tag("block")] == [("A1", "c3:a", "blocked")]
+
+
+# --- action labels --------------------------------------------------------------------
+
+
+def test_click_labels_use_the_clicked_sig_and_self() -> None:
+    s0, _, _ = transition({(5, 5): 2}, {(5, 5): 2})
+    thing = thing_at(s0, 5, 5)
+    assert action_label(Action(6, 5, 5), s0) == f"A6:{thing.sig}"
+    assert action_label(Action(6, 60, 60), s0) == "A6:none"
+    assert action_label(Action(3), s0) == "A3"
+
+
+# --- learn ----------------------------------------------------------------------------
+
+
+def test_plain_transition_learns_move_and_none_for_unchanged() -> None:
+    mem = FactMemory()
+    s0, _, keys = learn_plain(mem, {(6, 5): 1, (30, 30): 8}, {(5, 5): 1, (30, 30): 8}, Action(3), 0)
+    player, wall = thing_at(s0, 6, 5), thing_at(s0, 30, 30)
+    assert keys == [("A3", player.sig, "any"), ("A3", wall.sig, "any")]
+    assert fact(mem, keys[0]).effects == (Effect("move", dx=-1),)
+    assert fact(mem, keys[1]).effects == (Effect("none"),)
+    assert "no_effect" in fact(mem, keys[1]).tags
+
+
+def test_wall_makes_blocked_fact_not_a_miss() -> None:
+    mem = FactMemory()
+    learn_plain(mem, {(6, 5): 1, (4, 5): 8}, {(5, 5): 1, (4, 5): 8}, Action(3), 6)
+    before, _, same_diff = transition({(5, 5): 1, (4, 5): 8}, {(5, 5): 1, (4, 5): 8})
+    player = thing_at(before, 5, 5)
+    keys = learn(mem, before, Action(3), same_diff, move=7, level_up=False, game_over=False)
+    assert ("A3", player.sig, "blocked") in keys
+    assert fact(mem, ("A3", player.sig, "any")).misses == 0 and 8 in mem.blockers[player.sig]
+    assert fact(mem, ("A3", player.sig, "blocked")).tags == {"no_effect", "block"}
+
+
+def test_grid_edge_blocks_without_adding_a_color() -> None:
+    mem = FactMemory()
+    learn_plain(mem, {(1, 5): 1}, {(0, 5): 1}, Action(3), 0)
+    s0, _, keys = learn_plain(mem, {(0, 5): 1}, {(0, 5): 1}, Action(3), 1)
+    sig = thing_at(s0, 0, 5).sig
+    assert keys == [("A3", sig, "blocked")] and mem.blockers[sig] == set()
+
+
+def test_no_change_in_open_space_is_a_miss() -> None:
+    mem = FactMemory()
+    learn_plain(mem, {(6, 5): 1}, {(5, 5): 1}, Action(3), 0)
+    s0, _, keys = learn_plain(mem, {(5, 5): 1}, {(5, 5): 1}, Action(3), 1)
+    sig = thing_at(s0, 5, 5).sig
+    assert keys == [("A3", sig, "any")] and fact(mem, keys[0]).misses == 1
+
+
+def test_same_sig_disagreement_splits_blocked_and_free_once_each() -> None:
+    mem = FactMemory()
+    before = {(5, 5): 1, (4, 5): 8, (10, 10): 1, (20, 10): 1}
+    after = {(5, 5): 1, (4, 5): 8, (9, 10): 1, (19, 10): 1}
+    s0, _, keys = learn_plain(mem, before, after, Action(3), 0)
+    sig = thing_at(s0, 5, 5).sig
+    assert keys.count(("A3", sig, "any")) == 1 and keys.count(("A3", sig, "blocked")) == 1
+    assert fact(mem, ("A3", sig, "any")).effects == (Effect("move", dx=-1),)
+    assert 8 in mem.blockers[sig]
+
+
+def test_mover_entering_another_objects_cells_records_pushed() -> None:
+    mem = FactMemory()
+    s0, _, keys = learn_plain(mem, {(5, 5): 1, (4, 5): 3}, {(4, 5): 1, (3, 5): 3}, Action(3), 0)
+    player, box = thing_at(s0, 5, 5), thing_at(s0, 4, 5)
+    assert set(keys) == {("A3", player.sig, "any"), ("A3", box.sig, "pushed")}
+    pushed = fact(mem, ("A3", box.sig, "pushed"))
+    assert pushed.effects == (Effect("move", dx=-1),) and "push" in pushed.tags
+
+
+def test_longer_move_ending_blocked_rewrites_to_slide_as_a_hit() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(12, 5): 1, (2, 5): 8}, {(11, 5): 1, (2, 5): 8}, Action(3), 0)
+    key = ("A3", thing_at(s0, 12, 5).sig, "any")
+    learn_plain(mem, {(10, 5): 1, (2, 5): 8}, {(3, 5): 1, (2, 5): 8}, Action(3), 1)
+    f = fact(mem, key)
+    assert f.effects == (Effect("slide", dx=-1),) and (f.hits, f.misses) == (2, 0)
+    assert "moves until blocked" in f.tags
+    learn_plain(mem, {(9, 5): 1, (2, 5): 8}, {(3, 5): 1, (2, 5): 8}, Action(3), 2)
+    assert (fact(mem, key).hits, fact(mem, key).misses) == (3, 0)
+    # pressed against the wall: the slide fact is absorbed as blocked
+    learn_plain(mem, {(3, 5): 1, (2, 5): 8}, {(3, 5): 1, (2, 5): 8}, Action(3), 3)
+    assert fact(mem, key).misses == 0 and fact(mem, ("A3", key[1], "blocked")).hits == 1
+
+
+def test_longer_move_in_open_space_is_a_miss_not_a_slide() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(20, 5): 1}, {(19, 5): 1}, Action(3), 0)
+    key = ("A3", thing_at(s0, 20, 5).sig, "any")
+    learn_plain(mem, {(20, 5): 1}, {(15, 5): 1}, Action(3), 1)
+    assert fact(mem, key).effects == (Effect("move", dx=-1),) and fact(mem, key).misses == 1
+
+
+def test_same_landing_from_different_starts_rewrites_to_teleport() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(5, 5): 1}, {(5, 4): 1}, Action(1), 0)
+    key = ("A1", thing_at(s0, 5, 5).sig, "any")
+    learn_plain(mem, {(9, 9): 1}, {(5, 4): 1}, Action(1), 1)
+    f = fact(mem, key)
+    assert f.effects == (Effect("teleport", at=(5, 4)),) and (f.hits, f.misses) == (2, 0)
+    learn_plain(mem, {(12, 1): 1}, {(5, 4): 1}, Action(1), 2)
+    assert (fact(mem, key).hits, fact(mem, key).misses) == (3, 0)
+
+
+def test_appear_records_position_under_any() -> None:
+    mem = FactMemory()
+    _, s1, keys = learn_plain(mem, {(5, 5): 1}, {(5, 5): 1, (30, 31): 4}, Action(5), 0)
+    new = thing_at(s1, 30, 31)
+    assert ("A5", "any", "any") in keys
+    assert fact(mem, ("A5", "any", "any")).effects == (Effect("appear", sig=new.sig, at=(30, 31)),)
+
+
+def test_click_subject_is_self_and_others_keep_their_sig() -> None:
+    mem = FactMemory()
+    s0, _, keys = learn_plain(
+        mem, {(5, 5): 2, (20, 20): 7}, {(5, 5): 3, (20, 20): 7}, Action(6, 5, 5), 0
+    )
+    label = f"A6:{thing_at(s0, 5, 5).sig}"
+    other = thing_at(s0, 20, 20)
+    assert keys == [(label, "self", "any"), (label, other.sig, "any")]
+    assert fact(mem, (label, "self", "any")).effects == (Effect("recolor", color=3),)
+
+
+def test_reshape_with_same_cell_count_is_tagged_rotate() -> None:
+    mem = FactMemory()
+    s0, s1, keys = learn_plain(
+        mem, {(5, 5): 2, (5, 6): 2, (6, 6): 2}, {(5, 5): 2, (6, 5): 2, (5, 6): 2}, Action(1), 0
+    )
+    new_sig = thing_at(s1, 6, 5).sig
+    f = fact(mem, ("A1", thing_at(s0, 5, 5).sig, "any"))
+    assert keys == [f.key] and f.effects == (Effect("reshape", sig=new_sig),)
+    assert "rotate" in f.tags
+
+
+def test_disappear_is_collect() -> None:
+    mem = FactMemory()
+    s0, _, keys = learn_plain(mem, {(5, 5): 1, (20, 20): 6}, {(5, 5): 1}, Action(2), 0)
+    key = ("A2", thing_at(s0, 20, 20).sig, "any")
+    assert key in keys and fact(mem, key).tags == {"collect"}
+
+
+def test_game_over_records_touch_fact_only() -> None:
+    mem = FactMemory()
+    before, _, diff = transition({(5, 5): 1, (3, 5): 9}, {(4, 5): 1, (3, 5): 9})
+    player = thing_at(before, 5, 5)
+    keys = learn(mem, before, Action(4), diff, move=3, level_up=False, game_over=True)
+    assert keys == [("any", player.sig, "touch:9")]
+    assert list(mem.facts) == keys
+    f = fact(mem, keys[0])
+    assert f.effects == (Effect("game_over"),) and f.tags == {"die"}
+
+
+def test_level_up_records_event_only() -> None:
+    mem = FactMemory()
+    before, _, diff = transition({(5, 5): 1}, {(4, 5): 1})
+    keys = learn(mem, before, Action(3), diff, move=9, level_up=True, game_over=False)
+    assert keys == [("event", "level_up", "any")] and list(mem.facts) == keys
+    assert fact(mem, keys[0]).tags == {"win"}
