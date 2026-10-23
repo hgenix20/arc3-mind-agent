@@ -13,17 +13,23 @@ re-seeds it. ``slide`` and ``teleport`` rewrites happen only through the explici
 in ``learn``. Things that move together as one rigid sprite (same shift, 4-adjacent
 before the move) are a co-moving group: none of them is pushed by, blocked by, or a
 blocker of another. Pure and deterministic; callers strip noise things before ``learn``.
+
+Blocking reads cell colors, terrain included (``objects.color_at``): a wall can be the
+background or a terrain region, not only a thing. ``FactMemory.walkable`` holds, per sig,
+the colors its things have moved onto; a walkable color is never a blocker for that sig.
+Touch and near contexts stay thing colors only: terrain contacts are constant and would
+charge the safe sets every move.
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
 from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, Action
-from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing
+from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing, color_at
 
 EffectKind = Literal[
     "move",
@@ -196,13 +202,16 @@ class FactMemory:
     didn't end the game, ``safe_touch`` gains, per sig, the colors its things overlapped
     and ``safe_near`` the colors they sat 4-adjacent to without overlapping (the two modes
     of ``touch_contexts``). Spawn facts live under subject ``SPAWN`` and are never returned
-    for another subject.
+    for another subject. ``blockers`` maps a sig to the cell colors (thing or terrain) that
+    stopped it; ``walkable`` maps a sig to the colors its things moved onto, and a color in
+    ``walkable`` is never in ``blockers`` for the same sig.
     """
 
     def __init__(self) -> None:
         self.facts: dict[FactKey, Fact] = {}
         self.toc: dict[str, set[FactKey]] = {}
         self.blockers: dict[str, set[int]] = {}
+        self.walkable: dict[str, set[int]] = {}
         self.landed: dict[FactKey, Cell] = {}
         self.last_move: dict[FactKey, tuple[Effect, bool]] = {}
         self.safe_touch: dict[str, set[int]] = {}
@@ -478,30 +487,70 @@ def _group(items: list[_Obs], key: Callable[[_Obs], Hashable | None]) -> None:
 
 @dataclass(frozen=True, slots=True)
 class _Room:
-    """What can stop a step in one scene: padding plus each covered cell's id and color."""
+    """What can stop a step in one scene: padding, each covered cell's id and color, terrain."""
 
-    blocked: frozenset[Cell]
+    scene: Scene
     owner: dict[Cell, tuple[int, int]]
 
     @staticmethod
     def of(scene: Scene) -> _Room:
-        return _Room(scene.blocked, cell_owner(scene))
+        return _Room(scene, cell_owner(scene))
 
     def stopped(
-        self, cells: frozenset[Cell], step: tuple[int, int], skip: frozenset[int]
+        self,
+        cells: frozenset[Cell],
+        step: tuple[int, int],
+        skip: frozenset[int],
+        stop: Collection[int] = (),
     ) -> tuple[bool, set[int]]:
-        """Whether one step from ``cells`` hits the edge, padding or a thing not in ``skip``."""
+        """Whether one step from ``cells`` hits the edge, padding, a thing not in ``skip``,
+        or a terrain cell whose color is in ``stop``; also the colors of the things hit.
+        """
         hit = False
         colors: set[int] = set()
+        blocked = self.scene.blocked
         for x, y in _shifted(cells, *step) - cells:
-            if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or (x, y) in self.blocked:
+            if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or (x, y) in blocked:
                 hit = True
                 continue
             other = self.owner.get((x, y))
-            if other is not None and other[0] not in skip:
+            if other is not None:
+                if other[0] not in skip:
+                    hit = True
+                    colors.add(other[1])
+            elif stop and int(self.scene.terrain[y, x]) in stop:
                 hit = True
-                colors.add(other[1])
         return hit, colors
+
+    def wall(
+        self,
+        cells: frozenset[Cell],
+        step: tuple[int, int],
+        skip: frozenset[int],
+        exempt: Collection[int],
+    ) -> tuple[bool, set[int]]:
+        """The wall rule's view of one step: (shut, blocker colors).
+
+        Shut when the step hits the edge, padding, a thing not in ``skip``, or a terrain
+        cell whose color is not in ``exempt``. The colors are every destination color
+        (``color_at``: things and terrain) not in ``exempt``; padding and the edge add none.
+        """
+        shut = False
+        colors: set[int] = set()
+        for c in _shifted(cells, *step) - cells:
+            other = self.owner.get(c)
+            if other is not None and other[0] in skip:
+                continue
+            color = color_at(self.scene, self.owner, c)
+            if color < 0 or c in self.scene.blocked:
+                shut = True
+                continue
+            if other is not None:
+                shut = True
+            if color not in exempt:
+                shut = True
+                colors.add(color)
+        return shut, colors
 
 
 def _unit(e: Effect) -> tuple[int, int]:
@@ -562,12 +611,42 @@ def _mark_pushed(mem: FactMemory, label: str, obs: list[_Obs]) -> None:
             o.context = "pushed"
 
 
+def _note_walkable(mem: FactMemory, room: _Room, obs: list[_Obs]) -> None:
+    """Each mover's sig gains the colors it moved onto; those leave its blockers.
+
+    A destination cell counts when it is new to the thing and no thing that moved in this
+    transition (a mate, a pushed box) covered it in ``before``: a pushed box's color is
+    not floor.
+    """
+    moved = {o.thing.id for o in obs if o.shift is not None}
+    for o in obs:
+        if o.shift is None:
+            continue
+        colors: set[int] = set()
+        for c in o.dest - o.thing.cells:
+            other = room.owner.get(c)
+            if other is not None and other[0] in moved:
+                continue
+            color = color_at(room.scene, room.owner, c)
+            if color >= 0:
+                colors.add(color)
+        if not colors:
+            continue
+        sig = o.thing.sig
+        mem.walkable.setdefault(sig, set()).update(colors)
+        stop = mem.blockers.get(sig)
+        if stop:
+            stop -= colors
+
+
 def _mark_blocked(mem: FactMemory, label: str, room: _Room, obs: list[_Obs]) -> None:
     """Wall rule: a ``none`` where a move was expected and the way was shut is ``blocked``.
 
     The expected step is the subject's move fact, else its free peers' majority shift.
     Still things expecting the same step and 4-adjacent form one group, so a sprite's
-    parts never block each other.
+    parts never block each other. The way is shut by the edge, padding, a thing outside
+    the group, or a terrain color that is not walkable for the sig. Every destination
+    color that is not the subject's own, a group-mate's or walkable joins the blockers.
     """
     peer_shift: dict[str, Counter[tuple[int, int]]] = {}
     for o in obs:
@@ -584,11 +663,15 @@ def _mark_blocked(mem: FactMemory, label: str, room: _Room, obs: list[_Obs]) -> 
             expected[o.thing.id] = step
     still = [o for o in obs if o.thing.id in expected]
     _group(still, lambda o: expected[o.thing.id])
+    color_of = {o.thing.id: o.thing.color for o in obs}
     for o in still:
-        hit, colors = room.stopped(o.group_cells, expected[o.thing.id], o.mates)
+        sig = o.thing.sig
+        exempt = {color_of[i] for i in o.mates if i in color_of}
+        exempt |= mem.walkable.get(sig, set())
+        hit, colors = room.wall(o.group_cells, expected[o.thing.id], o.mates, exempt)
         if hit:
             o.context = "blocked"
-            mem.blockers.setdefault(o.thing.sig, set()).update(colors)
+            mem.blockers.setdefault(sig, set()).update(colors)
 
 
 def _majority(group: list[_Obs]) -> tuple[tuple[Effect, ...], _Obs]:
@@ -617,7 +700,8 @@ def _record_move(
     Teleport: a different displacement landing where the previous observation landed.
     """
     landing = (rep.thing.x + seen.dx, rep.thing.y + seen.dy)
-    ends_blocked = room.stopped(rep.group_dest, _unit(seen), rep.mates)[0]
+    stop = mem.blockers.get(rep.thing.sig, set())
+    ends_blocked = room.stopped(rep.group_dest, _unit(seen), rep.mates, stop)[0]
     fact = mem.facts.get(key)
     old = fact.effects[0] if fact is not None and len(fact.effects) == 1 else None
     last_at = mem.landed.get(key)
@@ -761,9 +845,11 @@ def learn(
     ``mem.safe_near``) unless that removes them all. Otherwise every subject records one
     observation: unchanged subjects record ``none``; a mover whose old cells a non-mate
     mover with the same shift entered, and whose own ``any`` fact doesn't predict that
-    shift, goes to ``pushed``; a ``none`` where a move was expected but the way was shut
-    (edge, padding or a thing outside its group) goes to ``blocked`` and adds the blocking
-    colors to ``mem.blockers``. Spawns go to ``(label, SPAWN, "any")``. Last, each
+    shift, goes to ``pushed``; each mover's destination colors join ``mem.walkable`` (and
+    leave its blockers); a ``none`` where a move was expected but the way was shut (edge,
+    padding, a thing outside its group, or a terrain color not walkable for the sig) goes
+    to ``blocked`` and adds every destination color that isn't its own, a mate's or
+    walkable to ``mem.blockers``. Spawns go to ``(label, SPAWN, "any")``. Last, each
     subject's new cells feed the safe sets: colors they overlap in ``before`` join
     ``safe_touch`` and charge a miss to ``touch:<c>`` only; colors 4-adjacent in ``after``
     join ``safe_near`` and charge a miss to ``near:<c>`` only.
@@ -780,6 +866,7 @@ def learn(
     room_before = _Room.of(before)
     room_after = _Room.of(after) if after is not None else room_before
     _mark_pushed(mem, label, obs)
+    _note_walkable(mem, room_before, obs)
     _mark_blocked(mem, label, room_before, obs)
     keys = _record_groups(mem, label, room_after, obs, move)
     keys += _record_appear(mem, label, diff, after, move)

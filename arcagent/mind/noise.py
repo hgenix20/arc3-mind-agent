@@ -10,8 +10,11 @@ rule fires:
 Moves never count toward either rule: masking a player that two actions move the same
 way would blind the agent.
 
-A reshape with a nonzero shift is motion (a walking sprite that animates while it
-moves) and is treated as a move. The descriptor is ``(kind, dx, dy, color, sig)``, where
+A reshape with a nonzero shift and an unchanged cell count is motion (a walking sprite
+that animates while it moves) and is treated as a move. A reshape that changes the cell
+count (``Change.size`` against the thing in ``before``) is never motion, whatever its
+shift, so a bar that shrinks one cell per move counts toward both rules. A ``size`` of -1
+(unknown) counts as unchanged. The descriptor is ``(kind, dx, dy, color, sig)``, where
 ``sig`` is the new signature, so a sprite that turns left under one action and right
 under another has two different descriptors and is not noise. A timer that changes
 every step through new states is caught by the second rule, which needs the last
@@ -24,16 +27,19 @@ grows within a level. ``reset_tracks`` drops history, flagged ids and cells.
 
 from __future__ import annotations
 
-from arcagent.mind.objects import Cell, Change, Scene, SceneDiff
+from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing
 
 WINDOW = 4
 
 Descriptor = tuple[str, int, int, int, str]
 
 
-def _kind(c: Change) -> str:
-    """A reshape with a shift is motion (an animated walking sprite): treat it as a move."""
-    return "moved" if c.kind == "reshaped" and (c.dx or c.dy) else c.kind
+def _kind(c: Change, old: Thing | None) -> str:
+    """A same-size reshape with a shift is motion (an animated walking sprite): a move."""
+    if c.kind != "reshaped" or not (c.dx or c.dy):
+        return c.kind
+    resized = old is not None and c.size >= 0 and c.size != len(old.cells)
+    return "reshaped" if resized else "moved"
 
 
 def _descriptor(c: Change) -> Descriptor:
@@ -62,7 +68,7 @@ class NoiseMask:
         old = before.by_id()
         flagged: list[int] = []
         for c in diff.changes:
-            kind = _kind(c)
+            kind = _kind(c, old.get(c.id))
             if kind not in ("same", "moved"):
                 self._by_descriptor.setdefault(c.id, {}).setdefault(_descriptor(c), set()).add(
                     action_id

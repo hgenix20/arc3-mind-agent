@@ -10,7 +10,9 @@ Movement rules, matching what ``facts.learn`` records:
 - Movers are things whose fact moves them (``move``, ``slide``, ``teleport``). Movers
   with the same move or slide step whose cells are 4-adjacent form one rigid body: none
   blocks another, and the body is blocked when any member's destination hits the grid
-  edge, padding, or a thing whose color is in ``mem.blockers`` for that member's sig.
+  edge, padding, or a cell whose color (``objects.color_at``: the covering thing's, else
+  the terrain's) is in ``mem.blockers`` for that member's sig. Terrain never moves in a
+  prediction: the new scene shares the old scene's ``terrain``.
   A blocked body stays whole; each member then takes its ``blocked`` fact when stored
   (else ``none``).
 - ``slide`` steps one cell at a time until the next step would be blocked. A slide
@@ -18,9 +20,12 @@ Movement rules, matching what ``facts.learn`` records:
 - A move whose destination overlaps a non-mover with a ``pushed`` fact pushes it (one
   level only). When the pushed thing would itself be blocked (by the edge, padding, a
   blocker color, or another pushable thing), or its pushed fact doesn't move it, the
-  pusher's body is blocked.
+  pusher's body is blocked. A pushed thing is also stuck on a terrain cell whose color
+  is in the blockers of its own sig or of the pusher's.
 - ``toggle_group(sig)`` recolors every thing with that sig. The spawn fact
-  ``(label, SPAWN, "any")`` adds one predicted thing per ``appear`` effect.
+  ``(label, SPAWN, "any")`` adds one predicted thing per ``appear`` effect. Spawn is
+  never an unknown pair: with no spawn fact, or a broken one, no spawn is predicted (an
+  unpredicted appear still fails ``check`` with no key to blame).
 - ``game_over`` is set when a fact predicts it outright, or when a thing that moves
   lands on (``touch:c``) or next to (``near:c``) a color with a non-broken death fact
   ``("any", sig, context)`` in the scene before the move.
@@ -33,7 +38,7 @@ noise things before calling.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 
 from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, Action
@@ -159,12 +164,17 @@ class _Run:
         stop = self.mem.blockers.get(t.sig, ())
         owner = self.owner
         padding = self.scene.blocked
+        terrain = self.scene.terrain
         for c in dest:
             x, y = c
             if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or c in padding:
                 return True
             other = owner.get(c)
-            if other is None or other[0] in skip or other[1] not in stop:
+            if other is None:
+                if stop and int(terrain[y, x]) in stop:
+                    return True
+                continue
+            if other[0] in skip or other[1] not in stop:
                 continue
             if pushing and other[0] not in self.movers and self.pushed_fact(other[0]):
                 continue
@@ -179,16 +189,23 @@ class _Run:
             self.hits(m.thing, _shifted(m.thing.cells, dx, dy), skip, pushing=pushing) for m in body
         )
 
-    def stuck(self, dest: frozenset[Cell], skip: frozenset[int]) -> bool:
-        """Whether a pushed thing landing on ``dest`` hits the edge, padding or any thing."""
+    def stuck(
+        self, dest: frozenset[Cell], skip: frozenset[int], stop: Collection[int] = ()
+    ) -> bool:
+        """Whether a pushed thing landing on ``dest`` hits the edge, padding, any thing,
+        or a terrain cell whose color is in ``stop``."""
         owner = self.owner
         padding = self.scene.blocked
+        terrain = self.scene.terrain
         for c in dest:
             x, y = c
             if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or c in padding:
                 return True
             other = owner.get(c)
-            if other is not None and other[0] not in skip:
+            if other is None:
+                if stop and int(terrain[y, x]) in stop:
+                    return True
+            elif other[0] not in skip:
                 return True
         return False
 
@@ -294,6 +311,7 @@ def _push_targets(
             fact = run.pushed_fact(tid)
             if fact is not None:
                 targets[tid] = fact
+    pusher_stop = set[int]().union(*(run.mem.blockers.get(m.thing.sig, ()) for m in body))
     for tid, fact in targets.items():
         t = by_id[tid]
         d = _displacement(t, fact.effects)
@@ -301,7 +319,8 @@ def _push_targets(
             if any(e.kind == "disappear" for e in fact.effects):
                 continue
             return None
-        if run.stuck(_shifted(t.cells, *d), mates | {tid}):
+        stop = pusher_stop | run.mem.blockers.get(t.sig, set())
+        if run.stuck(_shifted(t.cells, *d), mates | {tid}, stop):
             return None
     return targets
 
@@ -392,10 +411,7 @@ def _toggle(run: _Run) -> None:
 def _spawn(run: _Run) -> list[Thing]:
     key = (run.label, SPAWN, "any")
     fact = run.mem.get(key)
-    if fact is None:
-        return []
-    if fact.status == "broken":
-        run.unknown[(run.label, SPAWN)] = None
+    if fact is None or fact.status == "broken":  # never an open question: predict none
         return []
     run.use(fact)
     next_id = max((t.id for t in run.scene.things), default=0) + 1
@@ -481,7 +497,7 @@ def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
             moved = _apply(t, run.effects[t.id], run.shift.get(t.id, (0, 0)))
             if moved is not None:
                 things.append(moved)
-        new_scene = Scene((*things, *spawned), scene.background, scene.blocked)
+        new_scene = Scene((*things, *spawned), scene.background, scene.blocked, scene.terrain)
     return Prediction(
         new_scene,
         run.effects,

@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from arcagent.core.types import Grid
-from arcagent.mind.objects import Tracker, extract
+from arcagent.mind.objects import Tracker, color_at, extract
 
 
 def grid_with(cells: dict[tuple[int, int], int], bg: int = 0) -> Grid:
@@ -149,3 +149,71 @@ def test_scene_key_ignores_ids() -> None:
     b, _ = t.update(grid_with({(5, 5): 2, (9, 9): 4}), frozenset())
     assert {x.id for x in a.things} != {x.id for x in b.things}
     assert a.key() == b.key()
+
+
+# --- terrain (Task 8b) ----------------------------------------------------------------
+
+
+def floor_grid(player: tuple[int, int] | None) -> Grid:
+    """A 30x30 floor of color 3 (900 cells) with a one-cell spur at (30, 5); bg 0."""
+    g = np.zeros((64, 64), dtype=np.int8)
+    g[0:30, 0:30] = 3
+    g[5, 30] = 3
+    if player is not None:
+        g[player[1], player[0]] = 1
+    return g
+
+
+def test_large_component_is_terrain_not_a_thing() -> None:
+    s, _ = Tracker().update(floor_grid((10, 10)), frozenset())
+    assert [t.color for t in s.things] == [1]
+    assert s.terrain.shape == (64, 64) and s.terrain.dtype == np.int8
+    assert s.terrain[0, 0] == 3 and s.terrain[40, 40] == 0
+    # under the player with no memory: the most common non-thing neighbor color
+    assert s.terrain[10, 10] == 3
+    assert len(extract(floor_grid(None))) == 0
+    assert hash(s) == hash(s)
+
+
+def test_terrain_under_a_thing_comes_from_memory() -> None:
+    t = Tracker()
+    t.update(floor_grid((31, 5)), frozenset())
+    s, d = t.update(floor_grid((30, 5)), frozenset())
+    # three of the spur's four neighbors are background; memory still says floor
+    assert s.terrain[5, 30] == 3 and s.terrain[5, 31] == 0
+    assert d is not None and [c.kind for c in d.changes] == ["moved"] and d.stray_cells == 0
+
+
+def test_terrain_memory_resets_with_the_tracker() -> None:
+    t = Tracker()
+    t.update(floor_grid((31, 5)), frozenset())
+    t.reset()
+    s, _ = t.update(floor_grid((30, 5)), frozenset())
+    assert s.terrain[5, 30] == 0
+
+
+def test_terrain_keeps_padding_and_masked_cells_read_background() -> None:
+    g = floor_grid((40, 40))
+    g[60:, :] = -1
+    g[50, 50] = 9
+    s, _ = Tracker().update(g, frozenset({(50, 50)}))
+    assert s.terrain[62, 3] == -1 and s.terrain[50, 50] == 0
+    assert {t.color for t in s.things} == {1}
+
+
+def test_color_at_reads_owner_then_terrain() -> None:
+    s, _ = Tracker().update(floor_grid((10, 10)), frozenset())
+    owner = {c: (t.id, t.color) for t in s.things for c in t.cells}
+    assert color_at(s, owner, (10, 10)) == 1
+    assert color_at(s, owner, (11, 10)) == 3
+    assert color_at(s, owner, (45, 45)) == 0
+    assert color_at(s, owner, (-1, 0)) == -1 and color_at(s, owner, (0, 64)) == -1
+
+
+def test_change_carries_the_new_size() -> None:
+    t = Tracker()
+    t.update(grid_with({(5, 5): 2, (6, 5): 2, (7, 5): 2}), frozenset())
+    _, d = t.update(grid_with({(6, 5): 2, (7, 5): 2}), frozenset())
+    assert d is not None and [(c.kind, c.size) for c in d.changes] == [("reshaped", 2)]
+    _, d2 = t.update(grid_with({(7, 5): 2, (8, 5): 2}), frozenset())
+    assert d2 is not None and [(c.kind, c.size) for c in d2.changes] == [("moved", 2)]

@@ -7,7 +7,7 @@ import itertools
 import numpy as np
 
 from arcagent.core.types import Action, Grid
-from arcagent.mind.facts import Effect, FactMemory
+from arcagent.mind.facts import Effect, FactMemory, learn
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Tracker, shape_of
 from arcagent.mind.search import search
@@ -110,3 +110,32 @@ def test_match_goals_skipped_and_no_change_not_expanded() -> None:
     g = Goal("match", region_a=(0, 0, 1, 1), region_b=(0, 0, 1, 1))
     r = search(s, lambda _s: [Action(3)], moves((3,)), [g])
     assert r.stop == "exhausted" and r.nodes == 1 and r.goal is None
+
+
+def corridor(cells: Cells) -> Grid:
+    """Background 4 (the walls); a 48x4 floor of color 3 on rows 10..13 (terrain)."""
+    g = np.full((64, 64), 4, dtype=np.int8)
+    g[10:14, 0:48] = 3
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def test_search_crosses_a_terrain_floor_end_to_end() -> None:
+    target = (6, 11)
+    path = [(0, (2, 11)), (4, (3, 11)), (3, (2, 11)), (1, (2, 10)), (2, (2, 11)), (1, (2, 10))]
+    path += [(1, (2, 10)), (2, (2, 11))]
+    mem = FactMemory()
+    t = Tracker()
+    scene, _ = t.update(corridor({path[0][1]: 1, target: 6}), frozenset())
+    for move, (action, cell) in enumerate(path[1:]):
+        after, d = t.update(corridor({cell: 1, target: 6}), frozenset())
+        assert d is not None
+        learn(
+            mem, scene, Action(action), d, move=move, level_up=False, game_over=False, after=after
+        )
+        scene = after
+    assert sorted(t.color for t in scene.things) == [1, 6]
+    goal = reach(PSIG, f"c6:{DOT}")
+    r = search(scene, simple_actions, mem, [goal])
+    assert r.stop == "found" and [x.action.id for x in r.plan] == [4, 4, 4]

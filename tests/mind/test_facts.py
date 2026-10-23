@@ -493,3 +493,54 @@ def test_box_seen_standing_still_is_pushed_when_shoved() -> None:
     assert fact(mem, ("A4", box_sig, "pushed")).effects == (Effect("move", dx=1),)
     stay = fact(mem, ("A4", box_sig, "any"))
     assert stay.effects == (Effect("none"),) and stay.misses == 0 and stay.hits == 3
+
+
+# --- terrain colors block (Task 8b) ---------------------------------------------------
+
+
+def corridor(cells: Cells) -> Grid:
+    """Background 4 (the walls); a 48x4 floor of color 3 on rows 10..13 (terrain)."""
+    g = np.full((64, 64), 4, dtype=np.int8)
+    g[10:14, 0:48] = 3
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def corridor_walk(mem: FactMemory, path: list[tuple[int, tuple[int, int]]]) -> Scene:
+    """Learn each (action, player cell after) step in one tracker; return the last scene."""
+    t = Tracker()
+    scene, _ = t.update(corridor({path[0][1]: 1}), frozenset())
+    for move, (action, cell) in enumerate(path[1:]):
+        after, d = t.update(corridor({cell: 1}), frozenset())
+        assert d is not None
+        learn(
+            mem, scene, Action(action), d, move=move, level_up=False, game_over=False, after=after
+        )
+        scene = after
+    return scene
+
+
+def test_background_wall_blocks_and_floor_does_not() -> None:
+    mem = FactMemory()
+    start = (5, 11)
+    path = [(0, start), (2, (5, 12)), (1, (5, 11)), (1, (5, 10)), (1, (5, 10))]
+    scene = corridor_walk(mem, path)
+    psig = scene.things[0].sig
+    assert [t.color for t in scene.things] == [1]
+    assert 4 in mem.blockers[psig] and 3 not in mem.blockers[psig]
+    assert 3 in mem.walkable[psig]
+    blocked = fact(mem, ("A1", psig, "blocked"))
+    assert blocked.effects == (Effect("none"),) and fact(mem, ("A1", psig, "any")).misses == 0
+
+
+def test_walkable_color_never_becomes_a_blocker() -> None:
+    mem = FactMemory()
+    psig = Tracker().update(corridor({(5, 11): 1}), frozenset())[0].things[0].sig
+    mem.blockers[psig] = {3}
+    path = [(0, (5, 11)), (3, (4, 11)), (3, (4, 11))]
+    corridor_walk(mem, path)
+    assert 3 not in mem.blockers.get(psig, set()) and 3 in mem.walkable[psig]
+    # the no-change onto walkable floor is a miss of the move fact, never a blocked fact
+    assert fact(mem, ("A3", psig, "any")).misses == 1
+    assert mem.get(("A3", psig, "blocked")) is None

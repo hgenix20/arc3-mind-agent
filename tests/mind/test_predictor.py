@@ -373,16 +373,6 @@ def test_disappear_and_spawn() -> None:
     assert check(p, before, no_spawn) == (False, [("A5", SPAWN, "any")])
 
 
-def test_broken_spawn_fact_is_unknown() -> None:
-    mem = mem_with(
-        (("A5", PSIG, "any"), Effect("none")),
-        (("A5", SPAWN, "any"), Effect("appear", sig=PSIG, at=(1, 1))),
-    )
-    break_fact(mem, ("A5", SPAWN, "any"))
-    p = predict(scene_of({(5, 5): 1}), Action(5), mem)
-    assert p.scene is None and ("A5", SPAWN) in p.unknown
-
-
 def test_unpredicted_thing_never_counts_as_a_miss() -> None:
     before, diff = transition(
         {(5, 5): 1, (9, 9): 2, (10, 9): 2}, {(4, 5): 1, (9, 9): 7, (10, 9): 7}
@@ -428,3 +418,42 @@ def test_thousand_predictions_on_thirty_things_under_half_a_second() -> None:
     elapsed = time.perf_counter() - start
     assert p.scene is not None
     assert elapsed < 0.5, elapsed
+
+
+# --- terrain and spawn (Task 8b) ------------------------------------------------------
+
+
+def corridor(cells: Cells) -> Grid:
+    """Background 4 (the walls); a 48x4 floor of color 3 on rows 10..13 (terrain)."""
+    g = np.full((64, 64), 4, dtype=np.int8)
+    g[10:14, 0:48] = 3
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def test_terrain_blocker_color_blocks_the_move() -> None:
+    scene = Tracker().update(corridor({(5, 10): 1}), frozenset())[0]
+    mem = mem_with(
+        (("A1", PSIG, "any"), Effect("move", dy=-1)),
+        (("A2", PSIG, "any"), Effect("move", dy=1)),
+    )
+    mem.blockers[PSIG] = {4}
+    up = predict(scene, Action(1), mem)
+    assert player_in(up.scene).y == 10 and up.effects[player_in(scene).id] == (Effect("none"),)
+    down = predict(scene, Action(2), mem)
+    assert player_in(down.scene).y == 11
+    assert down.scene is not None and down.scene.terrain is scene.terrain
+
+
+def test_spawn_is_never_an_unknown_pair() -> None:
+    mem = mem_with(
+        (("A5", PSIG, "any"), Effect("none")),
+        (("A5", SPAWN, "any"), Effect("appear", sig=PSIG, at=(1, 1))),
+    )
+    break_fact(mem, ("A5", SPAWN, "any"))
+    p = predict(scene_of({(5, 5): 1}), Action(5), mem)
+    assert ("A5", SPAWN) not in p.unknown and p.scene is not None
+    assert at(p.scene, PSIG) == [(5, 5)]
+    q = predict(scene_of({(5, 5): 1}), Action(5), mem_with((("A5", PSIG, "any"), Effect("none"))))
+    assert q.unknown == () and q.scene is not None

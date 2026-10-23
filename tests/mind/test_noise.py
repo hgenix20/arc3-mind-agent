@@ -91,3 +91,27 @@ def test_reshape_with_shift_is_motion_never_noise() -> None:
     for i, a in enumerate((1, 2, 1, 2)):
         m.observe(_scene(), a, _diff(Change(1, "reshaped", dx=1, color=2, sig=f"c2:w{i}")))
     assert m.noisy_ids == frozenset()
+
+
+def _bar(n: int) -> Scene:
+    cells = frozenset((x, 0) for x in range(10 - n, 10))
+    return Scene((_thing(7, 4, cells),), 0, frozenset())
+
+
+def test_shrinking_bar_with_shift_is_noise() -> None:
+    m = NoiseMask()
+    n = 8
+    for i, a in enumerate((1, 2, 1, 2)):
+        diff = _diff(Change(7, "reshaped", dx=1, color=4, sig=f"c4:len{n - 1}", size=n - 1))
+        flagged = m.observe(_bar(n), a, diff)
+        assert flagged == ([7] if i == 3 else [])
+        n -= 1
+    assert 7 in m.noisy_ids
+
+
+def test_same_size_reshape_with_shift_stays_motion() -> None:
+    m = NoiseMask()
+    for i, a in enumerate((1, 2, 1, 2)):
+        diff = _diff(Change(1, "reshaped", dx=1, color=2, sig=f"c2:w{i}", size=1))
+        m.observe(_scene(), a, diff)
+    assert m.noisy_ids == frozenset()
