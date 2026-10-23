@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import numpy as np
 
-from arcagent.core.types import Action, Observation, Phase
+from arcagent.core.types import Action, Grid, Observation, Phase
 from arcagent.mind import fluid
 from arcagent.mind.config import CONFIGS
+from arcagent.mind.facts import SPAWN, Effect, FactMemory
+from arcagent.mind.objects import Scene, Tracker, shape_of
+from arcagent.mind.predictor import Prediction, predict
 from arcagent.mind.runlog import RunLog
 from tests.mind.fakegames import FakeClickGame, FakeGame, play
 
+DOT = shape_of([(0, 0)])
+PSIG, TSIG, SIDE = f"c1:{DOT}", f"c4:{DOT}", f"c7:{DOT}"
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "mind_metrics.py"
 Rec = dict[str, Any]
 
@@ -185,3 +191,78 @@ def test_past_the_deadline_skips_search_and_tests(tmp_path: Path) -> None:
     agent.close()
     acts = [r for r in records(tmp_path) if r["type"] == "action"]
     assert all(a["branch"] == "fallback" for a in acts)
+
+
+# --- plans stop only on misses that matter (Task 8c) ----------------------------------
+
+
+class BlinkGame(FakeGame):
+    """FakeGame plus a one-cell side object at (40, 40) that flips 6/7 on every second A4.
+
+    Its facts keep missing (none, then recolor, under the same sig), and it is never
+    noise: only one action changes it, and not on every step.
+    """
+
+    def __init__(self, *args: Any, **kw: Any) -> None:
+        self.blink = False
+        self.presses = 0
+        super().__init__(*args, **kw)
+
+    def observe(self) -> Observation:
+        obs = super().observe()
+        g = obs.grid.copy()
+        g[40, 40] = 7 if self.blink else 6
+        return replace(obs, grid=g)
+
+    def step(self, action: Action) -> Observation:
+        if action.id == 4 and self.phase == Phase.NOT_FINISHED:
+            self.presses += 1
+            if self.presses % 2 == 0:
+                self.blink = not self.blink
+        return super().step(action)
+
+
+def test_plan_continues_past_a_side_object_miss(tmp_path: Path) -> None:
+    game = BlinkGame(player=(2, 2), target=(16, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=60, until=lambda: game.levels >= 1)
+    agent.close()
+    assert game.levels == 1
+    branches = [r["branch"] for r in records(tmp_path) if r["type"] == "action"]
+    last_test = max(i for i, b in enumerate(branches) if b == "learn")
+    after = branches[last_test + 1 :]
+    # the side object misses on every second A4; the walk right is planned at most twice
+    assert after.count("plan") <= 2 and after.count("follow") >= 8, branches
+
+
+def _grid(cells: dict[tuple[int, int], int]) -> Grid:
+    g = np.zeros((64, 64), dtype=np.int8)
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def plan_case() -> tuple[Scene, Prediction, Tracker]:
+    t = Tracker()
+    before, _ = t.update(_grid({(2, 2): 1, (6, 2): 4, (30, 30): 7}), frozenset())
+    mem = FactMemory()
+    mem.record(("A4", PSIG, "any"), (Effect("move", dx=1),), 0)
+    pred = predict(before, Action(4), mem, assume_still=frozenset({PSIG, TSIG}))
+    return before, pred, t
+
+
+def test_plan_breaks_only_on_misses_that_matter() -> None:
+    before, pred, t = plan_case()
+    after, _ = t.update(_grid({(3, 2): 1, (6, 2): 4, (30, 30): 5}), frozenset())
+    movers, protected = frozenset({PSIG}), frozenset({PSIG, TSIG})
+    side_key = ("A4", SIDE, "any")
+    assert not fluid.plan_breaks(pred, before, after, [side_key], movers, protected)
+    assert not fluid.plan_breaks(pred, before, after, [("A4", SPAWN, "any")], movers, protected)
+    assert fluid.plan_breaks(pred, before, after, [("A4", PSIG, "any")], movers, protected)
+    assert fluid.plan_breaks(pred, before, after, [("A4", TSIG, "any")], movers, protected)
+
+
+def test_plan_breaks_when_the_mover_lands_elsewhere() -> None:
+    before, pred, t = plan_case()
+    after, _ = t.update(_grid({(2, 3): 1, (6, 2): 4, (30, 30): 7}), frozenset())
+    assert fluid.plan_breaks(pred, before, after, [], frozenset({PSIG}), frozenset({PSIG}))

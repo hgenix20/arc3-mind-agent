@@ -7,8 +7,13 @@ an empty plan.
 
 Branch rules:
 
-- A prediction with no scene (an unknown fact) ends that branch; its ``unknown`` pairs
-  join the frontier in first-met order, with no duplicates.
+- Every prediction is made with ``assume_still``: the protected sigs are the mover sigs
+  (``goals.mover_sigs``) plus each goal's own sigs (``goals.goal_sigs`` without reach
+  targets, so a reach target is assumed still like any other side object). Everything
+  else with no usable fact is predicted still, so a side object with unlearned or broken
+  facts never ends a branch. Callers may pass their own protected set.
+- A prediction with no scene (an unknown fact of a protected sig) ends that branch; its
+  ``unknown`` pairs join the frontier in first-met order, with no duplicates.
 - A prediction that ends the game is never expanded and never counts as reaching a goal.
 - A prediction whose scene key equals its parent's changes nothing and is dropped.
 - Scenes are deduped by ``Scene.key()``.
@@ -28,7 +33,7 @@ from typing import Literal
 
 from arcagent.core.types import Action
 from arcagent.mind.facts import FactMemory
-from arcagent.mind.goals import Goal
+from arcagent.mind.goals import Goal, goal_sigs, mover_sigs
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
 
@@ -62,6 +67,14 @@ class SearchResult:
     stop: Stop
 
 
+def protected_sigs(mem: FactMemory, goals: Sequence[Goal], scene: Scene) -> frozenset[str]:
+    """Search's protected sigs: the movers plus each goal's sigs, reach targets excluded."""
+    out = set(mover_sigs(mem))
+    for g in goals:
+        out |= goal_sigs(g, scene, targets=False)
+    return frozenset(out)
+
+
 def _first_holding(goals: Sequence[Goal], scene: Scene) -> Goal | None:
     return next((g for g in goals if g.holds(scene)), None)
 
@@ -75,10 +88,16 @@ def search(
     time_s: float = SEARCH_TIME_S,
     max_nodes: int = SEARCH_MAX_NODES,
     clock: Callable[[], float] = time.monotonic,
+    assume_still: frozenset[str] | None = None,
 ) -> SearchResult:
-    """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold."""
+    """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
+
+    ``assume_still`` is the protected sig set passed to ``predict``; None computes it with
+    ``protected_sigs``.
+    """
     start = clock()
     live = [g for g in goals if g.kind != "match"]
+    protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
     frontier: dict[tuple[str, str], None] = {}
 
     def done(
@@ -107,7 +126,7 @@ def search(
                 return done("time", nodes, deepest)
             if nodes >= max_nodes:
                 return done("nodes", nodes, deepest)
-            pred = predict(current, action, mem)
+            pred = predict(current, action, mem, assume_still=protect)
             nodes += 1
             if pred.scene is None:
                 for pair in pred.unknown:

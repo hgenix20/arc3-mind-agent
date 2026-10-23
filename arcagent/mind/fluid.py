@@ -18,8 +18,13 @@ Per ``choose(obs)``, in order:
    diff, ``learn`` from the transition and ``check`` the previous prediction (its
    misses feed only the log and the plan stop; ``learn`` charges facts itself). Then
    ``goals.note_reached`` on the new scene.
-4. A failed check or a fact turning ``broken`` clears the plan. A plan with steps
-   left gives the next step (branch ``follow``).
+4. A plan stops only on a miss that matters (``plan_breaks``): a missed or newly broken
+   fact about a mover sig or one of the plan goal's sigs (``self`` and ``any`` subjects
+   count; spawn and other side objects don't), or a mover that ended somewhere other
+   than predicted. A game over or level change always ends the plan (steps 1 and 2).
+   Every other miss is only logged and learned. A plan with steps left gives the next
+   step (branch ``follow``). Plan steps are predicted with ``assume_still`` set to the
+   mover sigs plus the goal's sigs, so the check covers what the plan relies on.
 5. Else ``goals.propose`` and ``search`` over ``goals.open()``; a found plan starts
    (branch ``plan``, why ``goal <id>``). A goal that already holds at the root is
    treated as reached (``note_reached``) and the search runs once more without it.
@@ -71,7 +76,7 @@ from arcagent.mind.agent import MAX_ERROR_CHARS
 from arcagent.mind.baseline import Baseline
 from arcagent.mind.config import MindConfig
 from arcagent.mind.facts import FactKey, FactMemory, Status, learn
-from arcagent.mind.goals import Goal, GoalBook
+from arcagent.mind.goals import Goal, GoalBook, goal_sigs, mover_sigs
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker
 from arcagent.mind.perception import candidate_actions, frame_hash
@@ -105,6 +110,40 @@ def _strip_diff(diff: SceneDiff, ids: frozenset[int]) -> SceneDiff:
     if not ids:
         return diff
     return SceneDiff(tuple(c for c in diff.changes if c.id not in ids), diff.stray_cells)
+
+
+def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
+    pred: Prediction,
+    before: Scene,
+    after: Scene,
+    keys: Iterable[FactKey],
+    movers: frozenset[str],
+    protected: frozenset[str],
+) -> bool:
+    """Whether a plan must stop after the move ``pred`` predicted.
+
+    True when a key in ``keys`` (missed or newly broken facts) is about a protected sig,
+    a ``self`` or an ``any`` subject (``SPAWN`` never is), or when a thing whose sig is in
+    ``movers`` is not where ``pred.scene`` put it in ``after`` (same id, bbox top-left
+    compared, so a sprite that animates in place still matches; a thing present in only
+    one of the two counts as elsewhere).
+    """
+    for _, subject, _ in keys:
+        if subject in ("self", "any") or subject in protected:
+            return True
+    if pred.scene is None:
+        return True
+    expect = pred.scene.by_id()
+    now = after.by_id()
+    for t in before.things:
+        if t.sig not in movers:
+            continue
+        e, a = expect.get(t.id), now.get(t.id)
+        if (e is None) != (a is None) or (
+            e is not None and a is not None and (e.x, e.y) != (a.x, a.y)
+        ):
+            return True
+    return False
 
 
 class _Clicks:
@@ -163,6 +202,7 @@ class FluidAgent:
         self._last_scene: Scene | None = None  # the same scene with noise stripped
         self._pred: Prediction | None = None
         self._plan: list[PlanStep] = []
+        self._plan_goal: Goal | None = None
         self._history: dict[tuple[tuple[str, int, int], ...], Scene] = {}
         self._tried: Tried = set()
         self._frontier: tuple[tuple[str, str], ...] = ()
@@ -328,10 +368,12 @@ class FluidAgent:
         broke = self._log_facts(keys, snap, move)
         pred = self._pred
         if pred is not None:
-            hit, missed = check(pred, before_s, diff, ignore=noisy, after=after)
+            _, missed = check(pred, before_s, diff, ignore=noisy, after=after)
             self._score(pred, set(missed))
-            if not hit or broke:
-                self._plan = []
+            if self._plan:
+                movers, protected = self._protected(before_s)
+                if plan_breaks(pred, before_s, after, [*missed, *broke], movers, protected):
+                    self._plan = []
         self._log_goals(self.goals.note_reached(after), "excluded")
         return after
 
@@ -353,8 +395,19 @@ class FluidAgent:
             action = self._baseline.choose(obs, frozenset(self._vetoes))
             choice = _Choice(action, "fallback", "deadline passed" if late else "b0")
         self._tried.add((scene.key(), choice.action.key()))
-        self._pred = predict(scene, choice.action, self.mem)
+        if choice.branch in ("plan", "follow"):
+            protected = self._protected(scene)[1]
+            self._pred = predict(scene, choice.action, self.mem, assume_still=protected)
+        else:
+            self._plan_goal = None
+            self._pred = predict(scene, choice.action, self.mem)
         return choice
+
+    def _protected(self, scene: Scene) -> tuple[frozenset[str], frozenset[str]]:
+        """(mover sigs, mover sigs plus the plan goal's sigs) for the plan rules."""
+        movers = mover_sigs(self.mem)
+        goal = self._plan_goal
+        return movers, movers | (goal_sigs(goal, scene) if goal is not None else frozenset())
 
     def _offer(
         self, scene: Scene, action: Action, branch: Branch, why: str, late: bool, *, plan: bool
@@ -395,6 +448,7 @@ class FluidAgent:
             return None
         first, *rest_steps = res.plan
         self._plan = list(rest_steps)
+        self._plan_goal = res.goal
         choice = self._offer(scene, first.action, "plan", f"goal {res.goal.id()}", False, plan=True)
         if choice is None:
             self._plan = []
@@ -433,14 +487,17 @@ class FluidAgent:
     def _statuses(self) -> dict[FactKey, Status]:
         return {k: f.status for k, f in self.mem.facts.items()}
 
-    def _log_facts(self, keys: Iterable[FactKey], before: dict[FactKey, Status], move: int) -> bool:
-        """Log new facts and status changes; True when one turned broken."""
-        broke = False
+    def _log_facts(
+        self, keys: Iterable[FactKey], before: dict[FactKey, Status], move: int
+    ) -> list[FactKey]:
+        """Log new facts and status changes; return the keys that turned broken."""
+        broke: list[FactKey] = []
         for key in dict.fromkeys(keys):
             fact = self.mem.get(key)
             if fact is None or before.get(key) == fact.status:
                 continue
-            broke |= fact.status == "broken"
+            if fact.status == "broken":
+                broke.append(key)
             self._log.event("fact", step=move, key=list(key), status=fact.status, line=fact.line())
         return broke
 

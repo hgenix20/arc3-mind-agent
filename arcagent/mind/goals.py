@@ -10,8 +10,10 @@ status, and ``propose`` skips every goal already in ``status``, so a refuted gue
 re-proposed within a game and a confirmed form is never excluded.
 
 Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``match`` and
-``count`` are evaluated but never proposed. Pure and deterministic; callers strip noise
-things from the scene before calling ``propose``.
+``count`` are evaluated but never proposed. ``mover_sigs`` and ``goal_sigs`` name the sigs
+a plan depends on; search and the fluid agent protect them from the stillness assumption.
+Pure and deterministic; callers strip noise things from the scene before calling
+``propose``.
 """
 
 from __future__ import annotations
@@ -120,6 +122,26 @@ def _subject_sig(subject: str, label: str) -> str | None:
         sig = label[len(_CLICK_PREFIX) :] if label.startswith(_CLICK_PREFIX) else ""
         return sig if _sig_color(sig) is not None else None
     return subject if _sig_color(subject) is not None else None
+
+
+def mover_sigs(mem: FactMemory) -> frozenset[str]:
+    """Every sig with a non-broken move, slide or teleport fact (``self`` facts included)."""
+    return frozenset(_mover_sigs(mem))
+
+
+def goal_sigs(goal: Goal, scene: Scene, *, targets: bool = True) -> frozenset[str]:
+    """The sigs a goal is about.
+
+    ``reach``: ``a``, plus ``b`` when ``targets``. ``clear`` and ``count``: the sigs of the
+    things in ``scene`` with the goal's color. ``match``: none.
+    """
+    match goal.kind:
+        case "reach":
+            return frozenset({goal.a, goal.b} if targets else {goal.a})
+        case "clear" | "count":
+            return frozenset(t.sig for t in scene.things if t.color == goal.color)
+        case "match":
+            return frozenset()
 
 
 def _mover_sigs(mem: FactMemory) -> list[str]:

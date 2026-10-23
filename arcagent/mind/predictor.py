@@ -2,8 +2,14 @@
 
 ``predict`` looks up each thing's fact for the action and builds the next scene, or
 reports the ``(label, subject)`` pairs it has no usable fact for (a broken fact counts
-as none). ``check`` compares a prediction with the diff that actually happened and
-names the facts whose prediction missed.
+as none). With ``assume_still`` (the protected sigs), a thing whose sig is outside that
+set and has no usable fact is predicted to stay as it is: its pair goes to
+``Prediction.assumed``, not ``unknown``, and it gets no entry in ``effects`` so ``check``
+never scores it. The clicked thing of a click is always protected. Search uses this so a
+side object with unlearned or broken facts doesn't end every branch; tests and vetoes
+call ``predict`` without it so they still target the unknowns. ``check`` compares a
+prediction with the diff that actually happened and names the facts whose prediction
+missed.
 
 Movement rules, matching what ``facts.learn`` records:
 
@@ -23,9 +29,11 @@ Movement rules, matching what ``facts.learn`` records:
   pusher's body is blocked. A pushed thing is also stuck on a terrain cell whose color
   is in the blockers of its own sig or of the pusher's.
 - ``toggle_group(sig)`` recolors every thing with that sig. The spawn fact
-  ``(label, SPAWN, "any")`` adds one predicted thing per ``appear`` effect. Spawn is
-  never an unknown pair: with no spawn fact, or a broken one, no spawn is predicted (an
-  unpredicted appear still fails ``check`` with no key to blame).
+  ``(label, SPAWN, "any")`` adds one predicted thing per ``appear`` effect once it has
+  ``SPAWN_MIN_HITS`` hits (a single appear is often a tracking artifact, such as a thing
+  uncovered when the player steps off it). Spawn is never an unknown pair: with no spawn
+  fact, a broken one or too few hits, no spawn is predicted (an unpredicted appear still
+  fails ``check`` with no key to blame).
 - ``game_over`` is set when a fact predicts it outright, or when a thing that moves
   lands on (``touch:c``) or next to (``near:c``) a color with a non-broken death fact
   ``("any", sig, context)`` in the scene before the move.
@@ -54,6 +62,8 @@ from arcagent.mind.facts import (
 )
 from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing
 
+SPAWN_MIN_HITS = 2  # a spawn fact predicts appears only after this many agreeing observations
+
 _NONE = (Effect("none"),)
 _MOVING = frozenset({"move", "slide", "teleport"})
 
@@ -71,7 +81,8 @@ class Prediction:
     is what ``check`` reports on a miss; for a blocked mover with no stored ``blocked``
     fact it names that ``blocked`` key, since the blocker guess is what failed. ``lent``
     holds the ids whose prediction came from a fact borrowed from a same-shape sibling;
-    ``check`` never blames that fact for their misses.
+    ``check`` never blames that fact for their misses. ``assumed`` holds the pairs predicted
+    still under ``assume_still`` instead of being unknown.
     """
 
     scene: Scene | None
@@ -82,6 +93,7 @@ class Prediction:
     borrowed: bool
     sources: dict[int, FactKey] = field(default_factory=dict[int, FactKey])
     lent: frozenset[int] = frozenset()
+    assumed: tuple[Pair, ...] = ()
 
 
 def _shifted(cells: Iterable[Cell], dx: int, dy: int) -> frozenset[Cell]:
@@ -102,7 +114,9 @@ class _Mover:
 class _Run:
     """State of one ``predict`` call."""
 
-    def __init__(self, scene: Scene, action: Action, mem: FactMemory) -> None:
+    def __init__(
+        self, scene: Scene, action: Action, mem: FactMemory, protect: frozenset[str] | None
+    ) -> None:
         self.scene = scene
         self.mem = mem
         self.label = action_label(action, scene)
@@ -110,6 +124,9 @@ class _Run:
         if action.id == COORD_ACTION_ID:
             point = (action.x, action.y)
             clicked = next((t.id for t in scene.things if point in t.cells), -1)
+        self.clicked = clicked
+        self.protect = protect
+        self.assumed: dict[Pair, None] = {}
         self.subject = {t.id: "self" if t.id == clicked else t.sig for t in scene.things}
         self.effects: dict[int, tuple[Effect, ...]] = {}
         self.sources: dict[int, FactKey] = {}
@@ -138,6 +155,19 @@ class _Run:
         if self._by_id is None:
             self._by_id = self.scene.by_id()
         return self._by_id
+
+    def still(self, tid: int) -> bool:
+        """Whether a thing with no usable fact is assumed still (outside the protected sigs)."""
+        if self.protect is None or tid == self.clicked:
+            return False
+        return self.by_id[tid].sig not in self.protect
+
+    def open_pair(self, tid: int, pair: Pair) -> None:
+        """Record a missing fact: ``assumed`` when the thing may be assumed still, else unknown."""
+        if self.still(tid):
+            self.assumed[pair] = None
+        else:
+            self.unknown[pair] = None
 
     def use(self, fact: Fact, borrowed: bool = False) -> None:
         self.used[fact.key] = None
@@ -223,7 +253,7 @@ class _Run:
         if found is None or found[0].key[2] != "pushed":
             return None
         if found[0].status == "broken":
-            self.unknown[(self.label, subject)] = None
+            self.open_pair(tid, (self.label, subject))
             return None
         if found[1]:
             self.push_borrowed.add(tid)
@@ -336,7 +366,7 @@ def _block(run: _Run, body: list[_Mover]) -> None:
             run.lent.discard(tid)
         elif fact.status == "broken":
             run.effects.pop(tid, None)
-            run.unknown[(run.label, run.subject[tid])] = None
+            run.open_pair(tid, (run.label, run.subject[tid]))
         else:
             run.use(fact)
             run.assign(tid, fact)
@@ -411,8 +441,8 @@ def _toggle(run: _Run) -> None:
 def _spawn(run: _Run) -> list[Thing]:
     key = (run.label, SPAWN, "any")
     fact = run.mem.get(key)
-    if fact is None or fact.status == "broken":  # never an open question: predict none
-        return []
+    if fact is None or fact.status == "broken" or fact.hits < SPAWN_MIN_HITS:
+        return []  # never an open question: predict no spawn
     run.use(fact)
     next_id = max((t.id for t in run.scene.things), default=0) + 1
     out: list[Thing] = []
@@ -476,9 +506,19 @@ def _apply(t: Thing, effects: tuple[Effect, ...], shift: tuple[int, int]) -> Thi
     return Thing(t.id, color, shape, sig, t.x + dx, t.y + dy, cells)
 
 
-def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
-    """Predict the scene after ``action``, or the (label, subject) pairs with no fact."""
-    run = _Run(scene, action, mem)
+def predict(
+    scene: Scene,
+    action: Action,
+    mem: FactMemory,
+    *,
+    assume_still: frozenset[str] | None = None,
+) -> Prediction:
+    """Predict the scene after ``action``, or the (label, subject) pairs with no fact.
+
+    ``assume_still`` is the set of protected sigs: when given, a thing outside it with no
+    usable fact stays as it is and its pair is listed in ``assumed``.
+    """
+    run = _Run(scene, action, mem, assume_still)
     movers = _base(run)
     if movers:
         run.movers = set(movers)
@@ -487,14 +527,14 @@ def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
     _toggle(run)
     spawned = _spawn(run)
     game_over = _deadly(run)
-    for pair in run.pending.values():
-        run.unknown[pair] = None
+    for tid, pair in run.pending.items():
+        run.open_pair(tid, pair)
     unknown = tuple(run.unknown)
     new_scene: Scene | None = None
     if not unknown:
         things: list[Thing] = []
         for t in scene.things:
-            moved = _apply(t, run.effects[t.id], run.shift.get(t.id, (0, 0)))
+            moved = _apply(t, run.effects.get(t.id, _NONE), run.shift.get(t.id, (0, 0)))
             if moved is not None:
                 things.append(moved)
         new_scene = Scene((*things, *spawned), scene.background, scene.blocked, scene.terrain)
@@ -507,6 +547,7 @@ def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
         run.borrowed,
         run.sources,
         frozenset(run.lent),
+        tuple(p for p in run.assumed if p not in run.unknown),
     )
 
 

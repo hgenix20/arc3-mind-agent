@@ -357,6 +357,7 @@ def test_disappear_and_spawn() -> None:
         (("A5", two, "any"), Effect("disappear")),
         (("A5", SPAWN, "any"), Effect("appear", sig=two, at=(40, 40))),
     )
+    mem.record(("A5", SPAWN, "any"), (Effect("appear", sig=two, at=(40, 40)),), 1)
     p = predict(before, Action(5), mem)
     assert at(p.scene, two) == [(40, 40)] and ("A5", SPAWN, "any") in p.used
     pid, gid = player_in(before).id, at_id(before, two)
@@ -457,3 +458,46 @@ def test_spawn_is_never_an_unknown_pair() -> None:
     assert at(p.scene, PSIG) == [(5, 5)]
     q = predict(scene_of({(5, 5): 1}), Action(5), mem_with((("A5", PSIG, "any"), Effect("none"))))
     assert q.unknown == () and q.scene is not None
+
+
+# --- side objects and spawn evidence (Task 8c) ----------------------------------------
+
+
+def test_one_hit_spawn_fact_predicts_nothing() -> None:
+    key = ("A5", SPAWN, "any")
+    appear = Effect("appear", sig=PSIG, at=(1, 1))
+    mem = mem_with((("A5", PSIG, "any"), Effect("none")), (key, appear))
+    p = predict(scene_of({(5, 5): 1}), Action(5), mem)
+    assert at(p.scene, PSIG) == [(5, 5)] and key not in p.used
+    mem.record(key, (appear,), 1)
+    q = predict(scene_of({(5, 5): 1}), Action(5), mem)
+    assert at(q.scene, PSIG) == [(1, 1), (5, 5)] and key in q.used
+
+
+def test_assume_still_predicts_side_objects_none() -> None:
+    two = f"c2:{shape_of([(0, 0), (1, 0)])}"  # its own shape: nothing to borrow
+    scene = scene_of({(5, 5): 1, (30, 30): 2, (31, 30): 2})
+    mem = mem_with((("A3", PSIG, "any"), Effect("move", dx=-1)))
+    plain = predict(scene, Action(3), mem)
+    assert plain.scene is None and ("A3", two) in plain.unknown and plain.assumed == ()
+    still = predict(scene, Action(3), mem, assume_still=frozenset({PSIG}))
+    assert still.unknown == () and still.assumed == (("A3", two),)
+    assert at(still.scene, two) == [(30, 30)] and player_in(still.scene).x == 4
+    assert at_id(scene, two) not in still.effects
+    guarded = predict(scene, Action(3), mem, assume_still=frozenset({PSIG, two}))
+    assert guarded.scene is None and ("A3", two) in guarded.unknown
+
+
+def test_assume_still_covers_broken_side_facts_but_not_protected_ones() -> None:
+    two = f"c2:{shape_of([(0, 0), (1, 0)])}"  # its own shape: nothing to borrow
+    scene = scene_of({(5, 5): 1, (30, 30): 2, (31, 30): 2})
+    mem = mem_with(
+        (("A3", PSIG, "any"), Effect("move", dx=-1)),
+        (("A3", two, "any"), Effect("recolor", color=6)),
+    )
+    break_fact(mem, ("A3", two, "any"))
+    still = predict(scene, Action(3), mem, assume_still=frozenset({PSIG}))
+    assert still.scene is not None and still.assumed == (("A3", two),)
+    break_fact(mem, ("A3", PSIG, "any"))
+    lost = predict(scene, Action(3), mem, assume_still=frozenset({PSIG}))
+    assert lost.scene is None and ("A3", PSIG) in lost.unknown

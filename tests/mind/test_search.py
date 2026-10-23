@@ -139,3 +139,26 @@ def test_search_crosses_a_terrain_floor_end_to_end() -> None:
     goal = reach(PSIG, f"c6:{DOT}")
     r = search(scene, simple_actions, mem, [goal])
     assert r.stop == "found" and [x.action.id for x in r.plan] == [4, 4, 4]
+
+
+def test_search_assumes_side_objects_with_broken_facts_stay_still() -> None:
+    side = f"c7:{DOT}"
+    s = scene_of({(2, 2): 1, (6, 2): 4, (30, 30): 7})
+    mem = moves((1, 2, 3, 4))
+    for i in (1, 2, 3, 4):
+        key = (f"A{i}", side, "any")
+        for move, color in enumerate((5, 6, 7)):
+            mem.record(key, (Effect("recolor", color=color),), move)
+        f = mem.get(key)
+        assert f is not None and f.status == "broken"
+    r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
+    assert r.stop == "found" and [x.action.id for x in r.plan] == [4, 4, 4]
+    assert r.frontier == ()
+    assert r.plan[0].expect.assumed == (("A4", side),)
+
+
+def test_search_still_stops_on_an_unknown_mover() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4, (30, 30): 7})
+    mem = moves((1, 2, 3))
+    r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
+    assert r.goal is None and ("A4", PSIG) in r.frontier
