@@ -385,3 +385,11 @@ class Tracker:
         for t in now.things:
             covered |= t.cells
         return sum(1 for c in zip(xs.tolist(), ys.tolist(), strict=True) if c not in covered)
+
+
+def click_cell(t: Thing) -> Cell:
+    """The click cell of a thing: its cell nearest the centroid (ties by smallest cell)."""
+    cells = sorted(t.cells)
+    cx = sum(x for x, _ in cells) / len(cells)
+    cy = sum(y for _, y in cells) / len(cells)
+    return min(cells, key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c))

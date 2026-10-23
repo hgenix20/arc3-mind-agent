@@ -85,7 +85,7 @@ from arcagent.mind.config import MindConfig
 from arcagent.mind.facts import FactKey, FactMemory, Status, learn
 from arcagent.mind.goals import Goal, GoalBook, goal_sigs, mover_sigs
 from arcagent.mind.noise import NoiseMask
-from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker
+from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
@@ -165,10 +165,7 @@ class _Clicks:
     def cell(self, t: Thing) -> Cell:
         off = self._offset.get(t.shape)
         if off is None:
-            cells = sorted(t.cells)
-            cx = sum(x for x, _ in cells) / len(cells)
-            cy = sum(y for _, y in cells) / len(cells)
-            x, y = min(cells, key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c))
+            x, y = click_cell(t)
             off = (x - t.x, y - t.y)
             self._offset[t.shape] = off
         return t.x + off[0], t.y + off[1]
