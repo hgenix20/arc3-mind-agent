@@ -23,8 +23,10 @@ Branch rules:
 - A prediction whose key equals its parent's changes nothing that matters and is dropped.
 - ``match`` goals need a grid, so slice 1 search skips them.
 
-Bounded two ways: ``time_s`` of wall clock (read from ``clock`` before every expansion)
-and ``max_nodes`` expansions (``predict`` calls). Pure apart from the clock.
+Bounded two ways. ``max_nodes`` expansions (``predict`` calls) is the main bound: every
+game runs as a thread of one process, so a wall-clock budget would buy less search the
+more games share the GIL. ``time_s`` of wall clock (read from ``clock`` before every
+expansion) is only a safety cap. Pure apart from the clock.
 """
 
 from __future__ import annotations
@@ -41,8 +43,8 @@ from arcagent.mind.goals import Goal, goal_sigs, mover_sigs
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
 
-SEARCH_TIME_S = 0.25
-SEARCH_MAX_NODES = 20000
+SEARCH_MAX_NODES = 3000  # the main bound: predict calls per search
+SEARCH_TIME_S = 1.0  # wall-clock safety cap; shared with other game threads under the GIL
 
 Stop = Literal["found", "exhausted", "time", "nodes"]
 

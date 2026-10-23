@@ -10,7 +10,7 @@ from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import SPAWN, Effect, FactMemory, learn
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Tracker, shape_of
-from arcagent.mind.search import search
+from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, search
 
 Cells = dict[tuple[int, int], int]
 
@@ -105,6 +105,19 @@ def test_node_cap_and_exhaustion() -> None:
     assert search(s, simple_actions, FactMemory(), g).stop == "exhausted"
 
 
+def test_node_count_is_the_default_bound() -> None:
+    # A frozen clock: only the node cap can stop the search on an open board.
+    assert (SEARCH_MAX_NODES, SEARCH_TIME_S) == (3000, 1.0)
+    r = search(
+        scene_of({(30, 30): 1, (0, 0): 4}),
+        simple_actions,
+        moves((1, 2, 3, 4)),
+        [reach(PSIG, f"c7:{DOT}")],
+        clock=lambda: 0.0,
+    )
+    assert r.stop == "nodes" and r.nodes == SEARCH_MAX_NODES
+
+
 def test_match_goals_skipped_and_no_change_not_expanded() -> None:
     s = scene_of({(0, 0): 1, (5, 5): 4})
     g = Goal("match", region_a=(0, 0, 1, 1), region_b=(0, 0, 1, 1))
@@ -173,8 +186,8 @@ def test_side_objects_that_change_do_not_multiply_states() -> None:
         mem.record((f"A{i}", side, "any"), (Effect("recolor", color=6),), 0)
         mem.record((f"A{i}", f"c6:{DOT}", "any"), (Effect("recolor", color=5),), 0)
     goal = [reach(PSIG, TSIG)]
-    a = search(plain, simple_actions, mem, goal, time_s=60)
-    b = search(busy, simple_actions, mem, goal, time_s=60)
+    a = search(plain, simple_actions, mem, goal, time_s=60, max_nodes=20000)
+    b = search(busy, simple_actions, mem, goal, time_s=60, max_nodes=20000)
     assert a.stop == b.stop == "found" and len(a.plan) == len(b.plan) == 37
     assert b.nodes == a.nodes
 
