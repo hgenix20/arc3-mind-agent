@@ -10,7 +10,8 @@ Contract of ``Synthesizer.propose``:
 - Each extracted program is loaded in the sandbox as ``f"{game}-c{call_no}-k{i}"``, scored
   on every step given, and gated by ``admit_program``. ``pass`` and ``hold`` programs stay
   loaded (sleep re-scores held ones); ``drop`` programs are unloaded again, so the sandbox
-  holds only admitted and held programs. Dropped candidates are not in ``programs``.
+  holds only admitted and held programs. Dropped candidates are not in ``programs``;
+  each one's ``(pid, reason)`` is in ``dropped`` so the caller can log every wisdom drop.
 - ``REQUEST_META`` is set to ``{"game", "call", "k"}`` around each chat call and reset in
   a ``finally`` in the same thread, so a thread pool of games never sees another's value.
 - Only the ``max_transitions`` most recent steps go into the prompt (the prompt has a
@@ -28,7 +29,7 @@ import re
 import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -59,7 +60,11 @@ GOAL_HINT = (
 
 @dataclass(frozen=True, slots=True)
 class SynthResult:
-    """Outcome of one ``propose``: surviving ``(program, gate, hits, trials)`` rows."""
+    """Outcome of one ``propose``: surviving ``(program, gate, hits, trials)`` rows.
+
+    ``dropped`` holds ``(pid, gate reason)`` for every extracted program the wisdom
+    function dropped (requests with no program are counted in ``error`` instead).
+    """
 
     programs: list[tuple[Program, Gate, int, int]]
     calls: int
@@ -67,6 +72,7 @@ class SynthResult:
     prompt_tokens: int
     completion_tokens: int
     error: str | None
+    dropped: list[tuple[str, str]] = field(default_factory=lambda: [])
 
 
 @dataclass(slots=True)
@@ -182,6 +188,7 @@ class Synthesizer:
         trace = _AllTrainTrace(game, seed, win_levels, [_transition(s) for s in window])
         msgs = self._messages(trace, window, goal_evidence, repair, sandbox)
         programs: list[tuple[Program, Gate, int, int]] = []
+        dropped: list[tuple[str, str]] = []
         errors: list[str] = []
         prompt_tokens = completion_tokens = 0
 
@@ -213,6 +220,7 @@ class Synthesizer:
             gate = admit_program(hits, trials, load_error)
             if gate.verdict == "drop":
                 sandbox.unload(pid)
+                dropped.append((pid, gate.reason))
                 continue
             program = Program(pid, code, _GOAL_DEF.search(code) is not None, "llm")
             programs.append((program, gate, hits, trials))
@@ -223,4 +231,5 @@ class Synthesizer:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             error="; ".join(errors) if errors else None,
+            dropped=dropped,
         )

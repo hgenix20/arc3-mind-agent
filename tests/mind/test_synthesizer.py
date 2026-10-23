@@ -83,6 +83,8 @@ def test_propose_admits_good_holds_partial_drops_broken(sandbox: ProgramSandbox)
         ("g1-c2-k0", "pass"),
         ("g1-c2-k1", "hold"),
     ]
+    assert [pid for pid, _ in res.dropped] == ["g1-c2-k2"]
+    assert "below hold" in res.dropped[0][1]
     good, partial = res.programs[0], res.programs[1]
     assert good[0].has_goal and good[0].origin == "llm" and (good[2], good[3]) == (4, 4)
     assert not partial[0].has_goal and (partial[2], partial[3]) == (2, 4)

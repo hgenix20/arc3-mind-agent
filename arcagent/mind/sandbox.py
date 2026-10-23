@@ -21,6 +21,9 @@ Contract:
   timeout or an invalid grid (anything but 64 rows of 64 ints in -1..15).
 - Failing to start the worker at all raises ``OSError``: that is a broken
   environment, not model behavior.
+- Thread-safe: every public method holds one re-entrant lock, because the
+  game's thread and its synthesis call (on a pool thread) share the sandbox.
+  Without it two requests on the one pipe could take each other's replies.
 
 Isolation is best-effort (restricted builtins and imports, reduced
 environment, a 2 GB address-space cap on Linux), not a security boundary.
@@ -106,6 +109,7 @@ class ProgramSandbox:
         self._proc: subprocess.Popen[bytes] | None = None
         self._queue: queue.Queue[bytes | None] = queue.Queue()
         self._next_id = 0
+        self._lock = threading.RLock()
         self._spawn()
 
     def __enter__(self) -> ProgramSandbox:
@@ -121,8 +125,9 @@ class ProgramSandbox:
 
     def close(self) -> None:
         """Stop the worker and remove its working directory. Safe to call twice."""
-        self._kill()
-        self._tmp.cleanup()
+        with self._lock:
+            self._kill()
+            self._tmp.cleanup()
 
     # -- process management ------------------------------------------------
 
@@ -228,34 +233,41 @@ class ProgramSandbox:
 
     def load(self, pid: str, code: str) -> str | None:
         """Load (or replace) a program. Returns the load error, ``"timeout"``, or None."""
-        self._codes.pop(pid, None)
-        self.dropped.pop(pid, None)
-        reply = self._roundtrip({"op": "load", "pid": pid, "code": code}, self.timeout_s, None)
-        if reply is None:
-            return "timeout"
-        if "error" in reply:
-            return str(reply["error"])
-        self._codes[pid] = code
-        return None
+        with self._lock:
+            self._codes.pop(pid, None)
+            self.dropped.pop(pid, None)
+            reply = self._roundtrip({"op": "load", "pid": pid, "code": code}, self.timeout_s, None)
+            if reply is None:
+                return "timeout"
+            if "error" in reply:
+                return str(reply["error"])
+            self._codes[pid] = code
+            return None
 
     def unload(self, pid: str) -> None:
         """Forget a program; unknown ids are ignored."""
-        if self._codes.pop(pid, None) is not None:
-            self._roundtrip({"op": "unload", "pid": pid}, self.timeout_s, None)
+        with self._lock:
+            if self._codes.pop(pid, None) is not None:
+                self._roundtrip({"op": "unload", "pid": pid}, self.timeout_s, None)
 
     def predict_many(
         self, pids: Sequence[str], grid: Grid, actions: Sequence[Action]
     ) -> dict[tuple[str, ActionKey], str | None]:
         """Each program's predicted frame hash for each action on ``grid``; None is a miss."""
-        req: Reply = {"op": "predict", "grid": _rows(grid), "actions": [_wire(a) for a in actions]}
-        results = self._multi(req, pids)
-        out: dict[tuple[str, ActionKey], str | None] = {}
-        for pid in pids:
-            hashes = results.get(pid)
-            for i, a in enumerate(actions):
-                h = hashes[i] if isinstance(hashes, list) and i < len(hashes) else None
-                out[(pid, a.key())] = h if isinstance(h, str) else None
-        return out
+        with self._lock:
+            req: Reply = {
+                "op": "predict",
+                "grid": _rows(grid),
+                "actions": [_wire(a) for a in actions],
+            }
+            results = self._multi(req, pids)
+            out: dict[tuple[str, ActionKey], str | None] = {}
+            for pid in pids:
+                hashes = results.get(pid)
+                for i, a in enumerate(actions):
+                    h = hashes[i] if isinstance(hashes, list) and i < len(hashes) else None
+                    out[(pid, a.key())] = h if isinstance(h, str) else None
+            return out
 
     def predict(self, pids: Sequence[str], grid: Grid, action: Action) -> dict[str, str | None]:
         """Each program's predicted frame hash for ``action`` on ``grid``; None is a miss."""
@@ -264,26 +276,28 @@ class ProgramSandbox:
 
     def predict_grid(self, pid: str, grid: Grid, action: Action) -> Grid | None:
         """The predicted next grid, or None on a crash, timeout or invalid output."""
-        req: Reply = {
-            "op": "predict",
-            "grid": _rows(grid),
-            "actions": [_wire(action)],
-            "want_grid": True,
-        }
-        got = self._multi(req, [pid]).get(pid)
-        if not isinstance(got, list) or not got or got[0] is None:
-            return None
-        arr = np.asarray(got[0], dtype=np.int8)
-        return arr if arr.shape == (GRID_SIZE, GRID_SIZE) else None
+        with self._lock:
+            req: Reply = {
+                "op": "predict",
+                "grid": _rows(grid),
+                "actions": [_wire(action)],
+                "want_grid": True,
+            }
+            got = self._multi(req, [pid]).get(pid)
+            if not isinstance(got, list) or not got or got[0] is None:
+                return None
+            arr = np.asarray(got[0], dtype=np.int8)
+            return arr if arr.shape == (GRID_SIZE, GRID_SIZE) else None
 
     def goal(self, pids: Sequence[str], grid: Grid) -> dict[str, bool | None]:
         """Whether each program's ``goal`` holds on ``grid``; None if it has none or failed."""
-        results = self._multi({"op": "goal", "grid": _rows(grid)}, pids)
-        out: dict[str, bool | None] = {}
-        for pid in pids:
-            v = results.get(pid)
-            out[pid] = v if isinstance(v, bool) else None
-        return out
+        with self._lock:
+            results = self._multi({"op": "goal", "grid": _rows(grid)}, pids)
+            out: dict[str, bool | None] = {}
+            for pid in pids:
+                v = results.get(pid)
+                out[pid] = v if isinstance(v, bool) else None
+            return out
 
     def score(self, pid: str, steps: Sequence[Step]) -> tuple[int, int]:
         """``(exact_hits, trials)``: how many ``steps`` the program predicts cell for cell.
@@ -293,19 +307,20 @@ class ProgramSandbox:
         (timeout, crash, unknown pid) stops scoring and the result is ``(0, len(steps))``,
         the same as a single failed request; a timeout also drops the program as usual.
         """
-        if not steps:
-            return (0, 0)
-        total = 0
-        for lo in range(0, len(steps), SCORE_CHUNK):
-            wire = [
-                [_rows(s.before), _wire(s.action), frame_hash(s.after)]
-                for s in steps[lo : lo + SCORE_CHUNK]
-            ]
-            hits = self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
-            if not isinstance(hits, int):
-                return (0, len(steps))
-            total += hits
-        return (total, len(steps))
+        with self._lock:
+            if not steps:
+                return (0, 0)
+            total = 0
+            for lo in range(0, len(steps), SCORE_CHUNK):
+                wire = [
+                    [_rows(s.before), _wire(s.action), frame_hash(s.after)]
+                    for s in steps[lo : lo + SCORE_CHUNK]
+                ]
+                hits = self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
+                if not isinstance(hits, int):
+                    return (0, len(steps))
+                total += hits
+            return (total, len(steps))
 
     def plan(
         self,
@@ -325,28 +340,33 @@ class ProgramSandbox:
         search limit is capped below ``plan_timeout_s`` so a slow but healthy
         search stops itself before the hard deadline drops the program.
         """
-        if pid not in self._codes:
-            return SandboxPlan(None, "not_loaded", 0, 0.0, 0)
-        req: Reply = {
-            "op": "plan",
-            "pid": pid,
-            "grid": _rows(grid),
-            "actions": [_wire(a) for a in actions],
-            "target": target,
-            "visited": sorted(visited),
-            "max_nodes": max_nodes,
-            "time_limit_s": min(time_limit_s, self.plan_timeout_s * PLAN_LIMIT_FRACTION),
-        }
-        t0 = time.monotonic()
-        reply = self._roundtrip(req, self.plan_timeout_s, pid)
-        if reply is None:
-            return SandboxPlan(None, self.dropped.get(pid, "crash"), 0, time.monotonic() - t0, 0)
-        raw = reply.get("actions")
-        acts = None if raw is None else tuple(Action(int(a[0]), int(a[1]), int(a[2])) for a in raw)
-        return SandboxPlan(
-            actions=acts,
-            stopped=str(reply.get("stopped", "crash")),
-            expanded=int(reply.get("expanded", 0)),
-            seconds=float(reply.get("seconds", 0.0)),
-            errors=int(reply.get("errors", 0)),
-        )
+        with self._lock:
+            if pid not in self._codes:
+                return SandboxPlan(None, "not_loaded", 0, 0.0, 0)
+            req: Reply = {
+                "op": "plan",
+                "pid": pid,
+                "grid": _rows(grid),
+                "actions": [_wire(a) for a in actions],
+                "target": target,
+                "visited": sorted(visited),
+                "max_nodes": max_nodes,
+                "time_limit_s": min(time_limit_s, self.plan_timeout_s * PLAN_LIMIT_FRACTION),
+            }
+            t0 = time.monotonic()
+            reply = self._roundtrip(req, self.plan_timeout_s, pid)
+            if reply is None:
+                return SandboxPlan(
+                    None, self.dropped.get(pid, "crash"), 0, time.monotonic() - t0, 0
+                )
+            raw = reply.get("actions")
+            acts = (
+                None if raw is None else tuple(Action(int(a[0]), int(a[1]), int(a[2])) for a in raw)
+            )
+            return SandboxPlan(
+                actions=acts,
+                stopped=str(reply.get("stopped", "crash")),
+                expanded=int(reply.get("expanded", 0)),
+                seconds=float(reply.get("seconds", 0.0)),
+                errors=int(reply.get("errors", 0)),
+            )

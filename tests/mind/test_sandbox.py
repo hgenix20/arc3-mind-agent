@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from collections.abc import Iterator
 
 import numpy as np
@@ -299,3 +300,29 @@ def test_memory_hog_is_a_miss_under_the_address_space_cap(sb: ProgramSandbox) ->
     sb.load("good", GOOD)
     out = sb.predict(["hog", "good"], zeros(), Action(1))
     assert out["hog"] is None and out["good"] is not None
+
+
+def test_concurrent_callers_get_their_own_replies(sb: ProgramSandbox) -> None:
+    # A game thread and its synthesis thread share one sandbox.
+    sb.load("good", GOOD)
+    want = {a: frame_hash(good_after(a)) for a in (1, 2, 3)}
+    wrong: list[tuple[int, str | None]] = []
+
+    def hammer(action_id: int) -> None:
+        for _ in range(25):
+            got = sb.predict(["good"], zeros(), Action(action_id))["good"]
+            if got != want[action_id]:
+                wrong.append((action_id, got))
+
+    threads = [threading.Thread(target=hammer, args=(a,)) for a in (1, 2, 3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(30.0)
+    assert wrong == [] and sb.restarts == 0
+
+
+def good_after(action_id: int) -> Grid:
+    g = zeros()
+    g[0, 0] = action_id
+    return g
