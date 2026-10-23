@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,7 +19,7 @@ from arcagent.mind.synthesizer import GOAL_HINT, Synthesizer
 from arcagent.mind.types import Program, Step
 from arcagent.synth.prompt import Message
 from arcagent.synth.render import render_grid
-from arcagent.synth.run import Chat, Completion
+from arcagent.synth.run import Chat, Completion, request_seed
 from arcagent.synth.verify import IDENTITY_CODE
 
 # Writes the action id into cell (0, 0): the rule the steps below obey.
@@ -87,7 +89,7 @@ def test_propose_admits_good_holds_partial_drops_broken(sandbox: ProgramSandbox)
     # Admitted and held programs stay loaded; the dropped one is gone.
     assert sandbox.score("g1-c2-k0", make_steps()) == (4, 4)
     assert sandbox.score("g1-c2-k1", make_steps()) == (2, 4)
-    assert sandbox.score("g1-c2-k2", make_steps()) == (0, 4)  # unknown pid scores zero hits
+    assert "g1-c2-k2" not in sandbox._codes  # pyright: ignore[reportPrivateUsage]  # no public loaded-set
 
 
 def test_server_error_yields_no_programs_and_error_text(sandbox: ProgramSandbox) -> None:
@@ -187,3 +189,32 @@ def test_replay_falls_back_to_game_call_k_then_identity(
     finally:
         REQUEST_META.reset(token)
     assert IDENTITY_CODE in replay(msgs, 999).text  # no metadata at all
+
+
+def test_requests_run_concurrently_with_correct_metadata(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    threads: set[int] = set()
+
+    def slow(messages: list[Message], seed: int) -> Completion:
+        threads.add(threading.get_ident())
+        time.sleep(0.3)
+        return completion(fence(GOOD))
+
+    rec = recording_chat(slow, tmp_path)
+    t0 = time.perf_counter()
+    res = Synthesizer(rec, k=4).propose("g", 5, make_steps(), 3, [], None, sandbox, seed=2)
+    assert time.perf_counter() - t0 < 0.9
+    assert len(threads) > 1
+    assert [p.id for p, _, _, _ in res.programs] == [f"g-c5-k{i}" for i in range(4)]
+    docs = [json.loads(f.read_text(encoding="utf-8")) for f in tmp_path.glob("*.json")]
+    assert sorted((d["game"], d["call"], d["k"]) for d in docs) == [("g", 5, i) for i in range(4)]
+    assert all(d["seed"] == request_seed(2, 5, d["k"]) for d in docs)
+
+
+def test_error_text_is_truncated(sandbox: ProgramSandbox) -> None:
+    def chat(messages: list[Message], seed: int) -> Completion:
+        raise RuntimeError("x" * 5000)
+
+    res = Synthesizer(chat, k=2).propose("g", 1, make_steps(), 3, [], None, sandbox, seed=1)
+    assert res.error is not None and len(res.error) <= 2 * 300 + 2

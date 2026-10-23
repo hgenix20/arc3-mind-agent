@@ -54,6 +54,7 @@ WORKER_PATH = Path(__file__).with_name("_worker.py")
 PLANNER_PATH = Path(_planner.__file__)
 PLAN_LIMIT_FRACTION = 0.8  # leave the hard deadline headroom over the search's own limit
 KILL_WAIT_S = 5.0
+SCORE_CHUNK = 200  # steps per score request: ~0.85 ms/step must fit the per-request deadline
 
 Reply = dict[str, Any]
 
@@ -285,12 +286,26 @@ class ProgramSandbox:
         return out
 
     def score(self, pid: str, steps: Sequence[Step]) -> tuple[int, int]:
-        """``(exact_hits, trials)``: how many ``steps`` the program predicts cell for cell."""
+        """``(exact_hits, trials)``: how many ``steps`` the program predicts cell for cell.
+
+        Steps go to the worker in chunks of ``SCORE_CHUNK`` so each request gets its own
+        deadline and a long history cannot time out a correct program. A chunk that fails
+        (timeout, crash, unknown pid) stops scoring and the result is ``(0, len(steps))``,
+        the same as a single failed request; a timeout also drops the program as usual.
+        """
         if not steps:
             return (0, 0)
-        wire = [[_rows(s.before), _wire(s.action), frame_hash(s.after)] for s in steps]
-        hits = self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
-        return (hits if isinstance(hits, int) else 0, len(steps))
+        total = 0
+        for lo in range(0, len(steps), SCORE_CHUNK):
+            wire = [
+                [_rows(s.before), _wire(s.action), frame_hash(s.after)]
+                for s in steps[lo : lo + SCORE_CHUNK]
+            ]
+            hits = self._multi({"op": "score", "steps": wire}, [pid]).get(pid)
+            if not isinstance(hits, int):
+                return (0, len(steps))
+            total += hits
+        return (total, len(steps))
 
     def plan(
         self,

@@ -195,6 +195,16 @@ def _step(i: int, before: Grid, action: Action, after: Grid) -> Step:
     return Step(i, before, action, after, 0, 0, Phase.NOT_FINISHED)
 
 
+def test_score_sums_across_chunks(sb: ProgramSandbox) -> None:
+    sb.load("good", GOOD)
+    steps = []
+    for i in range(450):
+        after = zeros()
+        after[0, 0] = 1 if i % 3 else 2  # GOOD predicts the action id, 1 here
+        steps.append(_step(i, zeros(), Action(1), after))
+    assert sb.score("good", steps) == (300, 450)
+
+
 def test_score_counts_exact_hits(sb: ProgramSandbox) -> None:
     sb.load("good", GOOD)
     a1 = zeros()

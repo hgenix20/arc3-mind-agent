@@ -1,10 +1,12 @@
 """The slow layer: ask an open-weight LLM for K candidate rule programs and gate them.
 
 Contract of ``Synthesizer.propose``:
-- Sends K sequential requests with seeds ``request_seed(seed, call_no, i)``. Each request
-  is independent: any exception from ``chat`` (HTTP error, timeout, bad JSON) is caught,
-  its text goes to ``SynthResult.error``, and that request yields no program. A reply with
-  no code fence is the same: no program, and an error note.
+- Sends K concurrent requests (one worker thread each) with seeds
+  ``request_seed(seed, call_no, i)``. Each request is independent: any exception from
+  ``chat`` (HTTP error, timeout, bad JSON) is caught, its text (cut to ``MAX_ERROR_CHARS``)
+  goes to ``SynthResult.error``, and that request yields no program. A reply with no code
+  fence is the same: no program, and an error note. Load, score and gate then run on the
+  caller thread in order k0..k(K-1), so results are deterministic.
 - Each extracted program is loaded in the sandbox as ``f"{game}-c{call_no}-k{i}"``, scored
   on every step given, and gated by ``admit_program``. ``pass`` and ``hold`` programs stay
   loaded (sleep re-scores held ones); ``drop`` programs are unloaded again, so the sandbox
@@ -25,6 +27,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -35,13 +38,14 @@ from arcagent.mind.types import Gate, Program, Step
 from arcagent.mind.wisdom import admit_program
 from arcagent.synth.prompt import Message, build_messages, extract_code
 from arcagent.synth.render import render_grid
-from arcagent.synth.run import Chat, request_seed
+from arcagent.synth.run import Chat, Completion, request_seed
 from arcagent.synth.trace import Trace, Transition
 from arcagent.synth.verify import TransitionResult
 
 from .chat_store import REQUEST_META
 
 MAX_CELLS = 20  # per mismatch, the same cap the probe's verifier uses
+MAX_ERROR_CHARS = 300  # per request, so one long traceback cannot flood the event log
 MAX_EVIDENCE = 3  # level-up grid pairs shown in the goal hint
 _GOAL_DEF = re.compile(r"^\s*def goal\(", re.MULTILINE)
 
@@ -180,15 +184,23 @@ class Synthesizer:
         programs: list[tuple[Program, Gate, int, int]] = []
         errors: list[str] = []
         prompt_tokens = completion_tokens = 0
-        for i in range(self.k):
+
+        def request(i: int) -> Completion:
+            # Runs in a worker thread, which does not inherit the caller's context.
             token = REQUEST_META.set({"game": game, "call": call_no, "k": i})
             try:
-                comp = self.chat(msgs, request_seed(seed, call_no, i))
-            except Exception as exc:  # any server failure must cost one request, not the game
-                errors.append(f"request {i}: {type(exc).__name__}: {exc}")
-                continue
+                return self.chat(msgs, request_seed(seed, call_no, i))
             finally:
                 REQUEST_META.reset(token)
+
+        with ThreadPoolExecutor(max_workers=max(1, self.k)) as pool:
+            futures = [pool.submit(request, i) for i in range(self.k)]
+        for i, fut in enumerate(futures):
+            try:
+                comp = fut.result()
+            except Exception as exc:  # any server failure must cost one request, not the game
+                errors.append(f"request {i}: {type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS])
+                continue
             prompt_tokens += comp.prompt_tokens
             completion_tokens += comp.completion_tokens
             code = extract_code(comp.text)
