@@ -107,7 +107,7 @@ def build_submit_argv(
 
 
 def metrics_summary(logs: Path) -> Any | None:
-    """``scripts/mind_metrics.compute(logs)`` when that module exists, else None."""
+    """``mind_metrics.compute(load([logs]))`` when that module exists, else None."""
     path = ROOT / "scripts" / "mind_metrics.py"
     if not path.is_file():
         return None
@@ -117,7 +117,13 @@ def metrics_summary(logs: Path) -> Any | None:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     compute = getattr(module, "compute", None)
-    return compute(logs) if callable(compute) else None
+    load = getattr(module, "load", None)
+    if not callable(compute) or not callable(load):
+        return None
+    records, malformed = load([logs])
+    summary = compute(records)
+    summary["malformed_lines"] = malformed
+    return summary
 
 
 def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
