@@ -309,3 +309,142 @@ def test_agent_and_trace_take_the_same_actions(env_dir: Path) -> None:
 
     play_game(env, Recording(0), "ls20", max_actions=12)
     assert seen == [t.action for t in trace.transitions]
+
+
+def test_wait_for_model_times_out_with_last_error() -> None:
+    urls: list[str] = []
+
+    class Ok:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *a: Any) -> None:
+            return None
+
+    def fetch(url: str) -> Ok:
+        urls.append(url)
+        if len(urls) < 2:
+            raise OSError("connection refused")
+        return Ok()
+
+    ticks = iter(range(100))
+    waited = submit.wait_for_model(
+        "http://m:1/v1/",
+        50,
+        poll_s=1,
+        fetch=fetch,
+        clock=lambda: float(next(ticks)),
+        sleep=lambda s: None,
+    )
+    assert urls == ["http://m:1/v1/models"] * 2 and waited >= 0
+
+    def refuse(url: str) -> Ok:
+        raise OSError(f"loading weights #{len(urls)}")
+
+    with pytest.raises(TimeoutError, match=r"http://m:1/v1.*loading weights"):
+        submit.wait_for_model(
+            "http://m:1/v1",
+            3,
+            poll_s=1,
+            fetch=refuse,
+            clock=lambda: float(next(ticks)),
+            sleep=lambda s: None,
+        )
+
+
+def test_mind_policy_waits_for_model_before_scorecard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("pyarrow")
+    calls: list[str] = []
+
+    class Env:
+        game_id = "ls20-1"
+
+    class OrderArcade:
+        def __init__(self) -> None:
+            self.available_environments = [Env()]
+
+        def open_scorecard(self, tags: list[str]) -> str:
+            calls.append(f"open_scorecard {tags}")
+            return "card"
+
+        def make(self, game_id: str, scorecard_id: str, save_recording: bool) -> None:
+            calls.append("make")
+
+        def close_scorecard(self, card: str) -> dict[str, Any]:
+            calls.append("close_scorecard")
+            return {"score": 0.0, "environments": []}
+
+    def fake_wait(endpoint: str, timeout_s: float = 0.0) -> float:
+        calls.append(f"wait_for_model {endpoint}")
+        return 0.0
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> OrderArcade:
+        return OrderArcade()
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    monkeypatch.setattr(submit, "wait_for_model", fake_wait)
+    args = ["--mode", "offline", "--policy", "mind", "--out", str(tmp_path), "--workers", "2"]
+    doc = submit.main([*args, "--endpoint", "http://m:9/v1"])
+    assert calls == [
+        "wait_for_model http://m:9/v1",
+        "open_scorecard ['agent', 'arcagent-mind']",
+        "make",
+        "close_scorecard",
+    ]
+    cfg = doc["config"]
+    assert cfg["policy"] == "mind" and cfg["mind_config"] == "FULL" and cfg["workers"] == 2
+    assert cfg["endpoint"] == "http://m:9/v1" and cfg["replay"] is False and cfg["k"] == 4
+    assert doc["errors"] == [
+        {"game_id": "ls20-1", "error": "RuntimeError: arcade.make returned None"}
+    ]
+
+    # A model that never answers: the scorecard is never opened.
+    calls.clear()
+
+    def never(endpoint: str, timeout_s: float = 0.0) -> float:
+        calls.append("wait_for_model")
+        raise TimeoutError("model down")
+
+    monkeypatch.setattr(submit, "wait_for_model", never)
+    with pytest.raises(TimeoutError):
+        submit.main(args)
+    assert calls == ["wait_for_model"]
+
+    # Replay and the model-free config skip the wait entirely.
+    for extra in (["--replay"], ["--config", "EXPLORER"]):
+        calls.clear()
+        submit.main([*args, *extra])
+        assert calls[0].startswith("open_scorecard")
+
+
+def test_mind_policy_replay_end_to_end(env_dir: Path, tmp_path: Path) -> None:
+    """Real games, real mind agents, replayed model: logs per game, no errors."""
+    pytest.importorskip("pyarrow")
+    doc = submit.main(
+        [
+            "--mode",
+            "offline",
+            "--env-dir",
+            str(env_dir),
+            "--policy",
+            "mind",
+            "--replay",
+            "--games",
+            "ft09",
+            "vc33",
+            "--workers",
+            "2",
+            "--max-actions",
+            "20",
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    assert doc["errors"] == [] and doc["config"]["replay"] is True
+    assert all(g["actions"] == 20 for g in doc["games"])
+    for g in doc["games"]:
+        lines = (tmp_path / "logs" / f"{g['game_id']}.jsonl").read_text(encoding="utf-8")
+        kinds = [json.loads(line)["type"] for line in lines.splitlines()]
+        assert kinds.count("action") == 20 and kinds[-1] == "game_end"
