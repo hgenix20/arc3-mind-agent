@@ -9,6 +9,61 @@ on 2026-10-20: 110 private games (55 public leaderboard, 55 private), 9 hours
 of runtime, no internet, per-level score `min(human_actions / agent_actions,
 1)^2`, per-game score the level-index-weighted mean, total the mean over games.
 
+## The mind-agent entry
+
+The entry is one agent: the mind's loops driving a model-written world model,
+a planner over that model, and a Qwen3.6-27B-FP8 server inside the notebook.
+Its pieces:
+
+| piece | file | contract |
+|---|---|---|
+| mind loops | `arcagent/mind/` | per-game `Policy`: perception, belief over model-written programs, synthesis, sleep, transfer between levels; logs JSONL run records (`runlog.py`) |
+| planner | `arcagent/plan/planner.py` | bounded A* or BFS over a pure `step`; model-written code that raises prunes the branch and is counted, never raised |
+| scheduler | `arcagent/agent/scheduler.py` | games side by side on a thread pool under one scorecard; per-game deadline from the time left; one close in a `finally` |
+| runner | `arcagent/agent/submit.py` with `--policy mind` | one scorecard, every game, `results.json` and `submission.parquet`; `--replay` serves model replies from disk |
+| notebook | `scripts/kaggle_mind_notebook.py` | builds `build/kaggle-mind/`: wheels, vLLM serve, repo files, submit run, metrics; run budget computed from the notebook's start time |
+| offline loop | `scripts/offline_loop.py` | public games on CPU with model replies replayed from `bench/evals/*/replies`; wraps `submit.main`, adds no agent logic |
+| metrics | `scripts/mind_metrics.py` | the one definition of `levels_completed`, actions per level and score estimate, from the JSONL logs |
+
+### Daily routine
+
+1. Every change: run the offline loop. No GPU, no Kaggle quota.
+2. At most one GPU eval kernel a day. It is an interactive commit, and its
+   budget is scaled to the private run's per-game time (`RERUN_SECONDS` over
+   `PRIVATE_GAMES`), about 1.8 h for 25 games, so a version does not cost the
+   full run.
+3. Submit on a day when the eval completes more levels than the last
+   submitted version did. The first submission waits until the agent
+   completes levels EXPLORER can't: compare `levels_completed` per game
+   between the two evals.
+4. Only this agent uses the daily submission slots. Both final selections on
+   2026-11-02 are this agent.
+
+The Kaggle CLI on this machine is `C:/Users/Sagac/arc-scratch-venv/Scripts/kaggle.exe`.
+
+```
+python scripts/kaggle_mind_notebook.py --games all
+kaggle kernels push -p build/kaggle-mind
+kaggle kernels status hgenix20/arc3-mind-agent
+kaggle kernels output hgenix20/arc3-mind-agent -p bench/evals/<date>-<config>
+python scripts/mind_metrics.py bench/evals/<date>-<config>/logs
+python scripts/offline_loop.py --replies bench/evals/<date>-<config>/replies
+kaggle competitions submit -c arc-prize-2026-arc-agi-3 -k hgenix20/arc3-mind-agent -v <version> -f submission.parquet -m "<message>"
+```
+
+`kaggle competitions submissions -c arc-prize-2026-arc-agi-3` lists the
+results. One submission per day counts; the user's go is required before any.
+
+Eval v1 of `hgenix20/arc3-mind-agent` was pushed on 2026-10-23, before the
+interactive budget was scaled, so it ran with the full 8.5 h budget. Later
+versions use the scaled budget.
+
+## Earlier baselines
+
+What follows describes the probe and explore notebook and the Franzen-derived
+duck kernel, kept for their numbers and for the competition facts they
+record. The duck kernel is out of the entry (decided 2026-10-23).
+
 ## Pieces
 
 | piece | file | contract |
