@@ -17,15 +17,14 @@ Per ``choose(obs)``, in order:
    evidence, so all its programs go to ``store.held`` (a ``stale_result`` event
    each) for sleep and transfer to judge, never straight into the belief.
 5. Salience scores the step; on a wake with no call in flight, submit
-   ``synth.propose`` to the pool. While a call is in flight and the belief is
-   empty, wait in ``synth_wait_poll_s`` slices until the call finishes, the
-   shared idle clock reaches ``idle_act_s`` (one B0 action, branch ``wait``),
-   or the game deadline passes (one B0 action). With programs in the belief the
-   game acts and picks the result up on a later step.
-6. ``executive.decide``, ``activity.touch()``, one action record, return.
+   ``synth.propose`` to the pool. The game never waits for a call: while one is
+   in flight it keeps acting (B0 when the belief is empty, branch ``fallback``,
+   why ``b0 while synthesis runs``) and picks the result up on a later step.
+   So no game leaves the scorecard idle while the model works.
+6. ``executive.decide``, one action record, return.
 
-Past the game (or run) deadline the agent skips waking, waiting and planning
-and acts with B0 at once, so ``play_game`` can stop.
+Past the game (or run) deadline the agent skips waking and planning and acts
+with B0 at once, so ``play_game`` can stop.
 
 Failure guard: any ``Exception`` from the mind side of a step (sandbox,
 planner, collection, modules) is logged as ``agent_error`` and that step acts
@@ -56,11 +55,10 @@ arguments, never the belief or the stores.
 
 from __future__ import annotations
 
-import math
-import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import Executor, Future
+from dataclasses import replace
 from typing import Literal
 
 from arcagent.core.types import RESET_ID, Action, Observation, Phase
@@ -85,30 +83,11 @@ SYNTH_CUTOFF_FRACTION = 0.25  # share of a game's budget in which no call may st
 MAX_ERROR_CHARS = 300  # per logged error, so one traceback cannot flood the log
 
 
-class ActivityClock:
-    """When any game last sent an action. Shared by every game's thread."""
-
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
-        self._clock = clock
-        self._lock = threading.Lock()
-        self._last = clock()
-
-    def touch(self) -> None:
-        """Record an action sent now (by any game)."""
-        with self._lock:
-            self._last = self._clock()
-
-    def idle_s(self, now: float) -> float:
-        """Seconds since the last action, never negative."""
-        with self._lock:
-            return max(0.0, now - self._last)
-
-
 class MindAgent:
     """One game's mind. Implements ``arcagent.agent.play.Policy``.
 
     Raises ``ValueError`` when the config uses the LLM but no synthesizer is
-    given. ``sleep`` is the wait function (injectable with ``clock`` for tests).
+    given. ``clock`` is injectable for tests.
     """
 
     def __init__(
@@ -121,11 +100,9 @@ class MindAgent:
         pool: Executor,
         sandbox: ProgramSandbox,
         log: RunLog,
-        activity: ActivityClock,
         game_deadline: float,
         run_deadline: float,
         clock: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if cfg.llm and synth is None:
             raise ValueError(f"config {cfg.name} uses the LLM but no synthesizer was given")
@@ -136,11 +113,9 @@ class MindAgent:
         self._pool = pool
         self._sandbox = sandbox
         self._log = log
-        self._activity = activity
         self._game_deadline = game_deadline
         self._run_deadline = run_deadline
         self._clock = clock
-        self._sleep = sleep
         self._started = clock()
         self._salience = SalienceConfig()
 
@@ -201,9 +176,8 @@ class MindAgent:
             self._plan, self._active, self._wake = [], None, None
             decision = Decision(self._baseline.choose(obs, self._vetoes), "fallback", "agent_error")
         records, vetoes, wake = self._records, self._vetoes, self._wake
-        if decision.branch not in ("fallback", "wait"):
+        if decision.branch != "fallback":
             self._baseline.note(obs, decision.action)
-        self._activity.touch()
         a = decision.action
         self._log.action(
             level=obs.levels_completed,
@@ -240,7 +214,10 @@ class MindAgent:
             self._plan, self._active = [], None
             return Decision(self._baseline.choose(obs, self._vetoes), "fallback", "deadline passed")
         self._wake = self._maybe_wake(obs, step, self._records, now)
-        return self._wait(obs, self._vetoes) or self._decide(obs, self._vetoes)
+        decision = self._decide(obs, self._vetoes)
+        if self._future is not None and decision.why == "b0":
+            decision = replace(decision, why="b0 while synthesis runs")
+        return decision
 
     def _observe(self, obs: Observation) -> tuple[Step | None, list[PredictionRecord]]:
         """Steps 1 to 3 of the loop. Returns the step (None if there is none) and its records."""
@@ -458,30 +435,6 @@ class MindAgent:
             )
         for pid, reason in res.dropped:
             self._log.event("wisdom_drop", step=self._action_no, call=call, pid=pid, reason=reason)
-
-    def _wait(self, obs: Observation, vetoes: frozenset[ActionKey]) -> Decision | None:
-        """Block while a call runs and nothing in the belief can act; None means decide normally."""
-        fut = self._future
-        if fut is None or self.belief.programs or obs.terminal:
-            return None
-        poll = self.cfg.synth_wait_poll_s
-        deadline = min(self._game_deadline, self._run_deadline)
-        start = self._clock()
-        # Bounded by count as well as by time, in case the clock stalls.
-        max_polls = math.ceil(max(0.0, deadline - start) / poll) + 1
-        for _ in range(max_polls):
-            if fut.done():
-                self._collect()
-                return None
-            now = self._clock()
-            if now >= deadline:
-                break
-            idle = self._activity.idle_s(now)
-            if idle >= self.cfg.idle_act_s:
-                why = f"idle {idle:.0f}s while synthesis runs"
-                return Decision(self._baseline.choose(obs, vetoes), "wait", why)
-            self._sleep(poll)
-        return Decision(self._baseline.choose(obs, vetoes), "fallback", "deadline passed")
 
     # -- the executive -----------------------------------------------------
 

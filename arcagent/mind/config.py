@@ -40,8 +40,6 @@ class MindConfig:
     ``k``: candidate programs per synthesis call. ``max_calls_per_game``: the
     synthesis budget. ``plan_threshold`` and ``plan_min_trials``: the fit and
     evidence a program needs before the executive plans with it.
-    ``idle_act_s``: shared idle time after which a waiting game takes a B0
-    action. ``synth_wait_poll_s``: the slice a waiting game sleeps between checks.
     ``synth_cutoff_s``: no synthesis call starts with less than this left before
     the game (or run) deadline, so none is still running when the game ends.
     The agent caps it at ``SYNTH_CUTOFF_FRACTION`` (0.25) of the game's budget
@@ -59,8 +57,6 @@ class MindConfig:
     max_calls_per_game: int = 12
     plan_threshold: float = 0.9
     plan_min_trials: int = 5
-    idle_act_s: float = 600.0
-    synth_wait_poll_s: float = 1.0
     synth_cutoff_s: float = 300.0
 
 

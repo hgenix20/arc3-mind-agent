@@ -21,8 +21,8 @@ Mind policy (``--policy mind``): games run ``--workers`` at a time under one
 scorecard (``arcagent.agent.scheduler``), each with a fresh ``MindAgent`` on
 the ``--config`` ablation config. All games share one ``Synthesizer`` over the
 model server at ``--endpoint`` (every reply recorded under ``--replies-dir``),
-one synthesis thread pool of ``--workers`` threads and one ``ActivityClock``;
-each game gets its own sandbox and its run log at ``<log-dir>/<game>.jsonl``.
+and one synthesis thread pool of ``--workers`` threads; each game gets its own
+sandbox and its run log at ``<log-dir>/<game>.jsonl``.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
@@ -67,7 +67,7 @@ from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.agent.scheduler import DEFAULT_MAX_ACTIONS as MIND_MAX_ACTIONS
 from arcagent.agent.scheduler import MIND_TAGS, play_concurrent
 from arcagent.core.types import Action, Observation
-from arcagent.mind.agent import ActivityClock, MindAgent
+from arcagent.mind.agent import MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
 from arcagent.mind.runlog import RunLog
@@ -380,9 +380,9 @@ class MindGame:
 class MindRun:
     """The resources every game of one mind run shares, and the per-game factory.
 
-    Shared: one ``Synthesizer`` (none for a config without the LLM), one
+    Shared: one ``Synthesizer`` (none for a config without the LLM) and one
     synthesis thread pool of ``workers`` threads so each running game can have
-    a call in flight, and one ``ActivityClock``. Per game: a fresh
+    a call in flight. Per game: a fresh
     ``ProgramSandbox`` and a ``RunLog`` at ``<log_dir>/<game>.jsonl``. A game's
     seed is ``seed`` plus its index in ``games``. Call ``close`` once every
     game is done.
@@ -404,7 +404,6 @@ class MindRun:
         self.cfg = cfg
         self.synth = Synthesizer(chat, k=cfg.k) if cfg.llm and chat is not None else None
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="synth")
-        self.activity = ActivityClock()
         self._index = {g: i for i, g in enumerate(games)}
         self._log_dir = log_dir
         self._seed = seed
@@ -425,7 +424,6 @@ class MindRun:
                 pool=self.pool,
                 sandbox=sandbox,
                 log=log,
-                activity=self.activity,
                 game_deadline=deadline,
                 run_deadline=self._run_deadline,
             )

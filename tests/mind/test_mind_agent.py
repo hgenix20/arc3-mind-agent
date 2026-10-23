@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from arcagent.core.types import GRID_SIZE, RESET_ID, Action, Grid, Observation, Phase
-from arcagent.mind.agent import SYNTH_CUTOFF_FRACTION, ActivityClock, MindAgent
+from arcagent.mind.agent import SYNTH_CUTOFF_FRACTION, MindAgent
 from arcagent.mind.config import CONFIGS, MindConfig, build_modules
 from arcagent.mind.modules.base import NullTransfer, NullVoi
 from arcagent.mind.modules.inhibition import DisconfirmInhibition
@@ -171,8 +171,6 @@ def make_agent(
     *,
     pool: Executor | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
-    activity: ActivityClock | None = None,
     game_s: float = 3600.0,
 ) -> tuple[MindAgent, RunLog]:
     log = RunLog(tmp_path / "g.jsonl", "g", cfg.name, 0)
@@ -186,11 +184,9 @@ def make_agent(
         pool=pool or ImmediateExecutor(),
         sandbox=sandbox,
         log=log,
-        activity=activity or ActivityClock(clock),
         game_deadline=now + game_s,
         run_deadline=now + game_s + 3600.0,
         clock=clock,
-        sleep=sleep,
     )
     return agent, log
 
@@ -233,15 +229,6 @@ def test_configs_and_module_factory() -> None:
         CONFIGS["FULL"].k = 2  # pyright: ignore[reportAttributeAccessIssue]  # frozen on purpose
 
 
-def test_activity_clock_is_shared_idle_time() -> None:
-    now = [100.0]
-    act = ActivityClock(lambda: now[0])
-    now[0] = 130.0
-    assert act.idle_s(now[0]) == 30.0
-    act.touch()
-    assert act.idle_s(131.0) == 1.0
-
-
 def test_explorer_config_never_calls_llm(tmp_path: Path, sandbox: ProgramSandbox) -> None:
     chat, calls = counting_chat(TRUE_RULES)
     agent, _ = make_agent(tmp_path, sandbox, CONFIGS["EXPLORER"], chat)
@@ -282,49 +269,46 @@ def test_full_config_wakes_after_explore_steps_then_plans_to_goal(
     assert final.won  # level 2 is solved the same way after a second call
 
 
-def test_waits_for_synthesis_without_acting_until_idle_limit(
-    tmp_path: Path, sandbox: ProgramSandbox
-) -> None:
-    now = [1000.0]
+def test_b0_keeps_acting_while_synthesis_runs(tmp_path: Path, sandbox: ProgramSandbox) -> None:
+    """An empty belief never blocks the game: B0 acts until the call finishes."""
     released = threading.Event()
-    slept: list[float] = []
 
     def blocked_chat(messages: list[Message], seed: int) -> Completion:
         released.wait(30.0)
         return reply(TRUE_RULES)
 
-    def fake_sleep(seconds: float) -> None:
-        slept.append(seconds)
-        now[0] += seconds
-        if released.is_set():
-            time.sleep(0.01)  # let the pool thread finish
-
-    cfg = CONFIGS["FULL"]
     with ThreadPoolExecutor(max_workers=2) as pool:
-        agent, _ = make_agent(
-            tmp_path, sandbox, cfg, blocked_chat, pool=pool, clock=lambda: now[0], sleep=fake_sleep
-        )
+        agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], blocked_chat, pool=pool)
         game = Corridor(pit_x=63, pit_visible=False)  # the goal comes first: no game over
         obs = game.obs()
         for _ in range(20):
             obs = game.step(agent.choose(obs))
-        assert slept == []
-        before = now[0]
-        obs = game.step(agent.choose(obs))  # wakes, submits, belief empty: waits
+        t0 = time.monotonic()
+        for _ in range(10):  # the wake step and nine more, all while the call is blocked
+            obs = game.step(agent.choose(obs))
+        assert time.monotonic() - t0 < 5.0
         acts = actions_of(records(tmp_path))
-        assert acts[-1]["wake"] == "new_game"
-        assert acts[-1]["branch"] == "wait"
-        assert now[0] - before >= cfg.idle_act_s
-        assert len(slept) == int(cfg.idle_act_s / cfg.synth_wait_poll_s)
-        assert set(slept) == {cfg.synth_wait_poll_s}
-        assert not any(a["branch"] == "wait" for a in acts[:-1])
+        i_wake = next(i for i, a in enumerate(acts) if a["wake"] is not None)
+        assert acts[i_wake]["wake"] == "new_game"
+        in_flight = acts[i_wake:]
+        assert len(in_flight) >= 5
+        assert all(a["branch"] == "fallback" for a in in_flight)
+        assert all(a["why"] == "b0 while synthesis runs" for a in in_flight)
+        assert not [r for r in records(tmp_path) if r["type"] == "llm_call"]
         released.set()
+        # The finished call is collected on a later step.
+        for _ in range(200):
+            obs = game.step(agent.choose(obs))
+            if any(r["type"] == "llm_call" for r in records(tmp_path)):
+                break
+            time.sleep(0.01)
         for _ in range(5):
             obs = game.step(agent.choose(obs))
         agent.close()
     recs = records(tmp_path)
     assert [r["admitted"] for r in recs if r["type"] == "llm_call"] == [4]
     assert any(a["branch"] == "plan" for a in actions_of(recs))
+    assert not any(a["branch"] == "wait" for a in actions_of(recs))
 
 
 def test_game_over_mid_plan_resets_clears_plan_and_vetoes(
@@ -457,29 +441,14 @@ def test_sleep_replay_drop_is_logged_once(tmp_path: Path, sandbox: ProgramSandbo
 
 
 def test_stale_result_goes_to_held_not_belief(tmp_path: Path, sandbox: ProgramSandbox) -> None:
-    now = [1000.0]
     released = threading.Event()
 
     def blocked_chat(messages: list[Message], seed: int) -> Completion:
         released.wait(30.0)
         return reply(ONE_WAY_RULES)
 
-    def fake_sleep(seconds: float) -> None:
-        now[0] += seconds
-        if released.is_set():
-            time.sleep(0.01)
-
     with ThreadPoolExecutor(max_workers=2) as pool:
-        agent, _ = make_agent(
-            tmp_path,
-            sandbox,
-            CONFIGS["FULL"],
-            blocked_chat,
-            pool=pool,
-            clock=lambda: now[0],
-            sleep=fake_sleep,
-            game_s=1e6,  # each wait spends 600 fake seconds
-        )
+        agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], blocked_chat, pool=pool)
         game = Corridor(pit_x=63, pit_visible=False, one_way=True)
         obs = game.obs()
         # The call starts on level 0 and is still running at the level-up.
@@ -487,8 +456,11 @@ def test_stale_result_goes_to_held_not_belief(tmp_path: Path, sandbox: ProgramSa
             obs = game.step(agent.choose(obs))
         agent.choose(obs)  # sees the level-up while the call is in flight
         released.set()
-        for _ in range(3):
+        for _ in range(200):  # until the finished call is collected
             obs = game.step(agent.choose(obs))
+            if any(r["type"] == "llm_call" for r in records(tmp_path)):
+                break
+            time.sleep(0.01)
         agent.close()
     recs = records(tmp_path)
     stale = [r for r in recs if r["type"] == "stale_result"]
@@ -570,9 +542,7 @@ def test_no_synthesis_call_starts_inside_the_cutoff(
     cfg = CONFIGS["FULL"]
     budget = 4 * cfg.synth_cutoff_s  # long enough that the absolute cutoff binds
     now = [1000.0]
-    agent, _ = make_agent(
-        tmp_path, sandbox, cfg, chat, clock=lambda: now[0], sleep=lambda _s: None, game_s=budget
-    )
+    agent, _ = make_agent(tmp_path, sandbox, cfg, chat, clock=lambda: now[0], game_s=budget)
     now[0] += budget - cfg.synth_cutoff_s + 10.0  # inside the last 300 s
     play(agent, Corridor(), 40)
     agent.close()
@@ -596,9 +566,7 @@ def test_cutoff_scales_to_a_short_game_budget(tmp_path: Path, sandbox: ProgramSa
     assert budget < cfg.synth_cutoff_s
     chat, calls = counting_chat(TRUE_RULES)
     now = [1000.0]
-    agent, _ = make_agent(
-        tmp_path, sandbox, cfg, chat, clock=lambda: now[0], sleep=lambda _s: None, game_s=budget
-    )
+    agent, _ = make_agent(tmp_path, sandbox, cfg, chat, clock=lambda: now[0], game_s=budget)
     play(agent, Corridor(), 40)
     agent.close()
     assert calls, "a short game must still start a synthesis call"
@@ -612,7 +580,6 @@ def test_cutoff_scales_to_a_short_game_budget(tmp_path: Path, sandbox: ProgramSa
             cfg,
             chat2,
             clock=lambda: now2[0],
-            sleep=lambda _s: None,
             game_s=budget,
         )
         now2[0] += budget * (1.0 - SYNTH_CUTOFF_FRACTION) + 1.0
