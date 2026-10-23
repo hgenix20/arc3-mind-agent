@@ -72,8 +72,14 @@ class Gate:
 
 @dataclass(frozen=True, slots=True)
 class Decision:
-    """The action chosen for this tick and the branch that chose it."""
+    """The action chosen for this tick and the branch that chose it.
+
+    ``program`` is the id of the program whose plan produced the action (a
+    follow, plan-to-goal or plan-to-novel step), else None. The agent uses it as
+    the active program, which drives inhibition and the follow gate.
+    """
 
     action: Action
     branch: Branch
     why: str
+    program: str | None = None

@@ -13,6 +13,8 @@ Contract with the caller:
   ``best`` is None the ``learn`` branch is skipped.
 - The returned plan is what remains after this step (empty unless a plan
   branch acted).
+- ``Decision.program`` names the program a plan step came from: ``active`` for
+  a follow step, ``best`` for a new plan; None for VOI, B0 and reset.
 """
 
 from __future__ import annotations
@@ -58,15 +60,16 @@ class Executive:
             return Decision(Action(RESET_ID), "reset", "terminal or reset-only"), []
         vetoes = inp.vetoes
 
-        if inp.plan and gate_plan_step(inp.active).verdict == "pass":
+        active = inp.active
+        if inp.plan and active is not None and gate_plan_step(active).verdict == "pass":
             first, rest = inp.plan[0], inp.plan[1:]
             if gate_action(first, vetoes).verdict == "pass":
                 why = f"plan step, {len(rest)} left"
-                return Decision(first, "follow", why), rest
+                return Decision(first, "follow", why, active.program.id), rest
 
         best = inp.best
         if best is not None and best.fit >= inp.plan_threshold and best.program.has_goal:
-            got = self._take_plan(self._plan_to_goal(best), vetoes, "plan to goal", "plan")
+            got = self._take_plan(self._plan_to_goal(best), vetoes, "plan to goal", "plan", best)
             if got is not None:
                 return got
 
@@ -75,7 +78,7 @@ class Executive:
             if pick is not None and gate_action(pick, vetoes).verdict == "pass":
                 return Decision(pick, "learn", "voi pick"), []
         elif inp.n_programs == 1 and best is not None:
-            got = self._take_plan(self._plan_to_novel(best), vetoes, "plan to novel", "learn")
+            got = self._take_plan(self._plan_to_novel(best), vetoes, "plan to novel", "learn", best)
             if got is not None:
                 return got
 
@@ -87,8 +90,9 @@ class Executive:
         vetoes: frozenset[ActionKey],
         why: str,
         branch: Branch,
+        source: ProgramState,
     ) -> tuple[Decision, list[Action]] | None:
         if not plan or gate_action(plan[0], vetoes).verdict != "pass":
             return None
-        decision = Decision(plan[0], branch, why)
+        decision = Decision(plan[0], branch, why, source.program.id)
         return decision, plan[1:]

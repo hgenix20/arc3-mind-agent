@@ -71,6 +71,9 @@ def test_executive_order(
     assert decision.action.id == action_id
     assert remaining == rest
     assert decision.why
+    # Only plan steps name the program they came from.
+    planned = branch in ("follow", "plan") or (branch == "learn" and rest)
+    assert decision.program == ("p" if planned else None)
 
 
 def test_plan_dropped_when_active_program_missed() -> None:

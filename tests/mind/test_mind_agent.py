@@ -24,6 +24,7 @@ from arcagent.mind.perception import frame_hash
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
 from arcagent.mind.synthesizer import Synthesizer
+from arcagent.mind.types import Program
 from arcagent.synth.prompt import Message
 from arcagent.synth.run import Chat, Completion
 
@@ -65,12 +66,25 @@ def goal(grid):
 """
 
 
+# Rules for the one-way corridor, where both actions move right.
+ONE_WAY_RULES = TRUE_RULES.replace("q = p - 1", "q = p + 1")
+
+
 class Corridor:
     """Row 32 is the corridor. Action 1 moves left, 2 right. The goal cell raises the
     level and shows the next level's start; the pit cell ends the game (RESET restarts
-    the level). A hidden pit is drawn as floor."""
+    the level). A hidden pit is drawn as floor. ``one_way`` makes action 1 move right
+    too, so any policy reaches the goal in 56 actions."""
 
-    def __init__(self, *, pit_x: int = 1, pit_visible: bool = True, win_levels: int = 2) -> None:
+    def __init__(
+        self,
+        *,
+        pit_x: int = 1,
+        pit_visible: bool = True,
+        win_levels: int = 2,
+        one_way: bool = False,
+    ) -> None:
+        self.one_way = one_way
         self.pit_x = pit_x
         self.pit_visible = pit_visible
         self.win_levels = win_levels
@@ -97,7 +111,8 @@ class Corridor:
             return self.obs()
         if self.phase != Phase.NOT_FINISHED:
             return self.obs()
-        q = self.pos + (-1 if action.id == 1 else 1 if action.id == 2 else 0)
+        left = -1 if not self.one_way else 1
+        q = self.pos + (left if action.id == 1 else 1 if action.id == 2 else 0)
         self.pos = min(max(q, 0), GRID_SIZE - 1)
         if self.pos == self.pit_x:
             self.phase = Phase.GAME_OVER
@@ -170,7 +185,7 @@ def make_agent(
         log=log,
         activity=activity or ActivityClock(clock),
         game_deadline=now + game_s,
-        run_deadline=now + 7200.0,
+        run_deadline=now + game_s + 3600.0,
         clock=clock,
         sleep=sleep,
     )
@@ -397,6 +412,7 @@ def test_level_up_runs_sleep_and_transfer(tmp_path: Path, sandbox: ProgramSandbo
     assert any(a["wake"] == "belief_empty" for a in later)
     last_action = max(i for i, k in enumerate(kinds) if k == "action")
     assert "sleep" in kinds[last_action:] and kinds[-1] == "game_end"
+    assert all(len(v) == 1 for v in drops_by_pid(recs).values())
 
 
 def test_past_the_game_deadline_acts_on_b0_at_once(tmp_path: Path, sandbox: ProgramSandbox) -> None:
@@ -409,3 +425,134 @@ def test_past_the_game_deadline_acts_on_b0_at_once(tmp_path: Path, sandbox: Prog
     acts = actions_of(recs)
     assert len(acts) == 30
     assert all(a["why"] == "deadline passed" for a in acts)
+
+
+def drops_by_pid(recs: list[dict[str, Any]]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for r in recs:
+        if r["type"] == "program_dropped":
+            out.setdefault(r["pid"], []).append(r["reason"])
+    return out
+
+
+def test_sleep_replay_drop_is_logged_once(tmp_path: Path, sandbox: ProgramSandbox) -> None:
+    # A belief program consolidated at the level-up and then dropped by replay used to be
+    # logged twice (sleep_replay and level_end).
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], failing_chat)
+    game = Corridor(pit_x=63, pit_visible=False, one_way=True)
+    obs = game.obs()
+    while game.levels == 0:
+        obs = game.step(agent.choose(obs))
+    frozen = "def step(grid, action, x=-1, y=-1):\n    return [r[:] for r in grid]\n"
+    assert agent.belief.add(Program("frozen", frozen, False, "llm"), hits=9, trials=10) is None
+    agent.choose(obs)  # observes the level-up step: 9/11 consolidates, replay finds 0 hits
+    agent.close()
+    drops = drops_by_pid(records(tmp_path))
+    assert drops["frozen"] == ["sleep_replay"]
+    assert all(len(v) == 1 for v in drops.values())
+
+
+def test_stale_result_goes_to_held_not_belief(tmp_path: Path, sandbox: ProgramSandbox) -> None:
+    now = [1000.0]
+    released = threading.Event()
+
+    def blocked_chat(messages: list[Message], seed: int) -> Completion:
+        released.wait(30.0)
+        return reply(ONE_WAY_RULES)
+
+    def fake_sleep(seconds: float) -> None:
+        now[0] += seconds
+        if released.is_set():
+            time.sleep(0.01)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        agent, _ = make_agent(
+            tmp_path,
+            sandbox,
+            CONFIGS["FULL"],
+            blocked_chat,
+            pool=pool,
+            clock=lambda: now[0],
+            sleep=fake_sleep,
+            game_s=1e6,  # each wait spends 600 fake seconds
+        )
+        game = Corridor(pit_x=63, pit_visible=False, one_way=True)
+        obs = game.obs()
+        # The call starts on level 0 and is still running at the level-up.
+        while game.levels == 0:
+            obs = game.step(agent.choose(obs))
+        agent.choose(obs)  # sees the level-up while the call is in flight
+        released.set()
+        for _ in range(3):
+            obs = game.step(agent.choose(obs))
+        agent.close()
+    recs = records(tmp_path)
+    stale = [r for r in recs if r["type"] == "stale_result"]
+    assert [r["pid"] for r in stale] == [f"g-c0-k{i}" for i in range(4)]
+    assert all(r["submit_level"] == 0 and r["level"] == 1 for r in stale)
+    first = next(r for r in recs if r["type"] == "llm_call")
+    assert (first["call"], first["admitted"], first["held"]) == (0, 0, 4)
+    assert not [r for r in recs if r["type"] == "program_admitted" and r["call"] == 0]
+    # Held at collection; the game-end sleep's replay promotes them (they fit every step).
+    assert {r["pid"] for r in stale} <= set(agent.store.held) | set(agent.store.procedural)
+    assert not [r for r in recs if r["type"] == "program_dropped"]
+    assert not {r["pid"] for r in stale} & set(agent.belief.programs)
+
+
+def test_lone_program_below_min_trials_does_not_plan_to_goal(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    chat, _ = counting_chat(TRUE_RULES)
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], chat)
+    assert agent.belief.add(Program("lone", TRUE_RULES, True, "llm"), hits=1, trials=1) is None
+    agent.choose(Corridor().obs())
+    agent.close()
+    recs = records(tmp_path)
+    assert [r["target"] for r in recs if r["type"] == "plan"] == ["novel"]
+    act = actions_of(recs)[0]
+    assert act["branch"] == "learn" and act["active"] == "lone"
+
+
+def test_mind_side_error_falls_back_to_b0(
+    tmp_path: Path, sandbox: ProgramSandbox, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chat, _ = counting_chat(TRUE_RULES)
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], chat)
+    game = Corridor(pit_x=63, pit_visible=False)
+    obs = play(agent, game, 25)
+    assert agent.belief.programs  # admitted after the first wake
+
+    def broken_predict(*args: object, **kwargs: object) -> dict[str, str | None]:
+        raise RuntimeError("worker pipe broke")
+
+    monkeypatch.setattr(sandbox, "predict", broken_predict)
+    for _ in range(5):
+        obs = game.step(agent.choose(obs))
+    monkeypatch.undo()
+    agent.close()
+    recs = records(tmp_path)
+    errors = [r for r in recs if r["type"] == "agent_error"]
+    assert len(errors) == 5 and all("RuntimeError: worker pipe broke" in e["error"] for e in errors)
+    acts = actions_of(recs)
+    assert len(acts) == 30
+    assert all(a["why"] == "agent_error" and a["branch"] == "fallback" for a in acts[-5:])
+
+
+class RefusingExecutor(Executor):
+    """A pool that has been shut down."""
+
+    def submit(self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Future[Any]:
+        raise RuntimeError("cannot schedule new futures after shutdown")
+
+
+def test_failed_submit_logs_no_wake(tmp_path: Path, sandbox: ProgramSandbox) -> None:
+    chat, calls = counting_chat(TRUE_RULES)
+    pool = RefusingExecutor()
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], chat, pool=pool)
+    play(agent, Corridor(pit_x=63, pit_visible=False), 30)
+    agent.close()
+    recs = records(tmp_path)
+    failed = [r for r in recs if r["type"] == "llm_call"]
+    assert failed and all(r["error"].startswith("submit failed") for r in failed)
+    assert calls == []
+    assert all(a["wake"] is None for a in actions_of(recs))

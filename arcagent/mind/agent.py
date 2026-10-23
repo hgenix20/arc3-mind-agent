@@ -12,7 +12,10 @@ Per ``choose(obs)``, in order:
    because the level restarts with the same frames; only sleep empties it.
 3. ``metacognition.review``; remove and log what it names.
 4. Collect a finished synthesis call: ``pass`` programs enter the belief,
-   ``hold`` programs go to ``store.held``, and every drop is logged.
+   ``hold`` programs go to ``store.held``, and every drop is logged. A call
+   submitted on an earlier level is stale: its fits are the old level's
+   evidence, so all its programs go to ``store.held`` (a ``stale_result`` event
+   each) for sleep and transfer to judge, never straight into the belief.
 5. Salience scores the step; on a wake with no call in flight, submit
    ``synth.propose`` to the pool. While a call is in flight and the belief is
    empty, wait in ``synth_wait_poll_s`` slices until the call finishes, the
@@ -21,8 +24,13 @@ Per ``choose(obs)``, in order:
    game acts and picks the result up on a later step.
 6. ``executive.decide``, ``activity.touch()``, one action record, return.
 
-Past the game deadline the agent skips waking, waiting and planning and acts
-with B0 at once, so ``play_game`` can stop.
+Past the game (or run) deadline the agent skips waking, waiting and planning
+and acts with B0 at once, so ``play_game`` can stop.
+
+Failure guard: any ``Exception`` from the mind side of a step (sandbox,
+planner, collection, modules) is logged as ``agent_error`` and that step acts
+with B0 (branch ``fallback``, why ``agent_error``). B0's own bookkeeping and
+the log write run outside the guard.
 
 Invariants:
 - ``call_no`` is strictly increasing for the agent's lifetime (program ids
@@ -31,6 +39,9 @@ Invariants:
   belief or the store (metacognition, sandbox, sleep replay, level end),
   ``wisdom_drop`` for a candidate refused at admission.
 - The action record's ``wake`` is the reason only when it started a call.
+- ``active`` is ``Decision.program``: the program whose plan produced the
+  action, set by the executive. A goal plan needs ``plan_min_trials`` and
+  ``plan_threshold``; a lone program below them may only plan to novelty.
 - At most ``max_calls_per_game`` calls; planner bounds come from the drive state.
 
 Threading: the agent runs on its game's thread. Its synthesis call runs on a
@@ -65,6 +76,7 @@ from arcagent.mind.synthesizer import Synthesizer, SynthResult
 from arcagent.mind.types import ActionKey, Decision, Program, Step
 
 MISS_MEMORY = 20  # recent missed step indices kept per program, for the repair prompt
+MAX_ERROR_CHARS = 300  # per logged error, so one traceback cannot flood the log
 
 
 class ActivityClock:
@@ -156,27 +168,33 @@ class MindAgent:
         self._obs: Observation | None = None
         self._drive = self._drive_state(self._started)
         self._voi_scores: dict[str, float] = {}
-        self._planned_pid: str | None = None
+        self._level = 0
+        self._future_level = 0
+        self._records: list[PredictionRecord] = []
+        self._vetoes: frozenset[ActionKey] = frozenset()
+        self._wake: str | None = None
 
     # -- the step ----------------------------------------------------------
 
     def choose(self, obs: Observation) -> Action:
         """One action for ``obs``; see the module docstring for the order."""
         now = self._clock()
-        step, records = self._observe(obs)
         frame = frame_hash(obs.grid)
-        self._visited.add(frame)
         self._obs = obs
+        self._level = obs.levels_completed
+        self._records, self._vetoes, self._wake = [], frozenset(), None
         self._baseline.observe(obs)
-        self._collect()
-        vetoes = self._modules.inhibition.vetoes(frame, self.wm, self.store)
-        wake: str | None = None
-        if now >= min(self._game_deadline, self._run_deadline):
-            decision = Decision(self._baseline.choose(obs, vetoes), "fallback", "deadline passed")
-            self._plan, self._active = [], None
-        else:
-            wake = self._maybe_wake(obs, step, records, now)
-            decision = self._wait(obs, vetoes) or self._decide(obs, vetoes)
+        try:
+            decision = self._mind_step(obs, frame, now)
+        except Exception as exc:  # a mind-side failure costs this step's reasoning, not the game
+            self._log.event(
+                "agent_error",
+                step=self._action_no,
+                error=f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS],
+            )
+            self._plan, self._active, self._wake = [], None, None
+            decision = Decision(self._baseline.choose(obs, self._vetoes), "fallback", "agent_error")
+        records, vetoes, wake = self._records, self._vetoes, self._wake
         if decision.branch not in ("fallback", "wait"):
             self._baseline.note(obs, decision.action)
         self._activity.touch()
@@ -201,6 +219,22 @@ class MindAgent:
         self._prev = (obs, a)
         self._action_no += 1
         return a
+
+    def _mind_step(self, obs: Observation, frame: str, now: float) -> Decision:
+        """Everything but B0's bookkeeping and the log write; ``choose`` guards it.
+
+        Partial results go to ``_records``, ``_vetoes`` and ``_wake`` as they are
+        computed, so a failure later in the step still logs and honors them.
+        """
+        step, self._records = self._observe(obs)
+        self._visited.add(frame)
+        self._collect()
+        self._vetoes = self._modules.inhibition.vetoes(frame, self.wm, self.store)
+        if now >= min(self._game_deadline, self._run_deadline):
+            self._plan, self._active = [], None
+            return Decision(self._baseline.choose(obs, self._vetoes), "fallback", "deadline passed")
+        self._wake = self._maybe_wake(obs, step, self._records, now)
+        return self._wait(obs, self._vetoes) or self._decide(obs, self._vetoes)
 
     def _observe(self, obs: Observation) -> tuple[Step | None, list[PredictionRecord]]:
         """Steps 1 to 3 of the loop. Returns the step (None if there is none) and its records."""
@@ -255,10 +289,13 @@ class MindAgent:
         if self._null_transfer:
             self._baseline.reset_priors()
         self._log.event("transfer", step=step.index, carried=carried, null=self._null_transfer)
+        # One event per program: a sleep-replay drop is not also a level_end drop.
+        states = dict(left)
         for pid, state in left:
-            self._log_drop(pid, "level_end", step.index, state)
+            if pid not in report.dropped:
+                self._log_drop(pid, "level_end", step.index, state)
         for pid in report.dropped:
-            self._log_drop(pid, "sleep_replay", step.index, None)
+            self._log_drop(pid, "sleep_replay", step.index, states.get(pid))
         self._carried = bool(carried)
         self._plan, self._active = [], None
         self._visited = set()
@@ -301,15 +338,15 @@ class MindAgent:
             drive=self._drive_state(now),
             cfg=self._salience,
         )
-        if wake is None:
+        if wake is None or not self._submit(obs):
             return None
-        self._submit(obs)
         return wake
 
-    def _submit(self, obs: Observation) -> None:
+    def _submit(self, obs: Observation) -> bool:
+        """Start one call; False if it could not be submitted (the call is still spent)."""
         synth = self._synth
         if synth is None:
-            return
+            return False
         call_no = self._calls_made
         self._calls_made += 1
         self._steps_since_call = 0
@@ -327,10 +364,12 @@ class MindAgent:
             )
         except RuntimeError as exc:  # a shut-down pool costs this call, not the game
             self._log_call(call_no, None, 0, 0, 0, f"submit failed: {exc}")
-            return
+            return False
         self._future_call = call_no
+        self._future_level = obs.levels_completed
         if self._future.done():
             self._collect()
+        return True
 
     def _repair(self) -> tuple[Program, list[Step]] | None:
         """The best live program and its recent misses on this level, if it has any."""
@@ -351,7 +390,10 @@ class MindAgent:
         try:
             res = fut.result()
         except Exception as exc:  # propose itself failed: the call is lost, the game goes on
-            self._log_call(call, None, 0, 0, 0, f"{type(exc).__name__}: {exc}"[:300])
+            self._log_call(call, None, 0, 0, 0, f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS])
+            return
+        if self._future_level != self._level:
+            self._collect_stale(call, res)
             return
         refused = list(res.dropped)
         admits: list[tuple[Program, str, str, int, int]] = []
@@ -382,34 +424,59 @@ class MindAgent:
         for pid, reason in refused:
             self._log.event("wisdom_drop", step=self._action_no, call=call, pid=pid, reason=reason)
 
+    def _collect_stale(self, call: int, res: SynthResult) -> None:
+        """A call from an earlier level: its fits are the old level's evidence.
+
+        Its programs never enter the belief directly (that would skip both the
+        new level's evidence and transfer). Passing and held ones go to
+        ``store.held``, still loaded, for sleep and transfer to judge.
+        """
+        for program, _gate, _hits, _trials in res.programs:
+            self.store.held[program.id] = program
+        self._log_call(call, res, 0, len(res.programs), len(res.dropped), res.error)
+        for program, gate, hits, trials in res.programs:
+            self._log.event(
+                "stale_result",
+                step=self._action_no,
+                call=call,
+                pid=program.id,
+                verdict=gate.verdict,
+                hits=hits,
+                trials=trials,
+                submit_level=self._future_level,
+                level=self._level,
+            )
+        for pid, reason in res.dropped:
+            self._log.event("wisdom_drop", step=self._action_no, call=call, pid=pid, reason=reason)
+
     def _wait(self, obs: Observation, vetoes: frozenset[ActionKey]) -> Decision | None:
         """Block while a call runs and nothing in the belief can act; None means decide normally."""
         fut = self._future
         if fut is None or self.belief.programs or obs.terminal:
             return None
         poll = self.cfg.synth_wait_poll_s
+        deadline = min(self._game_deadline, self._run_deadline)
         start = self._clock()
         # Bounded by count as well as by time, in case the clock stalls.
-        max_polls = math.ceil(max(0.0, self._game_deadline - start) / poll) + 1
+        max_polls = math.ceil(max(0.0, deadline - start) / poll) + 1
         for _ in range(max_polls):
             if fut.done():
                 self._collect()
                 return None
             now = self._clock()
-            if now >= self._game_deadline:
+            if now >= deadline:
                 break
             idle = self._activity.idle_s(now)
             if idle >= self.cfg.idle_act_s:
                 why = f"idle {idle:.0f}s while synthesis runs"
                 return Decision(self._baseline.choose(obs, vetoes), "wait", why)
             self._sleep(poll)
-        return Decision(self._baseline.choose(obs, vetoes), "fallback", "game deadline passed")
+        return Decision(self._baseline.choose(obs, vetoes), "fallback", "deadline passed")
 
     # -- the executive -----------------------------------------------------
 
     def _decide(self, obs: Observation, vetoes: frozenset[ActionKey]) -> Decision:
         self._drive = self._drive_state(self._clock())
-        self._planned_pid = None
         n = len(self.belief.programs)
         best = self.belief.best(self.cfg.plan_threshold, self.cfg.plan_min_trials)
         if best is None and n == 1:
@@ -419,11 +486,7 @@ class MindAgent:
         active = None if self._active is None else self.belief.programs.get(self._active)
         inp = ExecutiveInputs(obs, self._plan, active, best, n, vetoes, self.cfg.plan_threshold)
         decision, self._plan = self._executive.decide(inp)
-        # The executive's plan branches: "plan" (to the goal) and "learn" via "plan to novel".
-        if decision.branch == "plan" or decision.why == "plan to novel":
-            self._active = self._planned_pid
-        elif decision.branch != "follow":
-            self._active = None
+        self._active = decision.program
         return decision
 
     def _plan_to(
@@ -431,6 +494,10 @@ class MindAgent:
     ) -> list[Action] | None:
         if self._synth is None:
             return None  # no LLM, no programs, no planner
+        if target == "goal" and (
+            state.trials < self.cfg.plan_min_trials or state.fit < self.cfg.plan_threshold
+        ):
+            return None  # a lone program passed for novelty has not earned a goal plan
         obs = self._current()
         pid = state.program.id
         max_nodes, time_limit_s = planner_bounds(self._drive)
@@ -456,7 +523,6 @@ class MindAgent:
         )
         if res.actions is None:
             return None
-        self._planned_pid = pid
         return list(res.actions)
 
     def _voi_pick(self) -> Action | None:
