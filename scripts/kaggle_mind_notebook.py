@@ -19,7 +19,8 @@ Intent: one self-contained .ipynb plus kernel-metadata.json under build/kaggle-m
    ``/kaggle/working/submission.parquet``, logs under ``/kaggle/working/logs`` and
    model replies under ``/kaggle/working/replies``; its combined stdout and stderr
    stream into the cell unbuffered and are kept in ``/kaggle/working/submit.log``;
-6. runs ``scripts/mind_metrics.py`` on the logs into ``/kaggle/working/metrics.json``.
+6. runs ``scripts/mind_metrics.py`` on the logs into ``/kaggle/working/metrics.json``
+   (interactive commit only; skipped when ``KAGGLE_IS_COMPETITION_RERUN`` is set).
 
 Wall clock: Kaggle stops a notebook at 9 h. Setup (wheel installs, model load) took
 several minutes in the probe kernel and the serve cell allows up to an hour, so the
@@ -28,8 +29,8 @@ agent's budget is computed in the notebook at run time:
 competition rerun. The interactive commit caps that at ``RERUN_SECONDS * n_games /
 PRIVATE_GAMES`` (or ``--interactive-seconds``), floor 1800 s. submit
 measures that from its own start and keeps its scorecard reserve inside it; only
-the scheduler's hang grace (120 s) and the metrics cell run past it, which stays
-under 9 h.
+the scheduler's hang grace (120 s) runs past it in the rerun (plus the metrics
+cell in the interactive commit), which stays under 9 h.
 
 Failure modes: a model server that exits or never answers sets ``MODEL_OK = False``
 (the serve step runs inside a ``try``) and the run cell passes ``--config EXPLORER``,
@@ -238,11 +239,15 @@ except Exception as e:  # reporting only; the submission is already written
     print("results summary failed:", repr(e))
 """
 
+# Metrics are for the interactive commit; the competition rerun's time is the agent's.
 METRICS_CELL = r"""
-import json, subprocess, sys
-r = subprocess.run([sys.executable, "scripts/mind_metrics.py", "/kaggle/working/logs",
-                    "--json", "/kaggle/working/metrics.json"], cwd="/kaggle/working")
-print("metrics exit", r.returncode)
+import os, subprocess, sys
+if os.environ.get("KAGGLE_IS_COMPETITION_RERUN", "").strip().lower() in {"1", "true"}:
+    print("competition rerun: metrics skipped")
+else:
+    r = subprocess.run([sys.executable, "scripts/mind_metrics.py", "/kaggle/working/logs",
+                        "--json", "/kaggle/working/metrics.json"], cwd="/kaggle/working")
+    print("metrics exit", r.returncode)
 """
 
 

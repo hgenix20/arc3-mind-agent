@@ -225,3 +225,28 @@ def test_run_cell_writes_the_fallback_only_when_submit_left_no_parquet(tmp_path:
     i_raise = run.index('raise RuntimeError("submission.parquet was not written")')
     assert i_exit < i_fallback < i_raise
     assert "if not SUBMISSION.exists():" in run[i_exit:i_fallback]
+
+
+def test_metrics_cell_is_skipped_in_the_competition_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import subprocess  # noqa: PLC0415
+
+    nb, _ = build(tmp_path)
+    (src,) = [s for s in cell_sources(nb) if "scripts/mind_metrics.py" in s and "FILES" not in s]
+    ran: list[list[str]] = []
+
+    class Done:
+        returncode = 0
+
+    def fake_run(cmd: list[str], **_kw: Any) -> Done:
+        ran.append(cmd)
+        return Done()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setenv("KAGGLE_IS_COMPETITION_RERUN", "1")
+    exec(compile(src, "<metrics>", "exec"), {})
+    assert ran == []
+    monkeypatch.delenv("KAGGLE_IS_COMPETITION_RERUN")
+    exec(compile(src, "<metrics>", "exec"), {})
+    assert len(ran) == 1 and "scripts/mind_metrics.py" in ran[0]
