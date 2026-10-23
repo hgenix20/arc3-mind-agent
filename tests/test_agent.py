@@ -14,6 +14,7 @@ from arcagent.agent import play, submit
 from arcagent.agent.play import GameResult, play_game
 from arcagent.core.frames import observation_from_frame
 from arcagent.core.types import GRID_SIZE, Action, Observation, Phase
+from arcagent.synth.run import Completion
 from arcagent.synth.trace import ProbePolicy
 
 
@@ -413,10 +414,20 @@ def test_mind_policy_waits_for_model_before_scorecard(
     assert calls == ["wait_for_model"]
 
     # Replay and the model-free config skip the wait entirely.
-    for extra in (["--replay"], ["--config", "EXPLORER"]):
+    for extra in (["--replay"], ["--config", "EXPLORER"], ["--config", "FLUID"]):
         calls.clear()
         submit.main([*args, *extra])
         assert calls[0].startswith("open_scorecard")
+
+    # FLUID-LLM waits for the model like v1, and skips the wait with --replay.
+    monkeypatch.setattr(submit, "wait_for_model", fake_wait)
+    calls.clear()
+    doc = submit.main([*args, "--config", "FLUID-LLM", "--endpoint", "http://m:9/v1"])
+    assert calls[0] == "wait_for_model http://m:9/v1"
+    assert doc["config"]["mind_config"] == "FLUID-LLM" and doc["config"]["k"] == 0
+    calls.clear()
+    submit.main([*args, "--config", "FLUID-LLM", "--replay"])
+    assert calls[0].startswith("open_scorecard")
 
 
 def test_mind_policy_replay_end_to_end(env_dir: Path, tmp_path: Path) -> None:
@@ -448,6 +459,38 @@ def test_mind_policy_replay_end_to_end(env_dir: Path, tmp_path: Path) -> None:
         lines = (tmp_path / "logs" / f"{g['game_id']}.jsonl").read_text(encoding="utf-8")
         kinds = [json.loads(line)["type"] for line in lines.splitlines()]
         assert kinds.count("action") == 20 and kinds[-1] == "game_end"
+
+
+def test_fluid_llm_replay_end_to_end(env_dir: Path, tmp_path: Path) -> None:
+    """FLUID-LLM on a real game with no recorded replies: every turn answers {}."""
+    pytest.importorskip("pyarrow")
+    doc = submit.main(
+        [
+            "--mode",
+            "offline",
+            "--env-dir",
+            str(env_dir),
+            "--policy",
+            "mind",
+            "--config",
+            "FLUID-LLM",
+            "--replay",
+            "--games",
+            "ft09",
+            "--workers",
+            "1",
+            "--max-actions",
+            "30",
+            "--out",
+            str(tmp_path),
+        ]
+    )
+    assert doc["errors"] == [] and doc["config"]["mind_config"] == "FLUID-LLM"
+    lines = (tmp_path / "logs" / f"{doc['games'][0]['game_id']}.jsonl").read_text(encoding="utf-8")
+    recs = [json.loads(line) for line in lines.splitlines()]
+    kinds = [r["type"] for r in recs]
+    assert kinds.count("action") == 30 and kinds[-1] == "game_end"
+    assert "wake" in kinds and "agent_error" not in kinds
 
 
 class RecordingArcade:
@@ -632,7 +675,6 @@ def test_sandbox_spawn_failure_plays_the_game_without_the_model(
     from arcagent.mind.config import CONFIGS  # noqa: PLC0415
     from arcagent.mind.sandbox import ProgramSandbox  # noqa: PLC0415
     from arcagent.synth.prompt import Message  # noqa: PLC0415
-    from arcagent.synth.run import Completion  # noqa: PLC0415
 
     class Unstartable(ProgramSandbox):
         def __init__(self, **_kw: Any) -> None:
@@ -709,6 +751,83 @@ def test_mind_run_fluid_config_builds_a_fluid_agent_and_spawns_no_worker(
     assert not [r for r in recs if r["type"] == "agent_error"]
     assert len([r for r in recs if r["type"] == "action"]) == 10
     assert recs[-1]["type"] == "game_end" and recs[-1]["config"] == "FLUID"
+
+
+def test_mind_run_fluid_llm_needs_a_vision_chat_and_runs_turns(tmp_path: Path) -> None:
+    import time  # noqa: PLC0415
+
+    from arcagent.mind.config import CONFIGS  # noqa: PLC0415
+    from arcagent.mind.fluid import FluidAgent  # noqa: PLC0415
+    from arcagent.mind.vchat import VMessage  # noqa: PLC0415
+
+    now = time.monotonic()
+    with pytest.raises(ValueError, match="vision chat"):
+        submit.MindRun(
+            CONFIGS["FLUID-LLM"],
+            chat=None,
+            games=["g"],
+            workers=1,
+            log_dir=tmp_path,
+            seed=0,
+            run_deadline=now + 3600,
+        )
+    seeds: list[int] = []
+
+    def vchat(messages: list[VMessage], seed: int) -> Completion:
+        del messages
+        seeds.append(seed)
+        return Completion(text="{}", prompt_tokens=0, completion_tokens=0, seconds=0.0)
+
+    run = submit.MindRun(
+        CONFIGS["FLUID-LLM"],
+        chat=None,
+        games=["g"],
+        workers=1,
+        log_dir=tmp_path,
+        seed=3,
+        run_deadline=now + 3600,
+        vchat=vchat,
+    )
+    assert run.synth is None
+    game = run.make_agent("g", now + 3600)
+    assert isinstance(game.agent, FluidAgent)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), np.int8)
+    game.choose(Observation(grid, Phase.NOT_FINISHED, 0, 1, (1, 2)))
+    run.pool.shutdown(wait=True)  # the turn finishes on the shared pool
+    game.close()
+    recs = [json.loads(x) for x in (tmp_path / "g.jsonl").read_text().splitlines()]
+    assert seeds == [3000]
+    assert [r["reason"] for r in recs if r["type"] == "wake"] == ["level start"]
+    assert not [r for r in recs if r["type"] == "agent_error"]
+
+
+def test_fluid_chat_replays_or_records(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from arcagent.mind.fluid import TURN_DEADLINE_S, TURN_MAX_TOKENS  # noqa: PLC0415
+
+    args = submit.parse_args(["--out", str(tmp_path), "--replay"])
+    assert submit.fluid_chat(args)([{"role": "user", "content": "x"}], 0).text == "{}"
+    seen: dict[str, Any] = {}
+
+    def fake_http(endpoint: str, model: str, *, max_tokens: int, timeout_s: float) -> Any:
+        seen.update(endpoint=endpoint, model=model, max_tokens=max_tokens, timeout_s=timeout_s)
+
+        def call(messages: Any, seed: int) -> Completion:
+            return Completion(
+                text='{"notes": "hi"}', prompt_tokens=1, completion_tokens=1, seconds=0.1
+            )
+
+        return call
+
+    monkeypatch.setattr(submit, "http_vision_chat", fake_http)
+    live = submit.parse_args(["--out", str(tmp_path), "--endpoint", "http://m:9/v1"])
+    assert submit.fluid_chat(live)([{"role": "user", "content": "x"}], 7).text == '{"notes": "hi"}'
+    assert seen == {
+        "endpoint": "http://m:9/v1",
+        "model": submit.DEFAULT_MODEL,
+        "max_tokens": TURN_MAX_TOKENS,
+        "timeout_s": TURN_DEADLINE_S,
+    }
+    assert len(list((tmp_path / "replies").glob("*.json"))) == 1
 
 
 def test_mind_run_synthesis_pool_has_two_threads_per_game_slot(tmp_path: Path) -> None:

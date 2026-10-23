@@ -28,7 +28,11 @@ one dir never mixes two runs.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
-skips the wait, as do the model-free ``EXPLORER`` and ``FLUID`` configs. For the mind
+skips the wait, as do the model-free ``EXPLORER`` and ``FLUID`` configs. ``FLUID-LLM``
+(a fluid config with ``llm``) gets a vision chat instead of a ``Synthesizer``:
+``http_vision_chat`` (``TURN_MAX_TOKENS``, ``TURN_DEADLINE_S`` socket timeout) wrapped
+in ``recording`` under ``--replies-dir``, or ``replaying`` that directory with
+``--replay``; its turns run on the same thread pool. For the mind
 policy ``submission.parquet`` is written in a ``finally``: if the model wait
 times out or the run raises, the parquet still holds whatever results exist
 and a zero row for every other game, and the exception then propagates. The run deadline
@@ -72,10 +76,11 @@ from arcagent.core.types import Action, Observation
 from arcagent.mind.agent import MAX_ERROR_CHARS, MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
-from arcagent.mind.fluid import FluidAgent
+from arcagent.mind.fluid import TURN_DEADLINE_S, TURN_MAX_TOKENS, FluidAgent
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
 from arcagent.mind.synthesizer import Synthesizer
+from arcagent.mind.vchat import VisionChat, http_vision_chat, recording, replaying
 from arcagent.synth.run import Chat, http_chat
 from arcagent.synth.trace import ProbePolicy
 
@@ -387,9 +392,10 @@ class MindGame:
 class MindRun:
     """The resources every game of one mind run shares, and the per-game factory.
 
-    Shared: one ``Synthesizer`` (none for a config without the LLM) and one
-    synthesis thread pool of ``2 * workers`` threads, so each running game can
-    have a call in flight even while calls from ended games finish. Per game: a fresh
+    Shared: one ``Synthesizer`` (none for a config without the LLM or a fluid one) and
+    one thread pool of ``2 * workers`` threads, so each running game can have a call in
+    flight even while calls from ended games finish. A fluid config with the LLM shares
+    ``vchat`` and runs its executive turns on the same pool. Per game: a fresh
     ``ProgramSandbox`` and a ``RunLog`` at ``<log_dir>/<game>.jsonl``. A game's
     seed is ``seed`` plus its index in ``games``. Call ``close`` once every
     game is done.
@@ -405,11 +411,16 @@ class MindRun:
         log_dir: Path,
         seed: int,
         run_deadline: float,
+        vchat: VisionChat | None = None,
     ) -> None:
-        if cfg.llm and chat is None:
+        if cfg.llm and cfg.fluid and vchat is None:
+            raise ValueError(f"config {cfg.name} uses the LLM but no vision chat was given")
+        if cfg.llm and not cfg.fluid and chat is None:
             raise ValueError(f"config {cfg.name} uses the LLM but no chat was given")
         self.cfg = cfg
-        self.synth = Synthesizer(chat, k=cfg.k) if cfg.llm and chat is not None else None
+        uses_synth = cfg.llm and not cfg.fluid
+        self.synth = Synthesizer(chat, k=cfg.k) if uses_synth and chat is not None else None
+        self.vchat = vchat if cfg.llm and cfg.fluid else None
         # Two threads per game slot: a call still running for a game that has ended
         # (its result is never read) must not hold the thread the next game needs.
         self.pool = ThreadPoolExecutor(max_workers=2 * workers, thread_name_prefix="synth")
@@ -425,7 +436,7 @@ class MindRun:
         ``agent_error`` with the spawn error and plays the ``EXPLORER`` config
         (no model, B0 only) on a ``ProgramSandbox.dead()`` stand-in.
         A ``fluid`` config builds a ``FluidAgent`` on ``ProgramSandbox.dead()`` and
-        spawns no worker.
+        spawns no worker; with the LLM it gets ``vchat`` and the shared pool.
         """
         seed = self._seed + self._index.get(game, 0)
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
@@ -438,6 +449,8 @@ class MindRun:
                     log=log,
                     game_deadline=deadline,
                     run_deadline=self._run_deadline,
+                    chat=self.vchat,
+                    pool=self.pool if self.vchat is not None else None,
                 )
             except BaseException:
                 log.close()
@@ -482,6 +495,17 @@ def mind_chat(args: argparse.Namespace) -> Chat:
     if args.replay:
         return replay_chat(replies)
     return recording_chat(http_chat(args.endpoint, args.model), replies)
+
+
+def fluid_chat(args: argparse.Namespace) -> VisionChat:
+    """The executive's vision chat: replayed with ``--replay``, else HTTP with replies saved."""
+    replies = Path(args.replies_dir)
+    if args.replay:
+        return replaying(replies)
+    live = http_vision_chat(
+        args.endpoint, args.model, max_tokens=TURN_MAX_TOKENS, timeout_s=TURN_DEADLINE_S
+    )
+    return recording(live, replies)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -549,12 +573,13 @@ def play_mind(
         _LOG.info("model server %s answered after %.0fs", args.endpoint, waited)
     run = MindRun(
         cfg,
-        chat=mind_chat(args) if cfg.llm else None,
+        chat=mind_chat(args) if cfg.llm and not cfg.fluid else None,
         games=games,
         workers=args.workers,
         log_dir=Path(args.log_dir),
         seed=args.seed,
         run_deadline=run_deadline,
+        vchat=fluid_chat(args) if cfg.llm and cfg.fluid else None,
     )
     try:
         results, errors, scorecard = play_concurrent(
@@ -573,7 +598,7 @@ def play_mind(
     record = {
         "mind_config": cfg.name,
         "workers": args.workers,
-        "k": cfg.k if cfg.llm else 0,
+        "k": cfg.k if cfg.llm and not cfg.fluid else 0,
         "endpoint": args.endpoint,
         "model": args.model,
         "replay": bool(args.replay),

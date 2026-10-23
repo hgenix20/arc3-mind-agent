@@ -7,7 +7,9 @@ Contract:
   ``FULL-x`` isolate one module each. ``EXPLORER`` has no LLM at all: the
   model-free 0.36 baseline, kept for reference only. ``FLUID`` is the fluid
   agent (``arcagent.mind.fluid``): facts, goal guesses and short search, with
-  no LLM, no program sandbox and none of the four modules.
+  no LLM, no program sandbox and none of the four modules. ``FLUID-LLM`` is the
+  same agent with the executive turn on (``llm=True``): a vision model proposes
+  goal guesses, a plan or a test, and slice 1 logic checks and executes them.
 - ``build_modules`` is the only code that maps a flag to a module class. Transfer
   selects ``CarryTransfer`` or its null.
 """
@@ -15,7 +17,7 @@ Contract:
 from __future__ import annotations
 
 from collections.abc import Container
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from arcagent.mind.modules.base import (
     Inhibition,
@@ -102,6 +104,7 @@ def _all_configs() -> dict[str, MindConfig]:
         llm=False,
         fluid=True,
     )
+    out["FLUID-LLM"] = replace(out["FLUID"], name="FLUID-LLM", llm=True)
     return out
 
 

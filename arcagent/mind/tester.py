@@ -51,7 +51,8 @@ def _short(subject: str) -> str:
     return subject if not sep or len(shape) <= 4 else f"{color}:{shape[:4]}.."
 
 
-def _question(label: str, subject: str) -> str:
+def question(label: str, subject: str) -> str:
+    """The question a test of ``(label, subject)`` asks, e.g. ``what does A3 do?``."""
     if subject in ("any", "self"):
         return f"what does {label} do?"
     return f"what does {label} do to {_short(subject)}?"
@@ -116,7 +117,7 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
         )
         if best is None or rank < best[0]:
             label, subject = pairs[0]
-            best = (rank, Test(action, _question(label, subject), len(pairs)))
+            best = (rank, Test(action, question(label, subject), len(pairs)))
     return None if best is None else best[1]
 
 

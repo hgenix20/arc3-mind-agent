@@ -211,7 +211,7 @@ def actions_of(recs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def test_configs_and_module_factory() -> None:
-    names = {"FULL", "B0", "EXPLORER", "FLUID"}
+    names = {"FULL", "B0", "EXPLORER", "FLUID", "FLUID-LLM"}
     for m in ("metacognition", "inhibition", "voi", "transfer"):
         names |= {f"B0+{m}", f"FULL-{m}"}
     assert set(CONFIGS) == names
