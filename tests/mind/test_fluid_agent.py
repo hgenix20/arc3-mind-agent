@@ -387,26 +387,18 @@ class SyncPool(Executor):
         return fut
 
 
-class ManualPool(Executor):
-    """Holds every job until ``run_all``: the test decides when a turn finishes.
-
-    Each job counts as running from ``submit`` on, so ``cancel`` fails as it does for a
-    request already on a pool thread.
-    """
+class NeverPool(Executor):
+    """Accepts every job and never runs it: each turn's future stays pending."""
 
     def __init__(self) -> None:
-        self.jobs: list[Callable[[], None]] = []
+        self.futures: list[Future[Any]] = []
 
     def submit(self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> Future[T]:
+        del fn, args, kwargs
         fut: Future[T] = Future()
-        fut.set_running_or_notify_cancel()
-        self.jobs.append(lambda: _settle(fut, lambda: fn(*args, **kwargs)))
+        fut.set_running_or_notify_cancel()  # running, so cancel fails as on a pool thread
+        self.futures.append(fut)
         return fut
-
-    def run_all(self) -> None:
-        jobs, self.jobs = self.jobs, []
-        for job in jobs:
-            job()
 
 
 def make_llm_agent(
@@ -509,35 +501,164 @@ def test_llm_reach_goal_and_plan_finish_the_level_faster(tmp_path: Path) -> None
     assert not [r for r in recs if r["type"] in ("agent_error", "exec_failed")]
 
 
-def test_reply_after_a_level_up_is_stale(tmp_path: Path) -> None:
-    pool = ManualPool()
-    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
-    agent = make_llm_agent(tmp_path, scripted([CLEAR7]), pool)
-    play(game, agent, max_steps=30, until=lambda: game.levels >= 1)
-    assert game.levels == 1 and len(pool.jobs) == 1  # one turn in flight the whole level
-    pool.run_all()
-    play(game, agent, max_steps=1)
+def test_the_reply_is_applied_in_the_move_that_asked(tmp_path: Path) -> None:
+    chat, _ = reach_chat(["A4", "A4", "A4"])
+    game = FakeGame(player=(2, 2), target=(12, 2), walls=[], lava=[])
+    agent = make_llm_agent(tmp_path, chat, SyncPool())
+    play(game, agent, max_steps=3)
     agent.close()
     recs = records(tmp_path)
-    stale = [r for r in recs if r["type"] == "exec_stale"]
-    assert len(stale) == 1 and stale[0]["asked_level"] == 0 and stale[0]["call"] == 0
+    acts = [r for r in recs if r["type"] == "action"]
+    # The level start wakes at step 0 and the plan's first step is that same move.
+    assert acts[0]["wake"] == "level start"
+    assert [(a["why"], a["action"][0]) for a in acts] == [("llm plan", 4)] * 3
+    turn = next(r for r in recs if r["type"] == "exec_turn")
+    assert turn["step"] == 0 and turn["plan_len"] == 3
+    assert game.player == (5, 2)
+
+
+def test_a_level_start_wake_survives_a_heuristic_plan(tmp_path: Path, monkeypatch: Any) -> None:
+    chat, seeds = counting_chat()
+    game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
+    agent = make_llm_agent(tmp_path, chat, SyncPool())
+    real = agent._plan_choice  # pyright: ignore[reportPrivateUsage]
+    calls = [0]
+
+    def first_is_a_plan(scene: Scene) -> Any:
+        calls[0] += 1
+        if calls[0] == 1:
+            return fluid._Choice(Action(1), "plan", "goal fake")  # up: no route to the target  # pyright: ignore[reportPrivateUsage]
+        return real(scene)
+
+    monkeypatch.setattr(agent, "_plan_choice", first_is_a_plan)
+    play(game, agent, max_steps=3)
+    agent.close()
+    recs = records(tmp_path)
+    acts = [r for r in recs if r["type"] == "action"]
+    assert acts[0]["branch"] == "plan" and acts[0]["wake"] is None
+    wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
+    assert wakes[0] == (1, "level start") and len(seeds) >= 1
+
+
+def test_pending_wakes_clear_on_a_new_epoch(tmp_path: Path) -> None:
+    agent = make_llm_agent(tmp_path, counting_chat()[0], SyncPool())
+    agent._pending.add("fact broken")  # pyright: ignore[reportPrivateUsage]
+    epoch = agent._epoch  # pyright: ignore[reportPrivateUsage]
+    blank = np.zeros((64, 64), dtype=np.int8)
+    agent.choose(Observation(blank, Phase.NOT_PLAYED, 0, 2, (0, 1, 2, 3, 4)))
+    agent.close()
+    assert agent._epoch == epoch + 1  # pyright: ignore[reportPrivateUsage]
+    assert not agent._pending  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_turn_past_its_deadline_keeps_the_slice_1_move(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr(fluid, "TURN_DEADLINE_S", 0.01)
+    base_game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
+    base_agent = make_agent(tmp_path, "base")
+    base = play(base_game, base_agent, max_steps=20)
+    base_agent.close()
+    pool = NeverPool()
+    game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
+    agent = make_llm_agent(tmp_path, scripted([CLEAR7]), pool)
+    assert play(game, agent, max_steps=20) == base
+    agent.close()
+    recs = records(tmp_path)
+    failed = [r for r in recs if r["type"] == "exec_failed"]
+    assert failed and failed[0] == {**failed[0], "step": 0, "call": 0, "reason": "timeout"}
+    assert len(failed) == len(pool.futures)
+    assert all(f.cancel() is False for f in pool.futures)  # left running, never read
     assert not [r for r in recs if r["type"] == "exec_turn"]
-    assert fluid.Goal("clear", color=7) not in agent.goals.status
 
 
-def test_reply_after_a_game_over_is_stale(tmp_path: Path) -> None:
-    pool = ManualPool()
-    game = FakeGame(player=(2, 2), target=(2, 8), walls=[], lava=[(2, 5)])
-    agent = make_llm_agent(tmp_path, scripted([CLEAR7]), pool)
-    play(game, agent, max_steps=30, until=lambda: game.game_overs >= 1)
-    assert game.game_overs == 1 and game.levels == 0
-    pool.run_all()
-    play(game, agent, max_steps=2)
+def test_match_goals_are_checked_on_real_frames(tmp_path: Path) -> None:
+    # Two empty regions match on every frame: ruled out against the level's history.
+    same = {"kind": "match", "region_a": [40, 40, 42, 42], "region_b": [50, 50, 52, 52]}
+    # The player's start cell against an empty cell: true once the player has moved.
+    moved = {"kind": "match", "region_a": [2, 2, 3, 3], "region_b": [50, 50, 51, 51]}
+    reply = json.dumps({"goals": [same, moved]})
+    game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
+    agent = make_llm_agent(tmp_path, scripted([reply]), SyncPool())
+    play(game, agent, max_steps=6)
+    agent.close()
+    status = {g.id(): s for g, s in agent.goals.status.items() if g.kind == "match"}
+    assert status == {
+        "match (40, 40, 42, 42)=(50, 50, 52, 52)": "ruled_out",
+        "match (2, 2, 3, 3)=(50, 50, 51, 51)": "excluded",
+    }
+
+
+def test_llm_goals_are_searched_before_heuristic_ones(tmp_path: Path) -> None:
+    # The wall is the shallower heuristic reach goal; the executive names the target.
+    def make() -> FakeGame:
+        return FakeGame(player=(2, 2), target=(20, 2), walls=[(4, 4)], lava=[])
+
+    base_game = make()
+    base = make_agent(tmp_path, "base")
+    play(base_game, base, max_steps=40, until=lambda: base._plan_goal is not None)  # pyright: ignore[reportPrivateUsage]
+    base.close()
+    assert base._plan_goal is not None and base._plan_goal.b == f"c8:{DOT}"  # pyright: ignore[reportPrivateUsage]
+    chat, _ = reach_chat([])
+    game = make()
+    agent = make_llm_agent(tmp_path, chat, SyncPool())
+    play(game, agent, max_steps=40, until=lambda: agent._plan_goal is not None)  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+    assert agent._plan_goal == fluid.Goal("reach", a=PSIG, b=TSIG)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_rule_out_checks_only_the_added_goals(tmp_path: Path, monkeypatch: Any) -> None:
+    seen: list[object] = []
+    real = fluid.GoalBook.rule_out
+
+    def spy(book: fluid.GoalBook, *args: Any, **kw: Any) -> list[fluid.Goal]:
+        seen.append(kw.get("only"))
+        return real(book, *args, **kw)
+
+    monkeypatch.setattr(fluid.GoalBook, "rule_out", spy)
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=30, until=lambda: game.levels >= 1)
+    agent.close()
+    assert seen and all(isinstance(o, list) and o for o in seen)
+
+
+def test_a_vetoed_first_plan_step_is_a_failed_attempt(tmp_path: Path, monkeypatch: Any) -> None:
+    real = fluid.veto
+
+    def refuse_plans(scene: Scene, action: Action, mem: FactMemory, tried: Any) -> str | None:
+        # Every move toward the target is a "predicted game over" once moves are known.
+        if action.id == 4 and mem.get(("A4", PSIG, "any")) is not None:
+            return fluid.GAME_OVER
+        return real(scene, action, mem, tried)
+
+    monkeypatch.setattr(fluid, "veto", refuse_plans)
+    game = FakeGame(player=(2, 2), target=(12, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=40)
     agent.close()
     recs = records(tmp_path)
-    assert [r["asked_level"] for r in recs if r["type"] == "exec_stale"] == [0]
-    assert not [r for r in recs if r["type"] == "exec_turn" and r["call"] == 0]
-    assert fluid.Goal("clear", color=7) not in agent.goals.status
+    goal = fluid.Goal("reach", a=PSIG, b=TSIG)
+    assert agent.goals.status[goal] == "stalled"
+    assert (goal.id(), "stalled") in [(r["id"], r["status"]) for r in recs if r["type"] == "goal"]
+
+
+def test_turn_reply_budget() -> None:
+    assert fluid.TURN_MAX_TOKENS == 1536
+
+
+def test_the_prompt_names_click_facts_by_on_screen_ids(tmp_path: Path) -> None:
+    game = FakeClickGame(objects=3)
+    agent = make_llm_agent(tmp_path, counting_chat()[0], SyncPool())
+    play(game, agent, max_steps=2)  # the first click is learned on the second frame
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    inp = agent._turn_input(game.observe(), scene, "probe")  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+    ids = {f"#{t.id}" for t in scene.things}
+    clicks = [f for f in inp.facts if f.startswith("click on #")]
+    assert clicks, inp.facts
+    assert all(set(re.findall(r"#\d+", f)) <= ids for f in clicks)
+    text = " ".join([*inp.facts, *(g for g, _ in inp.goals)])
+    assert not re.search(r"c\d+:[0-9a-f]{4}", text), text  # no sig, full or abbreviated
 
 
 def test_images_rejected_disables_turns_for_the_game(tmp_path: Path) -> None:
@@ -615,16 +736,16 @@ def test_wake_reasons_log_in_order(tmp_path: Path) -> None:
     agent.close()
     recs = records(tmp_path)
     wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
-    # The plan finishes at step 3, inside the spacing window of the turn collected at
-    # step 1, so that wake is suppressed; then B0 fallbacks wake every 7 moves (each
-    # turn is collected one move after it starts, and the next needs 6 more).
-    gap = fluid.MIN_MOVES_BETWEEN_TURNS + 1
-    expect = [(0, "level start")]
-    expect += [(gap * i, "no plan and no test") for i in range(1, fluid.MAX_TURNS_PER_LEVEL)]
+    # The reply's two plan steps are moves 0 and 1 (the turn runs inside move 0). "plan
+    # finished" stays pending until the spacing window after that turn ends at move 6;
+    # then B0 fallbacks wake every 6 moves.
+    gap = fluid.MIN_MOVES_BETWEEN_TURNS
+    expect = [(0, "level start"), (gap, "plan finished")]
+    expect += [(gap * i, "no plan and no test") for i in range(2, fluid.MAX_TURNS_PER_LEVEL)]
     assert wakes == expect
     assert chat_seeds == [2000 + i for i in range(fluid.MAX_TURNS_PER_LEVEL)]
     acts = [r for r in recs if r["type"] == "action"]
-    assert [a["why"] for a in acts[1:3]] == ["llm plan", "llm plan"]
+    assert [a["why"] for a in acts[0:2]] == ["llm plan", "llm plan"]
     by_step = {a["step"]: a["wake"] for a in acts}
     assert all(by_step[step] == reason for step, reason in wakes)
     assert sum(1 for w in by_step.values() if w is not None) == len(wakes)
@@ -652,14 +773,13 @@ def test_game_over_wakes_right_after_the_reset(tmp_path: Path) -> None:
     # step 0 dies, step 1 is the RESET, step 2 is the restart frame (spacing exempt)
     assert wakes[:2] == [(0, "level start"), (2, "game over")]
     assert "Wake: game over (last attempt ended in game over after 1 move)" in prompts[1]
-    assert [r["asked_level"] for r in recs if r["type"] == "exec_stale"] == [0]
 
 
 def test_long_stretch_wakes_after_many_moves_without_a_turn(tmp_path: Path) -> None:
     chat, seeds = counting_chat()
     game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
     agent = make_llm_agent(tmp_path, chat, SyncPool())
-    play(game, agent, max_steps=2)  # level start: turn 0, collected on step 1
+    play(game, agent, max_steps=2)  # level start: turn 0, applied in move 0
     # Pretend the level has gone on without turns; spacing is already satisfied.
     step = agent._action_no  # pyright: ignore[reportPrivateUsage]
     agent._stretch_from = step - fluid.LONG_STRETCH_MOVES + 1  # pyright: ignore[reportPrivateUsage]
@@ -687,25 +807,6 @@ def test_wake_reason_takes_the_first_rule_in_order() -> None:
     assert fluid.WAKE_ORDER[-1] == "long stretch"
 
 
-def test_a_turn_past_its_deadline_is_abandoned(tmp_path: Path) -> None:
-    now = [0.0]
-    pool = ManualPool()
-    game = FakeGame(player=(2, 2), target=(40, 2), walls=[], lava=[])
-    agent = make_llm_agent(tmp_path, scripted([CLEAR7]), pool, clock=lambda: now[0])
-    play(game, agent, max_steps=2)
-    assert len(pool.jobs) == 1
-    now[0] = fluid.TURN_DEADLINE_S + 1.0
-    play(game, agent, max_steps=1)
-    pool.run_all()  # the late result arrives after the turn was abandoned
-    play(game, agent, max_steps=3)
-    agent.close()
-    recs = records(tmp_path)
-    failed = [r for r in recs if r["type"] == "exec_failed"]
-    assert [(r["call"], r["reason"]) for r in failed][:1] == [(0, "timeout")]
-    assert not [r for r in recs if r["type"] == "exec_turn" and r["call"] == 0]
-    assert fluid.Goal("clear", color=7) not in agent.goals.status
-
-
 def test_turn_budget_per_game(tmp_path: Path) -> None:
     chat, seeds = counting_chat()
     agent = make_llm_agent(tmp_path, chat, SyncPool())
@@ -727,15 +828,18 @@ def test_turns_stop_past_three_quarters_of_the_game_budget(tmp_path: Path) -> No
     assert seeds == []
 
 
-def test_an_llm_test_is_the_next_move(tmp_path: Path) -> None:
+def test_an_llm_test_is_taken_in_the_waking_move(tmp_path: Path) -> None:
     reply = json.dumps({"test": {"action": "A2", "question": "does A2 move the player down?"}})
     game = FakeGame(player=(2, 2), target=(12, 2), walls=[], lava=[])
     agent = make_llm_agent(tmp_path, scripted([reply]), SyncPool())
     play(game, agent, max_steps=2)
     agent.close()
-    acts = [r for r in records(tmp_path) if r["type"] == "action"]
-    assert acts[1]["action"][0] == 2 and acts[1]["branch"] == "learn"
-    assert acts[1]["why"] == "llm test: does A2 move the player down?"
+    recs = records(tmp_path)
+    acts = [r for r in recs if r["type"] == "action"]
+    assert acts[0]["action"][0] == 2 and acts[0]["branch"] == "learn"
+    assert acts[0]["why"] == "llm test: does A2 move the player down?"
+    tests = [r for r in recs if r["type"] == "test"]
+    assert tests[0]["step"] == 0 and tests[0]["question"] == "does A2 move the player down?"
 
 
 def test_click_steps_follow_the_clicked_thing_by_sig() -> None:
