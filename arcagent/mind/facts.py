@@ -3,19 +3,22 @@
 A fact is keyed by ``(action label, subject, context)`` and holds a tuple of structured
 effects the predictor can apply. ``FactMemory.toc`` maps behavior tags (root mechanic
 words plus phrases like "moves until blocked") to fact keys, so an object that behaves
-like a known one is predicted from a sibling's fact at once.
+like a known one is predicted from a same-shape sibling's fact at once.
 
 ``learn`` turns one observed transition into one ``record`` call per fact key. Context
 rules pick the key before recording, which is how a wall turns a predicted move into a
 ``blocked`` fact without charging the move fact a miss. A miss never rewrites a fact's
-effects; ``slide`` and ``teleport`` rewrites happen only through the explicit rules in
-``learn``. Pure and deterministic; callers strip noise things before calling ``learn``.
+effects; a fact breaks after ``BROKEN_MISSES`` misses in a row and the next observation
+re-seeds it. ``slide`` and ``teleport`` rewrites happen only through the explicit rules
+in ``learn``. Things that move together as one rigid sprite (same shift, 4-adjacent
+before the move) are a co-moving group: none of them is pushed by, blocked by, or a
+blocker of another. Pure and deterministic; callers strip noise things before ``learn``.
 """
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Hashable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -39,9 +42,11 @@ FactKey = tuple[str, str, str]  # (action label, subject, context)
 SPAWN = "spawn"  # subject of the per-action spawn fact (label, SPAWN, "any")
 Status = Literal["thin", "solid", "broken"]
 RecordResult = Literal["new", "hit", "miss"]
+Owner = Mapping[Cell, tuple[int, int]]  # cell -> (thing id, color)
 
 THIN_BELOW = 5  # a fact is solid once this many observations agreed with it
-BROKEN_MISSES = 2  # a fact is broken after this many misses no context absorbed
+BROKEN_MISSES = 2  # a fact is broken after this many misses in a row
+EVIDENCE_KEEP = 20  # a fact keeps the move ids of its last this-many observations
 
 _DIRS: dict[tuple[int, int], str] = {
     (-1, 0): "left",
@@ -49,7 +54,6 @@ _DIRS: dict[tuple[int, int], str] = {
     (0, -1): "up",
     (0, 1): "down",
 }
-_MOVING = frozenset({"move", "slide"})
 
 
 def _sign(v: int) -> int:
@@ -116,18 +120,24 @@ def _abbrev(subject: str) -> str:
 
 @dataclass(slots=True)
 class Fact:
-    """A short fact. ``hits`` counts agreeing observations, the first one included."""
+    """A short fact.
+
+    ``hits`` counts agreeing observations since the fact was seeded (the seed included).
+    ``misses`` is the lifetime miss total, shown in ``line``; ``streak`` is the misses in a
+    row, which a hit resets and which decides ``broken``.
+    """
 
     key: FactKey
     effects: tuple[Effect, ...]
-    evidence: list[int]  # move ids of every observation recorded against this key
+    evidence: list[int]  # move ids of the last EVIDENCE_KEEP observations against this key
     hits: int = 0
     misses: int = 0
     tags: frozenset[str] = frozenset()
+    streak: int = 0
 
     @property
     def status(self) -> Status:
-        if self.misses >= BROKEN_MISSES:
+        if self.streak >= BROKEN_MISSES:
             return "broken"
         return "solid" if self.hits >= THIN_BELOW else "thin"
 
@@ -137,6 +147,11 @@ class Fact:
         what = "; ".join(e.text() for e in self.effects)
         score = f"[{self.status} {self.hits}/{self.misses}]"
         return f"{label} {_abbrev(subject)} {context}: {what} {score}"
+
+    def note(self, move: int) -> None:
+        """Add a move id to the evidence, keeping only the last ``EVIDENCE_KEEP``."""
+        self.evidence.append(move)
+        del self.evidence[:-EVIDENCE_KEEP]
 
 
 _KIND_TAGS: dict[str, frozenset[str]] = {
@@ -166,19 +181,18 @@ def _tags(key: FactKey, effects: Iterable[Effect]) -> set[str]:
     return tags
 
 
-def _sibling_handles(subject: str) -> tuple[str, str] | None:
-    """``("s:<shape>", "c:<color>")`` for a sig subject; None for ``self``/``any``."""
-    color, sep, shape = subject.partition(":")
-    if not sep:
-        return None
-    return f"s:{shape}", f"c:{color}"
+def _shape_of_subject(subject: str) -> str | None:
+    """The shape part of a sig subject; None for ``self``, ``any`` and ``SPAWN``."""
+    _, sep, shape = subject.partition(":")
+    return shape if sep else None
 
 
 class FactMemory:
     """Facts by key, a table of contents by behavior tag, and colors that blocked each sig.
 
     ``landed`` remembers the top-left where the last ``any``-context move observation of a
-    key ended, which is what the teleport rule compares against. After each transition that
+    key ended (the teleport rule), and ``last_move`` that observation's effect and whether
+    it ended blocked (the slide rule); ``new_level`` clears both. After each transition that
     didn't end the game, ``safe_touch`` gains, per sig, the colors its things overlapped
     and ``safe_near`` the colors they sat 4-adjacent to without overlapping (the two modes
     of ``touch_contexts``). Spawn facts live under subject ``SPAWN`` and are never returned
@@ -190,10 +204,16 @@ class FactMemory:
         self.toc: dict[str, set[FactKey]] = {}
         self.blockers: dict[str, set[int]] = {}
         self.landed: dict[FactKey, Cell] = {}
+        self.last_move: dict[FactKey, tuple[Effect, bool]] = {}
         self.safe_touch: dict[str, set[int]] = {}
         self.safe_near: dict[str, set[int]] = {}
-        # (label, context, sibling handle) -> keys; built alongside the toc for borrowing
+        # (label, context, shape) -> keys; built alongside the toc for borrowing
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
+
+    def new_level(self) -> None:
+        """Forget absolute positions; called on a level change. Facts stay."""
+        self.landed.clear()
+        self.last_move.clear()
 
     def get(self, key: FactKey) -> Fact | None:
         return self.facts.get(key)
@@ -201,9 +221,9 @@ class FactMemory:
     def lookup(self, label: str, subject: str, context: str) -> tuple[Fact, bool] | None:
         """Most specific fact for a subject and whether it was borrowed from a sibling.
 
-        Order: exact key, the subject's ``any`` fact, a non-broken fact of a sibling subject
-        (same shape before same color; same context before ``any``; most hits, then lowest
-        key), then the action-wide ``(label, "any", "any")`` fact unless it is a spawn fact.
+        Order: exact key, the subject's ``any`` fact, a non-broken fact of a same-shape
+        subject (same context before ``any``; most hits, then lowest key), then the
+        action-wide ``(label, "any", "any")`` fact unless it is a spawn fact.
         """
         for key in ((label, subject, context), (label, subject, "any")):
             fact = self.facts.get(key)
@@ -218,19 +238,17 @@ class FactMemory:
         return wide, False
 
     def _borrow(self, label: str, subject: str, context: str) -> Fact | None:
-        handles = _sibling_handles(subject)
-        if handles is None:
+        shape = _shape_of_subject(subject)
+        if shape is None:
             return None
-        contexts = (context, "any") if context != "any" else ("any",)
-        for handle in handles:
-            for ctx in contexts:
-                cands = [
-                    self.facts[k]
-                    for k in self._siblings.get((label, ctx, handle), ())
-                    if k[1] != subject and self.facts[k].status != "broken"
-                ]
-                if cands:
-                    return min(cands, key=lambda f: (-f.hits, f.key))
+        for ctx in (context, "any") if context != "any" else ("any",):
+            cands = [
+                self.facts[k]
+                for k in self._siblings.get((label, ctx, shape), ())
+                if k[1] != subject and self.facts[k].status != "broken"
+            ]
+            if cands:
+                return min(cands, key=lambda f: (-f.hits, f.key))
         return None
 
     def record(
@@ -244,25 +262,32 @@ class FactMemory:
         """Add one observation. Equal effects are a hit, different ones a miss.
 
         Callers apply context rules first; a miss here is never absorbed and never
-        replaces the fact's effects. ``tags`` adds behavior tags the effects alone can't
-        show (``rotate`` needs cell counts).
+        replaces the fact's effects. The first observation after a fact went broken
+        re-seeds it (effects replaced, hits 1, streak 0) and returns ``"new"``. ``tags``
+        adds behavior tags the effects alone can't show (``rotate`` needs cell counts).
         """
         fact = self.facts.get(key)
         if fact is None:
             fact = Fact(key, effects, [move], hits=1)
             self.facts[key] = fact
             self._index(fact, _tags(key, effects) | tags)
-            handles = _sibling_handles(key[1])
-            for handle in handles or ():
-                self._siblings.setdefault((key[0], key[2], handle), set()).add(key)
+            shape = _shape_of_subject(key[1])
+            if shape is not None:
+                self._siblings.setdefault((key[0], key[2], shape), set()).add(key)
             return "new"
-        fact.evidence.append(move)
+        fact.note(move)
+        if fact.status == "broken":
+            fact.effects, fact.hits, fact.streak = effects, 1, 0
+            self._index(fact, _tags(key, effects) | tags)
+            return "new"
         if fact.effects == effects:
             fact.hits += 1
+            fact.streak = 0
             if not tags <= fact.tags:
                 self._index(fact, set(fact.tags | tags))
             return "hit"
         fact.misses += 1
+        fact.streak += 1
         return "miss"
 
     def revise(self, key: FactKey, effects: tuple[Effect, ...], move: int) -> RecordResult:
@@ -270,7 +295,8 @@ class FactMemory:
         fact = self.facts[key]
         fact.effects = effects
         fact.hits += 1
-        fact.evidence.append(move)
+        fact.streak = 0
+        fact.note(move)
         self._index(fact, _tags(key, effects))
         return "hit"
 
@@ -305,9 +331,57 @@ def action_label(action: Action, before: Scene) -> str:
     return "A6:none" if thing is None else f"A6:{thing.sig}"
 
 
+def cell_owner(scene: Scene) -> dict[Cell, tuple[int, int]]:
+    """Cell to ``(thing id, color)`` for every thing cell; build once per scene."""
+    return {c: (t.id, t.color) for t in scene.things for c in t.cells}
+
+
+def _neighbors(cells: frozenset[Cell]) -> set[Cell]:
+    return {(x + dx, y + dy) for x, y in cells for dx, dy in _DIRS}
+
+
+def _contexts(
+    cells: frozenset[Cell], owner: Owner, skip: frozenset[int]
+) -> tuple[set[int], set[int]]:
+    """Colors overlapping ``cells`` and colors 4-adjacent but not overlapping; ``skip`` ids."""
+    over: set[int] = set()
+    over_ids: set[int] = set()
+    for c in cells:
+        hit = owner.get(c)
+        if hit is not None and hit[0] not in skip:
+            over.add(hit[1])
+            over_ids.add(hit[0])
+    near: set[int] = set()
+    for c in _neighbors(cells) - cells:
+        hit = owner.get(c)
+        if hit is not None and hit[0] not in skip and hit[0] not in over_ids:
+            near.add(hit[1])
+    return over, near - over
+
+
+def touch_contexts(
+    thing_cells: frozenset[Cell], scene: Scene, own_id: int, *, owner: Owner | None = None
+) -> list[str]:
+    """Touch contexts of a thing whose cells are ``thing_cells`` in ``scene``.
+
+    ``touch:<c>`` for each color of another thing overlapping the cells, then ``near:<c>``
+    for each color of another thing 4-adjacent without overlapping, minus colors already
+    under ``touch``. Each list is sorted by color. ``own_id`` is skipped (-1 skips nothing).
+    Pass ``owner=cell_owner(scene)`` when calling many times on one scene; the cost is
+    then linear in the thing's cells.
+    """
+    table = cell_owner(scene) if owner is None else owner
+    over, near = _contexts(thing_cells, table, frozenset({own_id}))
+    return [f"touch:{c}" for c in sorted(over)] + [f"near:{c}" for c in sorted(near)]
+
+
 @dataclass(slots=True)
 class _Obs:
-    """One subject's observation in one transition, before grouping by key."""
+    """One subject's observation in one transition, before grouping by key.
+
+    ``mates`` are the ids of its co-moving group (itself included); ``group_cells`` and
+    ``group_dest`` are the group's cells before and after.
+    """
 
     thing: Thing
     subject: str
@@ -316,6 +390,14 @@ class _Obs:
     dest: frozenset[Cell]  # cells after the change; empty when it disappeared
     context: str = "any"
     tags: frozenset[str] = field(default_factory=frozenset[str])
+    mates: frozenset[int] = field(default_factory=frozenset[int])
+    group_cells: frozenset[Cell] = field(default_factory=frozenset[Cell])
+    group_dest: frozenset[Cell] = field(default_factory=frozenset[Cell])
+
+    def __post_init__(self) -> None:
+        self.mates = frozenset({self.thing.id})
+        self.group_cells = self.thing.cells
+        self.group_dest = self.dest
 
 
 def _shifted(cells: Iterable[Cell], dx: int, dy: int) -> frozenset[Cell]:
@@ -361,8 +443,37 @@ def _observations(
     return out
 
 
-def _neighbors(cells: frozenset[Cell]) -> set[Cell]:
-    return {(x + dx, y + dy) for x, y in cells for dx, dy in _DIRS}
+def _group(items: list[_Obs], key: Callable[[_Obs], Hashable | None]) -> None:
+    """Join items with equal non-None ``key`` whose old cells are 4-adjacent; set group fields.
+
+    Linear in total cells: one cell map, then union-find over neighbor hits.
+    """
+    keyed = [(o, k) for o in items if (k := key(o)) is not None]
+    parent = list(range(len(keyed)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    at: dict[Cell, int] = {c: i for i, (o, _) in enumerate(keyed) for c in o.thing.cells}
+    for i, (o, k) in enumerate(keyed):
+        for c in _neighbors(o.thing.cells):
+            j = at.get(c)
+            if j is not None and j != i and keyed[j][1] == k:
+                parent[find(i)] = find(j)
+    members: dict[int, list[_Obs]] = {}
+    for i, (o, _) in enumerate(keyed):
+        members.setdefault(find(i), []).append(o)
+    for group in members.values():
+        if len(group) < 2:
+            continue
+        mates = frozenset(o.thing.id for o in group)
+        cells = frozenset[Cell]().union(*(o.thing.cells for o in group))
+        dest = frozenset[Cell]().union(*(o.dest for o in group))
+        for o in group:
+            o.mates, o.group_cells, o.group_dest = mates, cells, dest
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,17 +481,16 @@ class _Room:
     """What can stop a step in one scene: padding plus each covered cell's id and color."""
 
     blocked: frozenset[Cell]
-    owner: dict[Cell, tuple[int, int]]  # cell -> (thing id, color)
+    owner: dict[Cell, tuple[int, int]]
 
     @staticmethod
     def of(scene: Scene) -> _Room:
-        owner = {c: (t.id, t.color) for t in scene.things for c in t.cells}
-        return _Room(scene.blocked, owner)
+        return _Room(scene.blocked, cell_owner(scene))
 
     def stopped(
-        self, cells: frozenset[Cell], step: tuple[int, int], self_id: int
+        self, cells: frozenset[Cell], step: tuple[int, int], skip: frozenset[int]
     ) -> tuple[bool, set[int]]:
-        """Whether one step from ``cells`` hits the edge, padding or a thing; its colors."""
+        """Whether one step from ``cells`` hits the edge, padding or a thing not in ``skip``."""
         hit = False
         colors: set[int] = set()
         for x, y in _shifted(cells, *step) - cells:
@@ -388,7 +498,7 @@ class _Room:
                 hit = True
                 continue
             other = self.owner.get((x, y))
-            if other is not None and other[0] != self_id:
+            if other is not None and other[0] not in skip:
                 hit = True
                 colors.add(other[1])
         return hit, colors
@@ -398,42 +508,60 @@ def _unit(e: Effect) -> tuple[int, int]:
     return _sign(e.dx), _sign(e.dy)
 
 
-def _expected_step(
-    mem: FactMemory, label: str, o: _Obs, peers: list[_Obs]
-) -> tuple[int, int] | None:
-    """The step a ``none`` subject should have taken: its move fact, else its free peers' move."""
-    fact = mem.facts.get((label, o.subject, "any"))
-    if fact is not None:
-        for e in fact.effects:
-            if e.kind == "move":
-                return e.dx, e.dy
-            if e.kind == "slide":
-                return _unit(e)
-    shifts = Counter(p.shift for p in peers if p.shift is not None and p.context == "any")
-    return shifts.most_common(1)[0][0] if shifts else None
+def _fact_step(mem: FactMemory, key: FactKey) -> tuple[int, int] | None:
+    """The one-step displacement a stored move or slide fact predicts, if any."""
+    fact = mem.facts.get(key)
+    for e in fact.effects if fact is not None else ():
+        if e.kind == "move":
+            return e.dx, e.dy
+        if e.kind == "slide":
+            return _unit(e)
+    return None
 
 
-def _mark_pushed(obs: list[_Obs]) -> None:
-    """A mover whose old cells another mover entered was pushed."""
+def _mark_pushed(mem: FactMemory, label: str, obs: list[_Obs]) -> None:
+    """A mover whose old cells a non-mate mover with the same shift entered was pushed.
+
+    Not when its own ``any`` fact already moves it by that shift. Linear: one map from
+    destination cells to movers.
+    """
     movers = [o for o in obs if o.shift is not None]
+    entered: dict[Cell, list[_Obs]] = {}
+    for p in movers:
+        for c in p.dest:
+            entered.setdefault(c, []).append(p)
     for o in movers:
-        if any(p is not o and o.thing.cells & p.dest for p in movers):
+        if _fact_step(mem, (label, o.subject, "any")) == o.shift:
+            continue
+        pushers = (p for c in o.thing.cells for p in entered.get(c, ()))
+        if any(p.thing.id not in o.mates and p.shift == o.shift for p in pushers):
             o.context = "pushed"
 
 
-def _mark_blocked(mem: FactMemory, label: str, before: Scene, obs: list[_Obs]) -> None:
-    """Wall rule: a ``none`` where a move was expected and the way was shut is ``blocked``."""
-    room = _Room.of(before)
-    by_subject: dict[str, list[_Obs]] = {}
+def _mark_blocked(mem: FactMemory, label: str, room: _Room, obs: list[_Obs]) -> None:
+    """Wall rule: a ``none`` where a move was expected and the way was shut is ``blocked``.
+
+    The expected step is the subject's move fact, else its free peers' majority shift.
+    Still things expecting the same step and 4-adjacent form one group, so a sprite's
+    parts never block each other.
+    """
+    peer_shift: dict[str, Counter[tuple[int, int]]] = {}
     for o in obs:
-        by_subject.setdefault(o.subject, []).append(o)
+        if o.shift is not None and o.context == "any":
+            peer_shift.setdefault(o.subject, Counter())[o.shift] += 1
+    expected: dict[int, tuple[int, int]] = {}
     for o in obs:
         if o.effects != _NONE:
             continue
-        step = _expected_step(mem, label, o, by_subject[o.subject])
-        if step is None:
-            continue
-        hit, colors = room.stopped(o.thing.cells, step, o.thing.id)
+        step = _fact_step(mem, (label, o.subject, "any"))
+        if step is None and o.subject in peer_shift:
+            step = peer_shift[o.subject].most_common(1)[0][0]
+        if step is not None:
+            expected[o.thing.id] = step
+    still = [o for o in obs if o.thing.id in expected]
+    _group(still, lambda o: expected[o.thing.id])
+    for o in still:
+        hit, colors = room.stopped(o.group_cells, expected[o.thing.id], o.mates)
         if hit:
             o.context = "blocked"
             mem.blockers.setdefault(o.thing.sig, set()).update(colors)
@@ -458,33 +586,47 @@ def _record_move(
     *,
     move: int,
 ) -> None:
-    """Record an ``any``-context move, applying the slide and teleport rewrites."""
+    """Record an ``any``-context move, applying the slide and teleport rewrites.
+
+    Slide: a stored ``move`` and an observed move in the same direction with a different
+    magnitude, where the observed move ended blocked and so did the longer of the two.
+    Teleport: a different displacement landing where the previous observation landed.
+    """
     landing = (rep.thing.x + seen.dx, rep.thing.y + seen.dy)
+    ends_blocked = room.stopped(rep.group_dest, _unit(seen), rep.mates)[0]
     fact = mem.facts.get(key)
     old = fact.effects[0] if fact is not None and len(fact.effects) == 1 else None
-    last = mem.landed.get(key)
+    last_at = mem.landed.get(key)
+    last = mem.last_move.get(key)
     mem.landed[key] = landing
+    mem.last_move[key] = (seen, ends_blocked)
     if old is None:
         mem.record(key, (seen,), move)
         return
-    ends_blocked = room.stopped(rep.dest, _unit(seen), rep.thing.id)[0]
     slide = (Effect("slide", dx=_unit(seen)[0], dy=_unit(seen)[1]),)
-    if old.kind == "slide" and old == slide[0] and ends_blocked:
+    longer_old = abs(old.dx) + abs(old.dy) > abs(seen.dx) + abs(seen.dy)
+    longer_blocked = not longer_old or last == (old, True)
+    if old == slide[0] and ends_blocked:
         mem.record(key, slide, move)
-    elif old.kind == "move" and old != seen and _same_direction(old, seen) and ends_blocked:
+    elif (
+        old.kind == "move"
+        and old != seen
+        and _same_direction(old, seen)
+        and ends_blocked
+        and longer_blocked
+    ):
         mem.revise(key, slide, move)
     elif old.kind == "teleport" and old.at == landing:
         mem.record(key, (old,), move)
-    elif old.kind == "move" and old != seen and last == landing:
+    elif old.kind == "move" and old != seen and last_at == landing:
         mem.revise(key, (Effect("teleport", at=landing),), move)
     else:
         mem.record(key, (seen,), move)
 
 
 def _record_groups(
-    mem: FactMemory, label: str, scene: Scene, obs: list[_Obs], move: int
+    mem: FactMemory, label: str, room: _Room, obs: list[_Obs], move: int
 ) -> list[FactKey]:
-    room = _Room.of(scene)
     groups: dict[FactKey, list[_Obs]] = {}
     for o in obs:
         groups.setdefault((label, o.subject, o.context), []).append(o)
@@ -514,48 +656,20 @@ def _record_appear(
     return [key]
 
 
-def touch_contexts(thing_cells: frozenset[Cell], scene: Scene, own_id: int) -> list[str]:
-    """Touch contexts of a thing whose cells are ``thing_cells`` in ``scene``.
-
-    ``touch:<c>`` for each color of another thing overlapping the cells, then ``near:<c>``
-    for each color of another thing 4-adjacent without overlapping, minus colors already
-    under ``touch``. Each list is sorted by color. ``own_id`` is skipped (-1 skips nothing).
-    """
-    zone = _neighbors(thing_cells)
-    over: set[int] = set()
-    near: set[int] = set()
-    for t in scene.things:
-        if t.id == own_id:
-            continue
-        if t.cells & thing_cells:
-            over.add(t.color)
-        elif t.cells & zone:
-            near.add(t.color)
-    return [f"touch:{c}" for c in sorted(over)] + [f"near:{c}" for c in sorted(near - over)]
-
-
-def _split(contexts: Iterable[str]) -> tuple[set[int], set[int]]:
-    """Colors of ``touch:`` and ``near:`` contexts."""
-    over: set[int] = set()
-    near: set[int] = set()
-    for ctx in contexts:
-        mode, _, color = ctx.partition(":")
-        (over if mode == "touch" else near).add(int(color))
-    return over, near
-
-
 def _learn_touch(mem: FactMemory, before: Scene, obs: list[_Obs], move: int) -> list[FactKey]:
     """Game over: each mover gets a death fact per likely deadly color at its destination.
 
-    Candidates are ``touch:`` colors (overlap in ``before``), else ``near:`` colors. Colors
-    already safe in that mode for the sig are dropped unless every candidate is safe.
+    Candidates are ``touch:`` colors (overlap in ``before``), else ``near:`` colors;
+    groupmates never count. Colors already safe in that mode for the sig are dropped
+    unless every candidate is safe.
     """
+    owner = cell_owner(before)
     keys: list[FactKey] = []
     for o in obs:
         if o.shift is None:
             continue
         sig = o.thing.sig
-        over, near = _split(touch_contexts(o.dest, before, o.thing.id))
+        over, near = _contexts(o.dest, owner, o.mates)
         mode, cands, safe = (
             ("touch", over, mem.safe_touch) if over else ("near", near, mem.safe_near)
         )
@@ -570,7 +684,7 @@ def _learn_touch(mem: FactMemory, before: Scene, obs: list[_Obs], move: int) -> 
 
 
 def _note_safe(
-    mem: FactMemory, before: Scene, after: Scene, obs: list[_Obs], move: int
+    mem: FactMemory, before: Owner, after: Owner, obs: list[_Obs], move: int
 ) -> list[FactKey]:
     """After a safe transition: grow the safe sets and charge a miss to matching death facts.
 
@@ -582,8 +696,8 @@ def _note_safe(
         if not o.dest:
             continue
         sig = o.thing.sig
-        over = _split(touch_contexts(o.dest, before, o.thing.id))[0]
-        near = _split(touch_contexts(o.dest, after, o.thing.id))[1]
+        over = _contexts(o.dest, before, o.mates)[0]
+        near = _contexts(o.dest, after, o.mates)[1]
         mem.safe_touch.setdefault(sig, set()).update(over)
         mem.safe_near.setdefault(sig, set()).update(near)
         contexts = [f"touch:{c}" for c in sorted(over)] + [f"near:{c}" for c in sorted(near)]
@@ -613,29 +727,35 @@ def learn(
     destination cells of movers, and the cell counts for the ``rotate`` tag. Without it
     appear positions are ``(-1, -1)`` and destinations are the shifted old cells.
 
+    Movers with the same shift that were 4-adjacent before form a co-moving group.
+
     ``level_up`` records only ``("event", "level_up", "any")``. ``game_over`` records only
     death facts for subjects that moved: ``("any", sig, "touch:<c>")`` for colors of things in
     ``before`` overlapping the destination, else ``("any", sig, "near:<c>")`` for colors
     4-adjacent to it, minus colors in the same mode's safe set (``mem.safe_touch`` or
-    ``mem.safe_near``) unless that removes them all. Otherwise every subject records
-    one observation: unchanged subjects record ``none``, pushed movers go to ``pushed``,
-    and a ``none`` where a move was expected but the way was shut (edge, padding or another
-    thing) goes to ``blocked`` and adds the blocking colors to ``mem.blockers``. Spawns go
-    to ``(label, SPAWN, "any")``. Last, each subject's new cells feed the safe sets: colors
-    they overlap in ``before`` join ``safe_touch`` and charge a miss to ``touch:<c>`` only;
-    colors 4-adjacent in ``after`` join ``safe_near`` and charge a miss to ``near:<c>`` only.
+    ``mem.safe_near``) unless that removes them all. Otherwise every subject records one
+    observation: unchanged subjects record ``none``; a mover whose old cells a non-mate
+    mover with the same shift entered, and whose own ``any`` fact doesn't predict that
+    shift, goes to ``pushed``; a ``none`` where a move was expected but the way was shut
+    (edge, padding or a thing outside its group) goes to ``blocked`` and adds the blocking
+    colors to ``mem.blockers``. Spawns go to ``(label, SPAWN, "any")``. Last, each
+    subject's new cells feed the safe sets: colors they overlap in ``before`` join
+    ``safe_touch`` and charge a miss to ``touch:<c>`` only; colors 4-adjacent in ``after``
+    join ``safe_near`` and charge a miss to ``near:<c>`` only.
     """
     if level_up:
         key = ("event", "level_up", "any")
         mem.record(key, (Effect("level_up"),), move)
         return [key]
     obs = _observations(before, action, diff, after)
+    _group(obs, lambda o: o.shift)
     if game_over:
         return _learn_touch(mem, before, obs, move)
     label = action_label(action, before)
-    _mark_pushed(obs)
-    _mark_blocked(mem, label, before, obs)
-    scene = after if after is not None else before
-    keys = _record_groups(mem, label, scene, obs, move)
+    room_before = _Room.of(before)
+    room_after = _Room.of(after) if after is not None else room_before
+    _mark_pushed(mem, label, obs)
+    _mark_blocked(mem, label, room_before, obs)
+    keys = _record_groups(mem, label, room_after, obs, move)
     keys += _record_appear(mem, label, diff, after, move)
-    return keys + _note_safe(mem, before, scene, obs, move)
+    return keys + _note_safe(mem, room_before.owner, room_after.owner, obs, move)

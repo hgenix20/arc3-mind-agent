@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 
 from arcagent.core.types import Action, Grid
@@ -101,8 +103,7 @@ def test_toc_finds_facts_by_behavior_and_borrows_for_siblings() -> None:
     assert found is not None
     f, borrowed = found
     assert borrowed and f.effects[0].kind == "move"
-    found = mem.lookup("A1", "c2:other", "any")  # same color, new shape
-    assert found is not None and found[1]
+    assert mem.lookup("A1", "c2:other", "any") is None  # same color, new shape: no borrow
 
 
 def test_lookup_order_exact_then_any_then_sibling_then_action_wide() -> None:
@@ -209,12 +210,13 @@ def test_same_sig_disagreement_splits_blocked_and_free_once_each() -> None:
 
 
 def test_mover_entering_another_objects_cells_records_pushed() -> None:
+    # not adjacent before the move, so the two are not one co-moving sprite
     mem = FactMemory()
-    s0, _, keys = learn_plain(mem, {(5, 5): 1, (4, 5): 3}, {(4, 5): 1, (3, 5): 3}, Action(3), 0)
-    player, box = thing_at(s0, 5, 5), thing_at(s0, 4, 5)
+    s0, _, keys = learn_plain(mem, {(6, 5): 1, (4, 5): 3}, {(4, 5): 1, (2, 5): 3}, Action(3), 0)
+    player, box = thing_at(s0, 6, 5), thing_at(s0, 4, 5)
     assert set(keys) == {("A3", player.sig, "any"), ("A3", box.sig, "pushed")}
     pushed = fact(mem, ("A3", box.sig, "pushed"))
-    assert pushed.effects == (Effect("move", dx=-1),) and "push" in pushed.tags
+    assert pushed.effects == (Effect("move", dx=-2),) and "push" in pushed.tags
 
 
 def test_longer_move_ending_blocked_rewrites_to_slide_as_a_hit() -> None:
@@ -380,3 +382,101 @@ def test_safe_overlap_charges_only_the_touch_fact() -> None:
     learn_plain(mem, {(6, 5): 1, (5, 5): 6}, {(5, 5): 1}, Action(3), 2)
     assert fact(mem, ("any", sig, "touch:6")).misses == 1
     assert fact(mem, ("any", sig, "near:6")).misses == 0
+
+
+def test_rigid_two_color_sprite_moves_as_one_and_stops_at_a_wall() -> None:
+    mem = FactMemory()
+    wall = {(10, 14): 8}
+    for i in range(5):
+        y = 20 - i
+        learn_plain(
+            mem,
+            {(10, y): 1, (10, y + 1): 2, **wall},
+            {(10, y - 1): 1, (10, y): 2, **wall},
+            Action(1),
+            i,
+        )
+    s0, _, keys = learn_plain(
+        mem, {(10, 15): 1, (10, 16): 2, **wall}, {(10, 15): 1, (10, 16): 2, **wall}, Action(1), 5
+    )
+    head, body = thing_at(s0, 10, 15), thing_at(s0, 10, 16)
+    head_fact = fact(mem, ("A1", head.sig, "any"))
+    assert head_fact.effects == (Effect("move", dy=-1),) and head_fact.status == "solid"
+    assert not [k for k in mem.facts if k[2] == "pushed"]
+    assert 1 not in mem.blockers.get(body.sig, set()) and mem.blockers[head.sig] == {8}
+    assert not [f for f in mem.facts.values() if f.effects[0].kind == "slide"]
+    assert ("A1", head.sig, "blocked") in keys and ("A1", body.sig, "blocked") in keys
+
+
+def test_broken_fact_reseeds_from_the_next_observation() -> None:
+    mem = FactMemory()
+    wall = {(4, 5): 8}
+    s0, _, _ = learn_plain(mem, {(5, 5): 1, **wall}, {(5, 5): 1, **wall}, Action(3), 0)
+    key = ("A3", thing_at(s0, 5, 5).sig, "any")
+    assert fact(mem, key).effects == (Effect("none"),)
+    for i in range(1, 8):
+        learn_plain(mem, {(31, 30): 1, **wall}, {(30, 30): 1, **wall}, Action(3), i)
+        if i == 2:
+            assert fact(mem, key).status == "broken"
+    f = fact(mem, key)
+    assert f.effects == (Effect("move", dx=-1),) and f.status == "solid"
+    assert (f.hits, f.misses, f.streak) == (5, 2, 0)
+
+
+def test_isolated_misses_do_not_break_a_solid_fact() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    good, bad = (Effect("move", dx=-1),), (Effect("none"),)
+    for i, effects in enumerate([good] * 6 + [bad, good, bad]):
+        mem.record(key, effects, i)
+    f = fact(mem, key)
+    assert f.status != "broken" and f.misses == 2 and f.streak == 1 and f.effects == good
+
+
+def test_reseed_returns_new() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    mem.record(key, (Effect("none"),), 0)
+    mem.record(key, (Effect("move", dx=1),), 1)
+    mem.record(key, (Effect("move", dx=1),), 2)
+    assert mem.record(key, (Effect("move", dx=1),), 3) == "new"
+    assert fact(mem, key).status == "thin" and fact(mem, key).hits == 1
+
+
+def test_evidence_keeps_the_last_20_moves() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    for i in range(30):
+        mem.record(key, (Effect("move", dx=-1),), i)
+    assert fact(mem, key).evidence == list(range(10, 30)) and fact(mem, key).hits == 30
+
+
+def test_fixed_step_cut_short_by_a_wall_is_not_a_slide() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(20, 5): 1, (3, 5): 8}, {(18, 5): 1, (3, 5): 8}, Action(3), 0)
+    key = ("A3", thing_at(s0, 20, 5).sig, "any")
+    learn_plain(mem, {(5, 5): 1, (3, 5): 8}, {(4, 5): 1, (3, 5): 8}, Action(3), 1)
+    f = fact(mem, key)
+    assert f.effects == (Effect("move", dx=-2),) and f.misses == 1
+
+
+def test_new_level_forgets_landings() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(5, 5): 1}, {(5, 4): 1}, Action(1), 0)
+    key = ("A1", thing_at(s0, 5, 5).sig, "any")
+    assert key in mem.landed and key in mem.last_move
+    mem.new_level()
+    assert not mem.landed and not mem.last_move
+    learn_plain(mem, {(9, 9): 1}, {(5, 4): 1}, Action(1), 1)
+    assert fact(mem, key).effects == (Effect("move", dy=-1),)  # no teleport across levels
+
+
+def test_learn_is_fast_on_300_static_things() -> None:
+    statics = {(2 * (i % 30) + 2, 2 * (i // 30) + 2): 1 + i % 9 for i in range(300)}
+    s0, s1, d = transition({**statics, (10, 40): 10}, {**statics, (9, 40): 10})
+    assert len(s0.things) == 301
+    mem = FactMemory()
+    t0 = time.perf_counter()
+    for i in range(20):
+        learn(mem, s0, Action(3), d, move=i, level_up=False, game_over=False, after=s1)
+    assert (time.perf_counter() - t0) / 20 < 0.010
