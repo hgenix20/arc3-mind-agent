@@ -573,3 +573,52 @@ def test_mind_game_close_always_closes_sandbox_and_log(tmp_path: Path) -> None:
     assert sandbox.closed == 1
     with pytest.raises(ValueError, match="closed"):
         log.event("late")
+
+
+def test_mind_policy_writes_the_parquet_even_when_the_model_never_answers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pq = pytest.importorskip("pyarrow.parquet")
+
+    def never(endpoint: str, timeout_s: float = 0.0) -> float:
+        raise TimeoutError("model down")
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> RecordingArcade:
+        return RecordingArcade([])
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    monkeypatch.setattr(submit, "wait_for_model", never)
+    with pytest.raises(TimeoutError):
+        submit.main(["--mode", "offline", "--policy", "mind", "--out", str(tmp_path)])
+    rows = pq.read_table(str(tmp_path / "submission.parquet")).to_pylist()
+    assert rows == [{"row_id": "0_0", "game_id": "ls20-1", "end_of_game": True, "score": 0.0}]
+
+
+def test_mind_policy_parquet_keeps_played_results_and_pads_unplayed_games(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pq = pytest.importorskip("pyarrow.parquet")
+
+    class TwoGames(RecordingArcade):
+        def __init__(self) -> None:
+            super().__init__([])
+
+            class Env:
+                def __init__(self, gid: str) -> None:
+                    self.game_id = gid
+
+            self.available_environments = [Env("ls20-1"), Env("ft09-2")]
+
+    def crash(*_args: Any, **_kw: Any) -> Any:
+        raise RuntimeError("scheduler crashed")
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> TwoGames:
+        return TwoGames()
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    monkeypatch.setattr(submit, "play_concurrent", crash)
+    with pytest.raises(RuntimeError, match="scheduler crashed"):
+        submit.main(["--mode", "offline", "--policy", "mind", "--replay", "--out", str(tmp_path)])
+    rows = pq.read_table(str(tmp_path / "submission.parquet")).to_pylist()
+    assert [r["game_id"] for r in rows] == ["ft09-2", "ls20-1"]
+    assert all(r["score"] == 0.0 and r["end_of_game"] for r in rows)

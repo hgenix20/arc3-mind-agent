@@ -7,7 +7,8 @@ Intent: one self-contained .ipynb plus kernel-metadata.json under build/kaggle-m
 2. installs ``arc-agi`` from the competition's wheel folder (``INSTALL_CELL`` from
    ``kaggle_agent_notebook.py``);
 3. installs the vLLM wheelhouse and serves Qwen3.6-27B-FP8 on 127.0.0.1:1234,
-   waiting for ``/v1/models`` (``SERVE_CELL`` from ``kaggle_synth_notebook.py``);
+   waiting for ``/v1/models`` (``SERVE_CELL`` from ``kaggle_synth_notebook.py``, run
+   inside a ``try`` that sets ``MODEL_OK``);
 4. writes every ``.py`` under ``arcagent/``, ``data/public_human_actions.json`` and
    ``scripts/mind_metrics.py`` into /kaggle/working at their repo-relative paths
    (the sandbox loads ``arcagent/mind/_worker.py`` and ``arcagent/plan/planner.py``
@@ -30,9 +31,14 @@ measures that from its own start and keeps its scorecard reserve inside it; only
 the scheduler's hang grace (120 s) and the metrics cell run past it, which stays
 under 9 h.
 
-Failure modes: the run cell raises only when ``submission.parquet`` is missing;
-summary printing and the metrics cell report errors without failing the notebook,
-so a reporting bug can't cost a competition rerun its submission.
+Failure modes: a model server that exits or never answers sets ``MODEL_OK = False``
+(the serve step runs inside a ``try``) and the run cell passes ``--config EXPLORER``,
+so the games are still played without the model. submit writes the parquet in a
+``finally``; if its process leaves none anyway, the run cell writes a zero-score
+fallback (one row per game from the gateway's list in the rerun or the public
+metadata offline, else one placeholder row). The run cell raises only when even
+that fails. Summary printing and the metrics cell report errors without failing the
+notebook, so a reporting bug can't cost a competition rerun its submission.
 
 Constraints: internet off, so every dependency comes from an attached dataset or
 the competition data. The image is pinned to Python 3.12 to match the cp312 wheels.
@@ -47,6 +53,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import textwrap
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -62,6 +69,11 @@ from kaggle_synth_notebook import (  # noqa: E402  (needs the path above)
     WHEELHOUSE,
 )
 
+from arcagent.agent.submit import (  # noqa: E402  (needs the path above)
+    GATEWAY_KEY,
+    GATEWAY_URL,
+    PARQUET_COLUMNS,
+)
 from arcagent.mind.config import CONFIGS  # noqa: E402  (needs the path above)
 
 OUT = ROOT / "build" / "kaggle-mind"
@@ -89,9 +101,84 @@ import time
 NOTEBOOK_T0 = time.time()  # the agent's budget is what is left of 8.5 h after setup
 """
 
+# The shared serve cell raises when vLLM exits or never answers. Here that must not stop
+# the notebook: the run cell then plays the model-free EXPLORER config and still writes a
+# submission. The serve cell itself is unchanged, so the probe kernel keeps raising.
+SERVE_WRAPPER = """
+MODEL_OK = False
+try:
+%(serve)s
+    MODEL_OK = True
+except Exception as exc:  # the serve cell printed vLLM's root cause before raising
+    print("model server failed, the agent plays EXPLORER:", repr(exc))
+"""
+
+
+def serve_cell() -> str:
+    """The shared serve cell inside a ``try`` that sets ``MODEL_OK`` instead of raising."""
+    serve = SERVE_CELL % {"wheelhouse": WHEELHOUSE, "model": MODEL_SNAPSHOT, "served": SERVED_NAME}
+    return SERVE_WRAPPER % {"serve": textwrap.indent(serve.strip("\n"), "    ")}
+
+
+# Runs after the agent's process exits when it left no submission.parquet (it could not
+# start, or died before its own finally). Zero scores, but the rerun has a file to score.
+FALLBACK_DEFS = r'''
+import json, os, urllib.request
+from pathlib import Path
+
+PARQUET_COLUMNS = %(columns)r
+
+def fallback_game_ids(env_dir, rerun, wanted):
+    """Game ids for a fallback submission, or [] when no list is readable.
+
+    The rerun asks the gateway's /api/games; offline reads the public metadata under
+    env_dir, keeping only the ``wanted`` 4-char prefixes when any are given.
+    """
+    ids = []
+    try:
+        if rerun:
+            base = os.environ.get("ARC_BASE_URL", %(gateway)r).rstrip("/")
+            key = os.environ.get("ARC_API_KEY", %(key)r)
+            req = urllib.request.Request(base + "/api/games",
+                                         headers={"X-Api-Key": key, "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                ids = [str(g["game_id"]) for g in json.loads(r.read()) if g.get("game_id")]
+        else:
+            for meta in sorted(Path(env_dir).glob("*/*/metadata.json")):
+                ids.append(str(json.loads(meta.read_text(encoding="utf-8"))["game_id"]))
+    except Exception as exc:
+        print("fallback: no game list:", repr(exc))
+        ids = []
+    if wanted:
+        ids = [g for g in ids if g.split("-", 1)[0] in set(wanted)]
+    return sorted(set(ids))
+
+def write_fallback_parquet(path, game_ids):
+    """One zero-score row per game, or one placeholder row; submit's schema and columns."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    ids = list(game_ids) or ["placeholder"]
+    rows = [{"row_id": f"{i}_0", "game_id": g, "end_of_game": True, "score": 0.0}
+            for i, g in enumerate(ids)]
+    schema = pa.schema([("row_id", pa.string()), ("game_id", pa.string()),
+                        ("end_of_game", pa.bool_()), ("score", pa.float64())])
+    if tuple(schema.names) != PARQUET_COLUMNS:
+        raise ValueError(f"fallback columns {schema.names} differ from {PARQUET_COLUMNS}")
+    pq.write_table(pa.Table.from_pylist(rows, schema=schema), str(path))
+'''
+
+
+def fallback_defs() -> str:
+    """The fallback functions with submit's columns and gateway defaults filled in."""
+    return FALLBACK_DEFS % {"columns": PARQUET_COLUMNS, "gateway": GATEWAY_URL, "key": GATEWAY_KEY}
+
+
 RUN_CELL = r"""
 import json, os, subprocess, sys, time
 from pathlib import Path
+SUBMISSION = Path("/kaggle/working/submission.parquet")
+ENV_DIR = %(env_dir)r
+GAMES = %(games)r
 left = 8.5 * 3600 - (time.time() - NOTEBOOK_T0)
 # Same test as submit's --mode auto.
 rerun = os.environ.get("KAGGLE_IS_COMPETITION_RERUN", "").strip().lower() in {"1", "true"}
@@ -104,8 +191,11 @@ else:
     %(scaled)s
     total = max(1800, min(left, scaled))
 env = dict(os.environ, PYTHONPATH="/kaggle/working", PYTHONUNBUFFERED="1")
+config = %(config)r if MODEL_OK else "EXPLORER"
+if config != %(config)r:
+    print("model server not ready: playing", config)
 cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
-       "--env-dir", %(env_dir)r, "--config", %(config)r, "--workers", %(workers)r,
+       "--env-dir", ENV_DIR, "--config", config, "--workers", %(workers)r,
        "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
        "--total-seconds", str(int(total)), "--out", "/kaggle/working",
        "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies"]
@@ -114,17 +204,28 @@ print(f"setup took {time.time() - NOTEBOOK_T0:.0f}s; rerun {rerun}; agent budget
 print(" ".join(cmd))
 # Stream the child's output into the cell and keep a copy, so a long run shows progress
 # and its log survives in the kernel output.
-with open("/kaggle/working/submit.log", "w", encoding="utf-8") as log:
-    proc = subprocess.Popen(cmd, env=env, cwd="/kaggle/working", stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)
-    assert proc.stdout is not None
-    for line in proc.stdout:
-        print(line, end="", flush=True)
-        log.write(line)
-        log.flush()
-    returncode = proc.wait()
+returncode = None
+try:
+    with open("/kaggle/working/submit.log", "w", encoding="utf-8") as log:
+        proc = subprocess.Popen(cmd, env=env, cwd="/kaggle/working", stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            log.write(line)
+            log.flush()
+        returncode = proc.wait()
+except Exception as exc:  # a launch failure still gets the fallback below
+    print("submit run failed:", repr(exc))
 print("exit", returncode)
-if not Path("/kaggle/working/submission.parquet").exists():
+if not SUBMISSION.exists():
+    print("submission.parquet missing: writing the zero-score fallback")
+    try:
+        ids = fallback_game_ids(ENV_DIR, rerun, [] if rerun else GAMES)
+        write_fallback_parquet(SUBMISSION, ids)
+    except Exception as exc:
+        print("fallback parquet failed:", repr(exc))
+if not SUBMISSION.exists():
     raise RuntimeError("submission.parquet was not written")
 try:
     doc = json.load(open("/kaggle/working/results.json"))
@@ -199,9 +300,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         ),
         code_cell(T0_CELL),
         code_cell(INSTALL_CELL % {"wheels": f"{COMP_DIR}/arc_agi_3_wheels"}),
-        code_cell(
-            SERVE_CELL % {"wheelhouse": WHEELHOUSE, "model": MODEL_SNAPSHOT, "served": SERVED_NAME}
-        ),
+        code_cell(serve_cell()),
         code_cell(
             "from pathlib import Path\n"
             f"FILES = {json.dumps(sources)}\n"
@@ -212,7 +311,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             "print('wrote', len(FILES), 'source files')\n"
         ),
         code_cell(
-            RUN_CELL
+            fallback_defs()
+            + RUN_CELL
             % {
                 "env_dir": f"{COMP_DIR}/environment_files",
                 "config": a.config,
@@ -227,6 +327,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     else f"scaled = {a.interactive_seconds}"
                 ),
                 "games_args": ["--games", *games] if games else [],
+                "games": games,
             }
         ),
         code_cell(METRICS_CELL),

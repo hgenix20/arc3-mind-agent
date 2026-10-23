@@ -9,6 +9,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "kaggle_mind_notebook.py"
 
@@ -140,3 +142,86 @@ def test_interactive_seconds_overrides_the_scaled_value(tmp_path: Path) -> None:
     assert "scaled = 5400" in run
     assert "scaled = RERUN_SECONDS * N_GAMES / PRIVATE_GAMES" not in run
     compile(run, "<cell>", "exec")
+
+
+def serve_cell(nb: dict[str, Any]) -> str:
+    hits = [s for s in cell_sources(nb) if "--max-model-len" in s]
+    assert len(hits) == 1
+    return hits[0]
+
+
+def test_serve_failure_sets_model_ok_false_instead_of_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    nb, _ = build(tmp_path)
+    src = serve_cell(nb)
+    # The cell edits these; setting them first lets monkeypatch restore them.
+    monkeypatch.setenv("LIBRARY_PATH", "")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "")
+    ns: dict[str, Any] = {}
+    exec(compile(src, "<serve>", "exec"), ns)  # no /kaggle/input here: find_input raises
+    assert ns["MODEL_OK"] is False
+    out = capsys.readouterr().out
+    assert "model server failed" in out and "FileNotFoundError" in out
+
+
+def test_run_cell_plays_explorer_when_the_model_server_failed(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path, "--config", "FULL")
+    run = run_cell(nb)
+    assert "config = 'FULL' if MODEL_OK else \"EXPLORER\"" in run
+    assert '"--config", config' in run
+
+
+def fallback_ns() -> dict[str, Any]:
+    ns: dict[str, Any] = {}
+    exec(compile(load_script().fallback_defs(), "<fallback>", "exec"), ns)
+    return ns
+
+
+def test_fallback_parquet_has_one_zero_row_per_public_game(tmp_path: Path) -> None:
+    pq = pytest.importorskip("pyarrow.parquet")
+    env = tmp_path / "env"
+    for gid in ("ls20-aaaa", "ft09-bbbb", "vc33-cccc"):
+        d = env / gid[:4] / gid[5:]
+        d.mkdir(parents=True)
+        (d / "metadata.json").write_text(json.dumps({"game_id": gid}), encoding="utf-8")
+    ns = fallback_ns()
+    assert ns["fallback_game_ids"](str(env), False, []) == ["ft09-bbbb", "ls20-aaaa", "vc33-cccc"]
+    ids = ns["fallback_game_ids"](str(env), False, ["ls20"])
+    assert ids == ["ls20-aaaa"]
+    out = tmp_path / "submission.parquet"
+    ns["write_fallback_parquet"](out, ids)
+    table = pq.read_table(str(out))
+    assert table.to_pylist() == [
+        {"row_id": "0_0", "game_id": "ls20-aaaa", "end_of_game": True, "score": 0.0}
+    ]
+    # Same schema as the one submit writes.
+    from arcagent.agent import submit  # noqa: PLC0415
+
+    ref = tmp_path / "ref.parquet"
+    submit.write_parquet([], ref)
+    assert pq.read_schema(str(out)).equals(pq.read_schema(str(ref)))
+    assert tuple(table.column_names) == submit.PARQUET_COLUMNS
+
+
+def test_fallback_parquet_writes_a_placeholder_when_no_game_list_is_readable(
+    tmp_path: Path,
+) -> None:
+    pq = pytest.importorskip("pyarrow.parquet")
+    ns = fallback_ns()
+    assert ns["fallback_game_ids"](str(tmp_path / "missing"), False, []) == []
+    out = tmp_path / "submission.parquet"
+    ns["write_fallback_parquet"](out, [])
+    rows = pq.read_table(str(out)).to_pylist()
+    assert len(rows) == 1 and rows[0]["score"] == 0.0 and rows[0]["end_of_game"] is True
+
+
+def test_run_cell_writes_the_fallback_only_when_submit_left_no_parquet(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path)
+    run = run_cell(nb)
+    assert load_script().fallback_defs() in run
+    i_exit = run.index('print("exit", returncode)')
+    i_fallback = run.index("write_fallback_parquet(SUBMISSION")
+    i_raise = run.index('raise RuntimeError("submission.parquet was not written")')
+    assert i_exit < i_fallback < i_raise
+    assert "if not SUBMISSION.exists():" in run[i_exit:i_fallback]

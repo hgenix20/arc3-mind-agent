@@ -26,7 +26,10 @@ each game gets its own sandbox and its run log at ``<log-dir>/<game>.jsonl``.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
-skips the wait, as does the model-free ``EXPLORER`` config. The run deadline
+skips the wait, as does the model-free ``EXPLORER`` config. For the mind
+policy ``submission.parquet`` is written in a ``finally``: if the model wait
+times out or the run raises, the parquet still holds whatever results exist
+and a zero row for every other game, and the exception then propagates. The run deadline
 is fixed when ``main`` starts, so the model wait comes out of
 ``--total-seconds``. Per-game deadlines come from ``scheduler.game_budget``;
 ``--game-seconds`` is unused. Run as a module, a mind run ends with
@@ -237,20 +240,28 @@ def scorecard_dict(card: Any) -> dict[str, Any] | None:
 
 
 def submission_rows(
-    results: Sequence[GameResult], scorecard: dict[str, Any] | None
+    results: Sequence[GameResult],
+    scorecard: dict[str, Any] | None,
+    games: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
-    """One row per played game; score from the scorecard when it has the game, else 0."""
+    """One row per played game; score from the scorecard when it has the game, else 0.
+
+    Every id in ``games`` without a result gets a zero row after the played
+    ones, so a run that failed partway still covers every game it was given.
+    """
     scores: dict[str, float] = {}
     for env in (scorecard or {}).get("environments", []) or []:
         scores[str(env.get("id"))] = float(env.get("score") or 0.0)
+    played = {r.game_id for r in results}
+    ids = [r.game_id for r in results] + [g for g in games if g not in played]
     return [
         {
             "row_id": f"{i}_0",
-            "game_id": r.game_id,
+            "game_id": gid,
             "end_of_game": True,
-            "score": scores.get(r.game_id, 0.0),
+            "score": scores.get(gid, 0.0),
         }
-        for i, r in enumerate(results)
+        for i, gid in enumerate(ids)
     ]
 
 
@@ -559,10 +570,18 @@ def main(
     games = select_games(available, args.games if mode == "offline" else None)
     print(f"mode={mode} policy={args.policy} games={len(games)} max_actions={args.max_actions}")
     extra: dict[str, Any] = {}
+    results: list[GameResult] = []
+    errors: list[dict[str, Any]] = []
+    scorecard: dict[str, Any] | None = None
     if args.policy == "mind":
-        results, errors, scorecard, extra = play_mind(
-            arcade, games, args, run_deadline=run_deadline, clock=clock
-        )
+        try:
+            results, errors, scorecard, extra = play_mind(
+                arcade, games, args, run_deadline=run_deadline, clock=clock
+            )
+        finally:
+            # A failed model wait or a crash still leaves a submission: whatever
+            # results exist, a zero row for every other game.
+            write_parquet(submission_rows(results, scorecard, games), out / "submission.parquet")
     else:
         results, errors, scorecard = play_all(
             arcade,
@@ -573,8 +592,8 @@ def main(
             total_seconds=args.total_seconds,
             policy=args.policy,
         )
-    rows = submission_rows(results, scorecard)
-    write_parquet(rows, out / "submission.parquet")
+        write_parquet(submission_rows(results, scorecard, games), out / "submission.parquet")
+    rows = submission_rows(results, scorecard, games)
     doc: dict[str, Any] = {
         "config": {
             "mode": mode,
