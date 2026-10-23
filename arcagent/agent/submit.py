@@ -28,7 +28,7 @@ one dir never mixes two runs.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
-skips the wait, as does the model-free ``EXPLORER`` config. For the mind
+skips the wait, as do the model-free ``EXPLORER`` and ``FLUID`` configs. For the mind
 policy ``submission.parquet`` is written in a ``finally``: if the model wait
 times out or the run raises, the parquet still holds whatever results exist
 and a zero row for every other game, and the exception then propagates. The run deadline
@@ -72,6 +72,7 @@ from arcagent.core.types import Action, Observation
 from arcagent.mind.agent import MAX_ERROR_CHARS, MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
+from arcagent.mind.fluid import FluidAgent
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
 from arcagent.mind.synthesizer import Synthesizer
@@ -353,9 +354,13 @@ def play_all(
 
 
 class MindGame:
-    """One game's ``MindAgent`` with its run log and sandbox; ``close`` releases all three."""
+    """One game's agent with its run log and sandbox; ``close`` releases all three.
 
-    def __init__(self, agent: MindAgent, log: RunLog, sandbox: ProgramSandbox) -> None:
+    The agent is a ``MindAgent``, or a ``FluidAgent`` on a ``ProgramSandbox.dead()``
+    stand-in (it never uses a sandbox).
+    """
+
+    def __init__(self, agent: MindAgent | FluidAgent, log: RunLog, sandbox: ProgramSandbox) -> None:
         self.agent = agent
         self._log = log
         self._sandbox = sandbox
@@ -419,9 +424,25 @@ class MindRun:
         If the sandbox worker cannot be started, the game is not lost: it logs
         ``agent_error`` with the spawn error and plays the ``EXPLORER`` config
         (no model, B0 only) on a ``ProgramSandbox.dead()`` stand-in.
+        A ``fluid`` config builds a ``FluidAgent`` on ``ProgramSandbox.dead()`` and
+        spawns no worker.
         """
         seed = self._seed + self._index.get(game, 0)
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
+        if self.cfg.fluid:
+            try:
+                fluid = FluidAgent(
+                    game,
+                    self.cfg,
+                    seed=seed,
+                    log=log,
+                    game_deadline=deadline,
+                    run_deadline=self._run_deadline,
+                )
+            except BaseException:
+                log.close()
+                raise
+            return MindGame(fluid, log, ProgramSandbox.dead())
         sandbox: ProgramSandbox | None = None
         try:
             cfg, synth = self.cfg, self.synth

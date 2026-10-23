@@ -20,6 +20,12 @@ or null).
 Event kinds: ``llm_call, plan, plan_skipped, level_up, game_over, program_admitted,
 program_dropped, veto, wisdom_drop, sleep, transfer, game_end``. The
 ``program_dropped`` event carries ``pid, reason, step, first_miss_step``.
+The fluid agent (``arcagent.mind.fluid``) adds ``fact`` (``step, key, status,
+line``), ``goal`` (``step, id, status, source``), ``test`` (``step, action,
+question``) and ``noise`` (``step, ids, cells``); its ``veto`` carries ``step,
+action, reason`` and its ``game_end`` counts ``facts`` and ``goals`` by status
+plus ``tests`` and ``vetoes``. Its action records score facts in ``programs``
+(id is the fact key joined by spaces) and log ``active`` null and ``voi`` empty.
 
 Conversion: numpy integer, floating and bool scalars and arrays become plain
 Python values and tuples become lists. Anything else unserializable raises

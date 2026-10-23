@@ -5,7 +5,9 @@ Contract:
 - ``CONFIGS`` holds the spec's ten ablation configs plus ``EXPLORER``. ``B0`` has
   all four modules off but keeps the LLM and the planner, so ``B0+x`` and
   ``FULL-x`` isolate one module each. ``EXPLORER`` has no LLM at all: the
-  model-free 0.36 baseline, kept for reference only.
+  model-free 0.36 baseline, kept for reference only. ``FLUID`` is the fluid
+  agent (``arcagent.mind.fluid``): facts, goal guesses and short search, with
+  no LLM, no program sandbox and none of the four modules.
 - ``build_modules`` is the only code that maps a flag to a module class. Transfer
   selects ``CarryTransfer`` or its null.
 """
@@ -45,6 +47,7 @@ class MindConfig:
     The agent caps it at ``SYNTH_CUTOFF_FRACTION`` (0.25) of the game's budget
     (agent start to deadline), so a game shorter than this value can still call
     the model during the first 75% of its time.
+    ``fluid``: play with ``FluidAgent`` instead of ``MindAgent``.
     """
 
     name: str
@@ -58,6 +61,7 @@ class MindConfig:
     plan_threshold: float = 0.9
     plan_min_trials: int = 5
     synth_cutoff_s: float = 300.0
+    fluid: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,15 @@ def _all_configs() -> dict[str, MindConfig]:
     for m in MODULE_NAMES:
         out[f"FULL-{m}"] = _config(f"FULL-{m}", every - {m})
     out["EXPLORER"] = _config("EXPLORER", set(), llm=False)
+    out["FLUID"] = MindConfig(
+        "FLUID",
+        metacognition=False,
+        inhibition=False,
+        voi=False,
+        transfer=False,
+        llm=False,
+        fluid=True,
+    )
     return out
 
 

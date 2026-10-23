@@ -672,6 +672,45 @@ def test_sandbox_spawn_failure_plays_the_game_without_the_model(
     assert recs[-1]["type"] == "game_end"
 
 
+def test_mind_run_fluid_config_builds_a_fluid_agent_and_spawns_no_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import time  # noqa: PLC0415
+
+    from arcagent.mind.config import CONFIGS  # noqa: PLC0415
+    from arcagent.mind.fluid import FluidAgent  # noqa: PLC0415
+    from arcagent.mind.sandbox import ProgramSandbox  # noqa: PLC0415
+
+    class Unstartable(ProgramSandbox):
+        def __init__(self, **_kw: Any) -> None:
+            raise AssertionError("the fluid agent must not spawn a worker")
+
+    monkeypatch.setattr(submit, "ProgramSandbox", Unstartable)
+    now = time.monotonic()
+    run = submit.MindRun(
+        CONFIGS["FLUID"],
+        chat=None,
+        games=["g"],
+        workers=1,
+        log_dir=tmp_path,
+        seed=0,
+        run_deadline=now + 3600,
+    )
+    game = run.make_agent("g", now + 3600)
+    assert isinstance(game.agent, FluidAgent)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), np.int8)
+    for i in range(10):
+        grid = grid.copy()
+        grid[0, i % GRID_SIZE] = 1
+        game.choose(Observation(grid, Phase.NOT_FINISHED, 0, 1, (1, 2)))
+    game.close()
+    run.close()
+    recs = [json.loads(x) for x in (tmp_path / "g.jsonl").read_text().splitlines()]
+    assert not [r for r in recs if r["type"] == "agent_error"]
+    assert len([r for r in recs if r["type"] == "action"]) == 10
+    assert recs[-1]["type"] == "game_end" and recs[-1]["config"] == "FLUID"
+
+
 def test_mind_run_synthesis_pool_has_two_threads_per_game_slot(tmp_path: Path) -> None:
     # A call still running for a finished game must not hold the slot a new game needs.
     from arcagent.mind.config import CONFIGS  # noqa: PLC0415
