@@ -519,6 +519,30 @@ def _fact_step(mem: FactMemory, key: FactKey) -> tuple[int, int] | None:
     return None
 
 
+def _stays_put(mem: FactMemory, label: str, o: _Obs) -> bool:
+    """Whether the subject's own non-broken ``any`` fact says it stays put under ``label``."""
+    fact = mem.facts.get((label, o.subject, "any"))
+    return fact is not None and fact.effects == _NONE and fact.status != "broken"
+
+
+def _split_off_pushed(mem: FactMemory, label: str, obs: list[_Obs]) -> None:
+    """Group co-movers; a member known to stay put under ``label`` is pushed, not sprite.
+
+    The first shove of a never-seen box is ambiguous and stays a rigid group; once the
+    box has been seen standing still under this action, a shove is a push.
+    """
+    _group(obs, lambda o: o.shift)
+    split = [o for o in obs if len(o.mates) > 1 and _stays_put(mem, label, o)]
+    if not split:
+        return
+    for o in obs:
+        o.mates, o.group_cells, o.group_dest = frozenset({o.thing.id}), o.thing.cells, o.dest
+    for o in split:
+        o.context = "pushed"
+    pushed = {o.thing.id for o in split}
+    _group(obs, lambda o: None if o.thing.id in pushed else o.shift)
+
+
 def _mark_pushed(mem: FactMemory, label: str, obs: list[_Obs]) -> None:
     """A mover whose old cells a non-mate mover with the same shift entered was pushed.
 
@@ -727,7 +751,8 @@ def learn(
     destination cells of movers, and the cell counts for the ``rotate`` tag. Without it
     appear positions are ``(-1, -1)`` and destinations are the shifted old cells.
 
-    Movers with the same shift that were 4-adjacent before form a co-moving group.
+    Movers with the same shift that were 4-adjacent before form a co-moving group, except
+    a member whose own non-broken ``(label, sig, "any")`` fact says ``none``: it is pushed.
 
     ``level_up`` records only ``("event", "level_up", "any")``. ``game_over`` records only
     death facts for subjects that moved: ``("any", sig, "touch:<c>")`` for colors of things in
@@ -748,10 +773,10 @@ def learn(
         mem.record(key, (Effect("level_up"),), move)
         return [key]
     obs = _observations(before, action, diff, after)
-    _group(obs, lambda o: o.shift)
+    label = action_label(action, before)
+    _split_off_pushed(mem, label, obs)
     if game_over:
         return _learn_touch(mem, before, obs, move)
-    label = action_label(action, before)
     room_before = _Room.of(before)
     room_after = _Room.of(after) if after is not None else room_before
     _mark_pushed(mem, label, obs)

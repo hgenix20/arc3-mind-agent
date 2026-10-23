@@ -480,3 +480,16 @@ def test_learn_is_fast_on_300_static_things() -> None:
     for i in range(20):
         learn(mem, s0, Action(3), d, move=i, level_up=False, game_over=False, after=s1)
     assert (time.perf_counter() - t0) / 20 < 0.010
+
+
+def test_box_seen_standing_still_is_pushed_when_shoved() -> None:
+    mem = FactMemory()
+    for i, x in enumerate((5, 6, 7)):
+        learn_plain(mem, {(x, 5): 1, (9, 5): 3}, {(x + 1, 5): 1, (9, 5): 3}, Action(4), i)
+    box_sig = transition({(9, 5): 3}, {(9, 5): 3})[0].things[0].sig
+    assert fact(mem, ("A4", box_sig, "any")).effects == (Effect("none"),)
+    _, _, keys = learn_plain(mem, {(8, 5): 1, (9, 5): 3}, {(9, 5): 1, (10, 5): 3}, Action(4), 3)
+    assert ("A4", box_sig, "pushed") in keys
+    assert fact(mem, ("A4", box_sig, "pushed")).effects == (Effect("move", dx=1),)
+    stay = fact(mem, ("A4", box_sig, "any"))
+    assert stay.effects == (Effect("none"),) and stay.misses == 0 and stay.hits == 3
