@@ -21,7 +21,7 @@ Mind policy (``--policy mind``): games run ``--workers`` at a time under one
 scorecard (``arcagent.agent.scheduler``), each with a fresh ``MindAgent`` on
 the ``--config`` ablation config. All games share one ``Synthesizer`` over the
 model server at ``--endpoint`` (every reply recorded under ``--replies-dir``),
-and one synthesis thread pool of ``--workers`` threads; each game gets its own
+and one synthesis thread pool of ``2 * --workers`` threads; each game gets its own
 sandbox and its run log at ``<log-dir>/<game>.jsonl``.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
@@ -381,8 +381,8 @@ class MindRun:
     """The resources every game of one mind run shares, and the per-game factory.
 
     Shared: one ``Synthesizer`` (none for a config without the LLM) and one
-    synthesis thread pool of ``workers`` threads so each running game can have
-    a call in flight. Per game: a fresh
+    synthesis thread pool of ``2 * workers`` threads, so each running game can
+    have a call in flight even while calls from ended games finish. Per game: a fresh
     ``ProgramSandbox`` and a ``RunLog`` at ``<log_dir>/<game>.jsonl``. A game's
     seed is ``seed`` plus its index in ``games``. Call ``close`` once every
     game is done.
@@ -403,7 +403,9 @@ class MindRun:
             raise ValueError(f"config {cfg.name} uses the LLM but no chat was given")
         self.cfg = cfg
         self.synth = Synthesizer(chat, k=cfg.k) if cfg.llm and chat is not None else None
-        self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="synth")
+        # Two threads per game slot: a call still running for a game that has ended
+        # (its result is never read) must not hold the thread the next game needs.
+        self.pool = ThreadPoolExecutor(max_workers=2 * workers, thread_name_prefix="synth")
         self._index = {g: i for i, g in enumerate(games)}
         self._log_dir = log_dir
         self._seed = seed

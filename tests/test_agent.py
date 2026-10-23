@@ -670,3 +670,22 @@ def test_sandbox_spawn_failure_plays_the_game_without_the_model(
     assert len(acts) == 40 and all(a["branch"] == "fallback" for a in acts)
     assert calls == [] and not [r for r in recs if r["type"] == "llm_call"]
     assert recs[-1]["type"] == "game_end"
+
+
+def test_mind_run_synthesis_pool_has_two_threads_per_game_slot(tmp_path: Path) -> None:
+    # A call still running for a finished game must not hold the slot a new game needs.
+    from arcagent.mind.config import CONFIGS  # noqa: PLC0415
+
+    run = submit.MindRun(
+        CONFIGS["EXPLORER"],
+        chat=None,
+        games=["g"],
+        workers=3,
+        log_dir=tmp_path,
+        seed=0,
+        run_deadline=0.0,
+    )
+    try:
+        assert run.pool._max_workers == 6  # pyright: ignore[reportAttributeAccessIssue]  # stdlib private size
+    finally:
+        run.close()
