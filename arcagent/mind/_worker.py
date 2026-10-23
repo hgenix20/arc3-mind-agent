@@ -302,12 +302,16 @@ def main() -> None:
         planner_error = _err(exc)
     worker = Worker(planner, planner_error)
     for line in sys.stdin.buffer:
+        req: Any = None
         try:
             req = json.loads(line)
             reply = worker.handle(req)
             reply["id"] = req.get("id")
         except Exception as exc:  # a malformed request must not kill the worker
-            reply = {"id": None, "error": _err(exc)}
+            # Echo the id whenever the request parsed, so the parent gets the error
+            # at once instead of waiting out its deadline and calling it a timeout.
+            rid = req.get("id") if isinstance(req, dict) else None
+            reply = {"id": rid, "error": _err(exc)}
         channel.write(json.dumps(reply).encode("utf-8") + b"\n")
         channel.flush()
 

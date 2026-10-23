@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
@@ -12,7 +14,7 @@ import pytest
 import arcagent.mind.sandbox as sandbox_module
 from arcagent.core.types import GRID_SIZE, Action, Grid, Phase
 from arcagent.mind.perception import frame_hash
-from arcagent.mind.sandbox import ProgramSandbox
+from arcagent.mind.sandbox import PLANNER_PATH, WORKER_PATH, ProgramSandbox
 from arcagent.mind.types import Step
 
 GOOD = "def step(grid, action, x=-1, y=-1):\n    g=[r[:] for r in grid]; g[0][0]=action; return g\n"
@@ -395,3 +397,19 @@ def test_dead_sandbox_fails_every_request_without_a_worker() -> None:
     assert sb.goal(["p"], zeros()) == {"p": None}
     assert sb.restarts == 0 and sb.dropped == {}
     sb.close()
+
+
+def test_worker_error_reply_echoes_the_request_id() -> None:
+    # A handler that raises must still answer with the request's id, or the parent
+    # waits out the deadline and blames a timeout.
+    proc = subprocess.Popen(  # fixed argv, no shell
+        [sys.executable, "-I", str(WORKER_PATH), str(PLANNER_PATH)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    lines = [json.dumps({"op": "unload", "id": 7}), "not json"]
+    out, _ = proc.communicate(("\n".join(lines) + "\n").encode("utf-8"), timeout=30)
+    replies = [json.loads(x) for x in out.splitlines()]
+    assert replies[0]["id"] == 7 and "KeyError" in replies[0]["error"]
+    assert replies[1]["id"] is None and "error" in replies[1]  # unparsed: no id to echo
