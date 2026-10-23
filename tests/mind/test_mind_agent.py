@@ -636,3 +636,23 @@ def test_failed_goal_plan_is_not_retried_until_trials_grow(
     assert all(s["retry_at_trials"] == s["trials"] + 10 for s in skips)
     for a, b in itertools.pairwise(skips):
         assert b["trials"] >= a["retry_at_trials"]
+
+
+def test_metacognition_drop_of_a_carried_program_is_logged_once(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    # A program carried from the store and then dropped by metacognition used to stay in
+    # store.procedural, so the next sleep replayed it and logged a second drop.
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], failing_chat)
+    frozen = Program(
+        "frozen",
+        "def step(grid, action, x=-1, y=-1):\n    return [r[:] for r in grid]\n",
+        False,
+        "transfer",
+    )
+    agent.store.procedural["frozen"] = (frozen, 9, 10)
+    assert agent.belief.add(frozen, hits=9, trials=10) is None
+    play(agent, Corridor(pit_x=63, pit_visible=False), 10)
+    assert "frozen" not in agent.store.procedural and "frozen" not in agent.store.held
+    agent.close()
+    assert drops_by_pid(records(tmp_path)) == {"frozen": ["misses_in_row"]}

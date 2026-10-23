@@ -542,7 +542,15 @@ class MindAgent:
     # -- logging and shutdown ------------------------------------------------
 
     def _log_drop(self, pid: str, reason: str, step: int, state: ProgramState | None) -> None:
+        """Log one drop and forget ``pid`` everywhere the agent keeps it.
+
+        A dropped program also leaves ``store.procedural`` and ``store.held``:
+        a program carried from the store and dropped by metacognition or the
+        sandbox would otherwise be replayed at the next sleep and logged twice.
+        """
         self._misses.pop(pid, None)
+        self.store.procedural.pop(pid, None)
+        self.store.held.pop(pid, None)
         first_miss = None if state is None else state.first_miss_step
         self._log.event(
             "program_dropped", pid=pid, reason=reason, step=step, first_miss_step=first_miss
