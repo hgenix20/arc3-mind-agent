@@ -622,3 +622,51 @@ def test_mind_policy_parquet_keeps_played_results_and_pads_unplayed_games(
     rows = pq.read_table(str(tmp_path / "submission.parquet")).to_pylist()
     assert [r["game_id"] for r in rows] == ["ft09-2", "ls20-1"]
     assert all(r["score"] == 0.0 and r["end_of_game"] for r in rows)
+
+
+def test_sandbox_spawn_failure_plays_the_game_without_the_model(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import time  # noqa: PLC0415
+
+    from arcagent.mind.config import CONFIGS  # noqa: PLC0415
+    from arcagent.mind.sandbox import ProgramSandbox  # noqa: PLC0415
+    from arcagent.synth.prompt import Message  # noqa: PLC0415
+    from arcagent.synth.run import Completion  # noqa: PLC0415
+
+    class Unstartable(ProgramSandbox):
+        def __init__(self, **_kw: Any) -> None:
+            raise OSError("cannot start python -I")
+
+    calls: list[int] = []
+
+    def chat(messages: list[Message], seed: int) -> Completion:
+        calls.append(seed)
+        raise AssertionError("no model call without a sandbox")
+
+    monkeypatch.setattr(submit, "ProgramSandbox", Unstartable)
+    now = time.monotonic()
+    run = submit.MindRun(
+        CONFIGS["FULL"],
+        chat=chat,
+        games=["g"],
+        workers=1,
+        log_dir=tmp_path,
+        seed=0,
+        run_deadline=now + 3600,
+    )
+    game = run.make_agent("g", now + 3600)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), np.int8)
+    for i in range(40):
+        grid = grid.copy()
+        grid[0, i % GRID_SIZE] = 1  # a new frame each step
+        game.choose(Observation(grid, Phase.NOT_FINISHED, 0, 1, (1, 2)))
+    game.close()
+    run.close()
+    recs = [json.loads(x) for x in (tmp_path / "g.jsonl").read_text().splitlines()]
+    errors = [r for r in recs if r["type"] == "agent_error"]
+    assert len(errors) == 1 and "OSError: cannot start python -I" in errors[0]["error"]
+    acts = [r for r in recs if r["type"] == "action"]
+    assert len(acts) == 40 and all(a["branch"] == "fallback" for a in acts)
+    assert calls == [] and not [r for r in recs if r["type"] == "llm_call"]
+    assert recs[-1]["type"] == "game_end"

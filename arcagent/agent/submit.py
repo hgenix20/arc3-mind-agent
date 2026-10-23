@@ -67,7 +67,7 @@ from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.agent.scheduler import DEFAULT_MAX_ACTIONS as MIND_MAX_ACTIONS
 from arcagent.agent.scheduler import MIND_TAGS, play_concurrent
 from arcagent.core.types import Action, Observation
-from arcagent.mind.agent import MindAgent
+from arcagent.mind.agent import MAX_ERROR_CHARS, MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
 from arcagent.mind.runlog import RunLog
@@ -410,17 +410,29 @@ class MindRun:
         self._run_deadline = run_deadline
 
     def make_agent(self, game: str, deadline: float) -> MindGame:
-        """A fresh agent for ``game`` that stops thinking at ``deadline``."""
+        """A fresh agent for ``game`` that stops thinking at ``deadline``.
+
+        If the sandbox worker cannot be started, the game is not lost: it logs
+        ``agent_error`` with the spawn error and plays the ``EXPLORER`` config
+        (no model, B0 only) on a ``ProgramSandbox.dead()`` stand-in.
+        """
         seed = self._seed + self._index.get(game, 0)
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
         sandbox: ProgramSandbox | None = None
         try:
-            sandbox = ProgramSandbox()
+            cfg, synth = self.cfg, self.synth
+            try:
+                sandbox = ProgramSandbox()
+            except Exception as exc:  # a broken worker costs this game its model, not its play
+                error = f"sandbox spawn failed, playing EXPLORER: {type(exc).__name__}: {exc}"
+                log.event("agent_error", step=0, error=error[:MAX_ERROR_CHARS])
+                sandbox = ProgramSandbox.dead()
+                cfg, synth = CONFIGS["EXPLORER"], None
             agent = MindAgent(
                 game,
-                self.cfg,
+                cfg,
                 seed=seed,
-                synth=self.synth,
+                synth=synth,
                 pool=self.pool,
                 sandbox=sandbox,
                 log=log,

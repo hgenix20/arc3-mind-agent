@@ -20,7 +20,8 @@ Contract:
 - Program misbehavior is a value, never an exception: ``None`` for a crash, a
   timeout or an invalid grid (anything but 64 rows of 64 ints in -1..15).
 - Failing to start the worker at all raises ``OSError``: that is a broken
-  environment, not model behavior.
+  environment, not model behavior. ``ProgramSandbox.dead()`` is the stand-in
+  for that case: closed from the start, so it fails every request as below.
 - After ``close`` every request fails the way a dead program does (None,
   ``(0, n)``, an error string, a plan with no actions) without starting a
   worker, counting a restart or blaming a program. A synthesis call still
@@ -106,18 +107,38 @@ class ProgramSandbox:
     """A persistent worker subprocess holding one game's programs. Use as a context manager."""
 
     def __init__(self, *, timeout_s: float = 5.0, plan_timeout_s: float = 30.0) -> None:
+        self._setup(timeout_s, plan_timeout_s)
+        self._tmp = tempfile.TemporaryDirectory(prefix="arc-sandbox-")
+        try:
+            self._spawn()
+        except BaseException:
+            self._tmp.cleanup()
+            raise
+
+    @classmethod
+    def dead(cls, *, timeout_s: float = 5.0, plan_timeout_s: float = 30.0) -> ProgramSandbox:
+        """A sandbox with no worker, already closed: every request fails like a dead program.
+
+        The stand-in for a game whose worker could not be started, so that game can
+        still play on B0. Starts no process and creates no directory.
+        """
+        sb = cls.__new__(cls)
+        sb._setup(timeout_s, plan_timeout_s)
+        sb._closed = True
+        return sb
+
+    def _setup(self, timeout_s: float, plan_timeout_s: float) -> None:
         self.timeout_s = timeout_s
         self.plan_timeout_s = plan_timeout_s
         self.restarts = 0
         self.dropped: dict[str, str] = {}
         self._codes: dict[str, str] = {}
-        self._tmp = tempfile.TemporaryDirectory(prefix="arc-sandbox-")
+        self._tmp: tempfile.TemporaryDirectory[str] | None = None
         self._proc: subprocess.Popen[bytes] | None = None
         self._queue: queue.Queue[bytes | None] = queue.Queue()
         self._next_id = 0
         self._lock = threading.RLock()
         self._closed = False
-        self._spawn()
 
     @property
     def closed(self) -> bool:
@@ -140,7 +161,8 @@ class ProgramSandbox:
         with self._lock:
             self._closed = True
             self._kill()
-            self._tmp.cleanup()
+            if self._tmp is not None:
+                self._tmp.cleanup()
 
     # -- process management ------------------------------------------------
 
@@ -148,6 +170,7 @@ class ProgramSandbox:
         """Start a worker and reload every program; a program that fails to reload is dropped."""
         env = {"SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
         cmd = [sys.executable, "-I", str(WORKER_PATH), str(PLANNER_PATH)]
+        assert self._tmp is not None  # only a dead() sandbox has none, and it never spawns
         self._proc = subprocess.Popen(  # fixed argv, no shell
             cmd,
             cwd=self._tmp.name,

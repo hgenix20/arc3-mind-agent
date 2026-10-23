@@ -384,3 +384,14 @@ def test_score_releases_the_lock_between_chunks(
     monkeypatch.setattr(sb, "_score_chunk", chunk)
     assert sb.score("good", steps) == (4, 4)
     assert calls == [2, 2] and waited == [True]
+
+
+def test_dead_sandbox_fails_every_request_without_a_worker() -> None:
+    sb = ProgramSandbox.dead()
+    assert sb.closed
+    assert isinstance(sb.load("p", GOOD), str)
+    assert sb.predict(["p"], zeros(), Action(1)) == {"p": None}
+    assert sb.score("p", [_step(0, zeros(), Action(1), zeros())]) == (0, 1)
+    assert sb.goal(["p"], zeros()) == {"p": None}
+    assert sb.restarts == 0 and sb.dropped == {}
+    sb.close()
