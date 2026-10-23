@@ -36,9 +36,9 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 
 from arcagent.core.types import COORD_ACTION_ID, RESET_ID, Action, Grid, Observation
+from arcagent.mind.types import ActionKey
 from arcagent.synth.trace import components
 
-ActionKey = tuple[int, int, int]
 StateKey = bytes
 MAX_TARGETS = 64
 MAX_STATES = 20_000
@@ -125,6 +125,7 @@ class ExplorerPolicy:
         self.last: tuple[StateKey, Action, int] | None = None
         self.plan: list[Action] = []
         self.expected: StateKey | None = None
+        self._seen = False
 
     # -- priors -------------------------------------------------------------
     @staticmethod
@@ -163,23 +164,58 @@ class ExplorerPolicy:
         return out
 
     # -- choice -----------------------------------------------------------------
-    def choose(self, obs: Observation) -> Action:
+    def observe(self, obs: Observation) -> None:
+        """Learn the outcome of the last action from ``obs`` without choosing.
+
+        Idempotent until an action is chosen or noted, so a caller may observe
+        first and then call ``choose`` with the same ``obs`` without double
+        counting.
+        A level change clears the graph; a surprise clears the frontier path.
+        """
+        if self._seen:
+            return
+        self._seen = True
         key = state_key(obs)
         self._record(key)
+        self.last = None
         if obs.levels_completed != self.level:
             self.level = obs.levels_completed
             self.graph = Graph()
             self.plan = []
         if self.plan and key != self.expected:
             self.plan = []
+        if key not in self.graph.cands and len(self.graph.cands) < self.max_states:
+            self.graph.cands[key] = self._candidates(obs)
+
+    def note(self, obs: Observation, action: Action) -> None:
+        """Record that ``action`` was taken from ``obs`` (possibly by another branch).
+
+        Call after ``observe(obs)``; a prior ``choose`` of the same action
+        makes it a no-op. A RESET leaves nothing to learn from. An action
+        other than the explorer's own pending frontier step invalidates that
+        path.
+        """
+        self._seen = False
+        if self.last is not None and self.last[1] == action:
+            return
+        self.plan = []
+        if action.id == RESET_ID or obs.terminal:
+            self.last = None
+            return
+        self.last = (state_key(obs), action, self._kind(action, obs.grid)[1])
+
+    def choose(self, obs: Observation, exclude: frozenset[ActionKey] = frozenset()) -> Action:
+        """Pick the next action, skipping ``exclude`` unless nothing else is left."""
+        self.observe(obs)
+        key = state_key(obs)
         if obs.terminal or all(a == RESET_ID for a in obs.available_actions):
             self.last = None
             self.plan = []
+            self._seen = False
             return Action(RESET_ID)
-        if key not in self.graph.cands and len(self.graph.cands) < self.max_states:
-            self.graph.cands[key] = self._candidates(obs)
-        action = self._pick(key, obs)
+        action = self._pick(key, obs, exclude)
         self.last = (key, action, self._kind(action, obs.grid)[1])
+        self._seen = False
         return action
 
     def ucb(self, kind: tuple[int, int]) -> float:
@@ -191,8 +227,10 @@ class ExplorerPolicy:
         total = sum(self.tries.values()) + 1
         return self.change_rate(kind) + UCB_C * math.sqrt(math.log(total) / (self.tries[kind] + 1))
 
-    def _pick(self, key: StateKey, obs: Observation) -> Action:
-        untried = self.graph.untried(key)
+    def _pick(
+        self, key: StateKey, obs: Observation, exclude: frozenset[ActionKey] = frozenset()
+    ) -> Action:
+        untried = [a for a in self.graph.untried(key) if a.key() not in exclude]
         if untried:
             self.plan = []
             return max(
@@ -201,6 +239,8 @@ class ExplorerPolicy:
             )
         if not self.plan:
             self.plan = self.graph.path_to_frontier(key)
+        if self.plan and self.plan[0].key() in exclude:
+            self.plan = []
         if self.plan:
             action = self.plan.pop(0)
             self.expected = self.graph.edges.get(key, {}).get(action.key())
@@ -208,5 +248,6 @@ class ExplorerPolicy:
         cands = self.graph.cands.get(key) or self._candidates(obs)
         if not cands:
             return Action(RESET_ID)
+        cands = [a for a in cands if a.key() not in exclude] or cands
         weights = [self.change_rate(self._kind(a, obs.grid)) for a in cands]
         return self.rng.choices(cands, weights=weights, k=1)[0]

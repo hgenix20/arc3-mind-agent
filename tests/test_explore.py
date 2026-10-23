@@ -138,3 +138,26 @@ def test_make_policy_names(policy: str) -> None:
 def test_make_policy_rejects_unknown() -> None:
     with pytest.raises(ValueError):
         make_policy("llm", 0)
+
+
+def test_explorer_exclude_skips_and_falls_back_when_all_excluded() -> None:
+    pol = ExplorerPolicy(seed=0)
+    o = obs(grid_with((5, 5, 2, 2, 3)), avail=(1, 2))
+    banned = frozenset({(1, -1, -1)})
+    assert pol.choose(o, banned) == Action(2)
+    pol = ExplorerPolicy(seed=0)
+    assert pol.choose(o, frozenset({(1, -1, -1), (2, -1, -1)})).id in (1, 2)
+    # Default behavior is unchanged: no exclusion, same pick as a fresh policy.
+    assert ExplorerPolicy(seed=0).choose(o) == ExplorerPolicy(seed=0).choose(o, frozenset())
+
+
+def test_explorer_observe_and_note_learn_actions_taken_elsewhere() -> None:
+    pol = ExplorerPolicy(seed=0)
+    a = obs(grid_with((5, 5, 2, 2, 3)), avail=(1, 2))
+    b = obs(grid_with((6, 5, 2, 2, 3)), avail=(1, 2))
+    pol.observe(a)
+    pol.note(a, Action(1))
+    pol.observe(b)
+    pol.observe(b)  # idempotent until an action is noted
+    assert pol.graph.edges[state_key(a)][(1, -1, -1)] == state_key(b)
+    assert pol.tries[(1, -1)] == 1
