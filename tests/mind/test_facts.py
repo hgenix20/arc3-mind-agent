@@ -6,6 +6,7 @@ import numpy as np
 
 from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import (
+    SPAWN,
     Effect,
     Fact,
     FactKey,
@@ -106,7 +107,7 @@ def test_toc_finds_facts_by_behavior_and_borrows_for_siblings() -> None:
 def test_lookup_order_exact_then_any_then_sibling_then_action_wide() -> None:
     mem = FactMemory()
     assert mem.lookup("A2", "c1:s", "blocked") is None
-    mem.record(("A2", "any", "any"), (Effect("appear", sig="c4:x", at=(1, 1)),), 0)
+    mem.record(("A2", "any", "any"), (Effect("none"),), 0)
     found = mem.lookup("A2", "c1:s", "blocked")
     assert found is not None and found[0].key == ("A2", "any", "any") and not found[1]
     mem.record(("A2", "c7:s", "any"), (Effect("none"),), 1)
@@ -253,8 +254,10 @@ def test_appear_records_position_under_any() -> None:
     mem = FactMemory()
     _, s1, keys = learn_plain(mem, {(5, 5): 1}, {(5, 5): 1, (30, 31): 4}, Action(5), 0)
     new = thing_at(s1, 30, 31)
-    assert ("A5", "any", "any") in keys
-    assert fact(mem, ("A5", "any", "any")).effects == (Effect("appear", sig=new.sig, at=(30, 31)),)
+    assert ("A5", SPAWN, "any") in keys
+    assert fact(mem, ("A5", SPAWN, "any")).effects == (Effect("appear", sig=new.sig, at=(30, 31)),)
+    assert mem.lookup("A5", "c3:unknown", "any") is None
+    assert mem.lookup("A5", "any", "any") is None
 
 
 def test_click_subject_is_self_and_others_keep_their_sig() -> None:
@@ -303,3 +306,44 @@ def test_level_up_records_event_only() -> None:
     keys = learn(mem, before, Action(3), diff, move=9, level_up=True, game_over=False)
     assert keys == [("event", "level_up", "any")] and list(mem.facts) == keys
     assert fact(mem, keys[0]).tags == {"win"}
+
+
+def test_lookup_never_returns_a_spawn_fact_for_a_subject() -> None:
+    mem = FactMemory()
+    mem.record(("A2", "any", "any"), (Effect("appear", sig="c4:x", at=(1, 1)),), 0)
+    assert mem.lookup("A2", "c1:s", "any") is None
+
+
+def test_game_over_prefers_the_overlapped_color() -> None:
+    mem = FactMemory()
+    before, _, diff = transition({(6, 5): 1, (5, 5): 9, (5, 4): 8}, {(5, 5): 1, (5, 4): 8})
+    player = thing_at(before, 6, 5)
+    keys = learn(mem, before, Action(3), diff, move=0, level_up=False, game_over=True)
+    assert keys == [("any", player.sig, "touch:9")]
+
+
+def test_wall_beside_lava_is_spared_only_after_a_safe_touch() -> None:
+    lava_row = {(5, 4): 8, (5, 6): 9}
+    before, _, diff = transition({(6, 5): 1, **lava_row}, {(5, 5): 1, **lava_row})
+    sig = thing_at(before, 6, 5).sig
+    # no safe history: both adjacent colors are suspects
+    mem = FactMemory()
+    keys = learn(mem, before, Action(3), diff, move=1, level_up=False, game_over=True)
+    assert keys == [("any", sig, "touch:8"), ("any", sig, "touch:9")]
+    # the wall was touched safely first: only lava gets the death fact
+    mem = FactMemory()
+    learn_plain(mem, {(6, 3): 1, **lava_row}, {(6, 4): 1, **lava_row}, Action(2), 0)
+    assert 8 in mem.safe_touch[sig] and 9 not in mem.safe_touch[sig]
+    keys = learn(mem, before, Action(3), diff, move=1, level_up=False, game_over=True)
+    assert keys == [("any", sig, "touch:9")]
+
+
+def test_two_safe_touches_break_a_death_fact() -> None:
+    mem = FactMemory()
+    before, _, diff = transition({(6, 5): 1, (4, 5): 9}, {(5, 5): 1, (4, 5): 9})
+    key = ("any", thing_at(before, 6, 5).sig, "touch:9")
+    learn(mem, before, Action(3), diff, move=0, level_up=False, game_over=True)
+    _, _, keys = learn_plain(mem, {(3, 6): 1, (4, 5): 9}, {(3, 5): 1, (4, 5): 9}, Action(1), 1)
+    assert key in keys and fact(mem, key).status == "thin"
+    learn_plain(mem, {(4, 7): 1, (4, 5): 9}, {(4, 6): 1, (4, 5): 9}, Action(1), 2)
+    assert fact(mem, key).status == "broken"

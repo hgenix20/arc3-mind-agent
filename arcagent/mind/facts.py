@@ -36,6 +36,7 @@ EffectKind = Literal[
     "level_up",
 ]
 FactKey = tuple[str, str, str]  # (action label, subject, context)
+SPAWN = "spawn"  # subject of the per-action spawn fact (label, SPAWN, "any")
 Status = Literal["thin", "solid", "broken"]
 RecordResult = Literal["new", "hit", "miss"]
 
@@ -177,7 +178,10 @@ class FactMemory:
     """Facts by key, a table of contents by behavior tag, and colors that blocked each sig.
 
     ``landed`` remembers the top-left where the last ``any``-context move observation of a
-    key ended, which is what the teleport rule compares against.
+    key ended, which is what the teleport rule compares against. ``safe_touch`` holds, per
+    sig, every color its things overlapped or sat 4-adjacent to after a transition that
+    didn't end the game. Spawn facts live under subject ``SPAWN`` and are never returned
+    for another subject.
     """
 
     def __init__(self) -> None:
@@ -185,6 +189,7 @@ class FactMemory:
         self.toc: dict[str, set[FactKey]] = {}
         self.blockers: dict[str, set[int]] = {}
         self.landed: dict[FactKey, Cell] = {}
+        self.safe_touch: dict[str, set[int]] = {}
         # (label, context, sibling handle) -> keys; built alongside the toc for borrowing
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
 
@@ -196,7 +201,7 @@ class FactMemory:
 
         Order: exact key, the subject's ``any`` fact, a non-broken fact of a sibling subject
         (same shape before same color; same context before ``any``; most hits, then lowest
-        key), then the action-wide ``(label, "any", "any")`` fact.
+        key), then the action-wide ``(label, "any", "any")`` fact unless it is a spawn fact.
         """
         for key in ((label, subject, context), (label, subject, "any")):
             fact = self.facts.get(key)
@@ -206,7 +211,9 @@ class FactMemory:
         if borrowed is not None:
             return borrowed, True
         wide = self.facts.get((label, "any", "any"))
-        return None if wide is None else (wide, False)
+        if wide is None or any(e.kind == "appear" for e in wide.effects):
+            return None
+        return wide, False
 
     def _borrow(self, label: str, subject: str, context: str) -> Fact | None:
         handles = _sibling_handles(subject)
@@ -500,26 +507,59 @@ def _record_appear(
             spawned.append(Effect("appear", sig=c.sig, at=(t.x, t.y) if t else (-1, -1)))
     if not spawned:
         return []
-    key = (label, "any", "any")
+    key = (label, SPAWN, "any")
     mem.record(key, tuple(sorted(spawned, key=lambda e: (e.sig, e.at))), move)
     return [key]
 
 
+def _colors_touching(
+    cells: frozenset[Cell], scene: Scene, self_id: int, *, adjacent: bool
+) -> set[int]:
+    """Colors of other things overlapping ``cells``, or overlapping or 4-adjacent to them."""
+    zone = cells | _neighbors(cells) if adjacent else cells
+    return {t.color for t in scene.things if t.id != self_id and t.cells & zone}
+
+
 def _learn_touch(mem: FactMemory, before: Scene, obs: list[_Obs], move: int) -> list[FactKey]:
-    """Game over: every mover gets a touch fact for each color at or beside its destination."""
+    """Game over: each mover gets a touch fact per likely deadly color at its destination.
+
+    Candidates are the colors overlapping the destination, else the 4-adjacent ones. Colors
+    this sig already touched safely are dropped unless every candidate was touched safely.
+    """
     keys: list[FactKey] = []
     for o in obs:
         if o.shift is None:
             continue
-        zone = o.dest | _neighbors(o.dest)
-        colors = sorted({t.color for t in before.things if t.id != o.thing.id and t.cells & zone})
-        for color in colors:
-            key = ("any", o.thing.sig, f"touch:{color}")
+        sig = o.thing.sig
+        cands = _colors_touching(o.dest, before, o.thing.id, adjacent=False)
+        if not cands:
+            cands = _colors_touching(o.dest, before, o.thing.id, adjacent=True)
+        fresh = cands - mem.safe_touch.get(sig, set())
+        for color in sorted(fresh or cands):
+            key = ("any", sig, f"touch:{color}")
             if key not in keys:
                 keys.append(key)
     for key in keys:
         mem.record(key, (Effect("game_over"),), move)
     return keys
+
+
+def _note_safe(mem: FactMemory, scene: Scene, obs: list[_Obs], move: int) -> list[FactKey]:
+    """After a safe transition: grow ``safe_touch`` and charge a miss to each touch fact hit."""
+    refuted: list[FactKey] = []
+    for o in obs:
+        if not o.dest:
+            continue
+        sig = o.thing.sig
+        colors = _colors_touching(o.dest, scene, o.thing.id, adjacent=True)
+        mem.safe_touch.setdefault(sig, set()).update(colors)
+        for color in sorted(colors):
+            key = ("any", sig, f"touch:{color}")
+            if key in mem.facts and key not in refuted:
+                refuted.append(key)
+    for key in refuted:
+        mem.record(key, _NONE, move)
+    return refuted
 
 
 def learn(
@@ -540,11 +580,14 @@ def learn(
     appear positions are ``(-1, -1)`` and destinations are the shifted old cells.
 
     ``level_up`` records only ``("event", "level_up", "any")``. ``game_over`` records only
-    ``("any", sig, "touch:<color>")`` facts for subjects that moved, one per color of another
-    thing at or 4-adjacent to the destination in ``before``. Otherwise every subject records
+    ``("any", sig, "touch:<color>")`` facts for subjects that moved: colors of things in
+    ``before`` overlapping the destination, else 4-adjacent to it, minus colors in
+    ``mem.safe_touch[sig]`` unless that removes them all. Otherwise every subject records
     one observation: unchanged subjects record ``none``, pushed movers go to ``pushed``,
     and a ``none`` where a move was expected but the way was shut (edge, padding or another
-    thing) goes to ``blocked`` and adds the blocking colors to ``mem.blockers``.
+    thing) goes to ``blocked`` and adds the blocking colors to ``mem.blockers``. Spawns go
+    to ``(label, SPAWN, "any")``. Last, every color overlapping or 4-adjacent to a
+    subject's new cells joins ``mem.safe_touch`` and charges a miss to a matching touch fact.
     """
     if level_up:
         key = ("event", "level_up", "any")
@@ -558,4 +601,5 @@ def learn(
     _mark_blocked(mem, label, before, obs)
     scene = after if after is not None else before
     keys = _record_groups(mem, label, scene, obs, move)
-    return keys + _record_appear(mem, label, diff, after, move)
+    keys += _record_appear(mem, label, diff, after, move)
+    return keys + _note_safe(mem, scene, obs, move)
