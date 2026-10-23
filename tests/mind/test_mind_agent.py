@@ -20,6 +20,7 @@ from arcagent.mind.config import CONFIGS, MindConfig, build_modules
 from arcagent.mind.modules.base import NullTransfer, NullVoi
 from arcagent.mind.modules.inhibition import DisconfirmInhibition
 from arcagent.mind.modules.metacognition import ConfidenceMetacognition
+from arcagent.mind.modules.transfer import CarryTransfer
 from arcagent.mind.modules.voi import DisagreementVoi
 from arcagent.mind.perception import frame_hash
 from arcagent.mind.runlog import RunLog
@@ -225,7 +226,8 @@ def test_configs_and_module_factory() -> None:
     full = build_modules(CONFIGS["FULL"])
     assert isinstance(full.metacognition, ConfidenceMetacognition)
     assert isinstance(full.inhibition, DisconfirmInhibition)
-    assert isinstance(full.voi, DisagreementVoi) and isinstance(full.transfer, NullTransfer)
+    assert isinstance(full.voi, DisagreementVoi) and isinstance(full.transfer, CarryTransfer)
+    assert isinstance(build_modules(CONFIGS["FULL-transfer"]).transfer, NullTransfer)
     assert isinstance(build_modules(CONFIGS["B0"]).voi, NullVoi)
     with pytest.raises(dataclasses.FrozenInstanceError):
         CONFIGS["FULL"].k = 2  # pyright: ignore[reportAttributeAccessIssue]  # frozen on purpose
@@ -398,7 +400,7 @@ def test_every_action_record_has_required_fields(tmp_path: Path, sandbox: Progra
 
 def test_level_up_runs_sleep_and_transfer(tmp_path: Path, sandbox: ProgramSandbox) -> None:
     chat, _ = counting_chat(TRUE_RULES)
-    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], chat)
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL-transfer"], chat)
     game = Corridor(win_levels=3)
     play(agent, game, 120)
     assert game.levels >= 1

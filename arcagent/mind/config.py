@@ -7,7 +7,7 @@ Contract:
   ``FULL-x`` isolate one module each. ``EXPLORER`` has no LLM at all: the
   model-free 0.36 baseline, kept for reference only.
 - ``build_modules`` is the only code that maps a flag to a module class. Transfer
-  maps to its null until its real module exists (Task 18).
+  selects ``CarryTransfer`` or its null.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from arcagent.mind.modules.base import (
 )
 from arcagent.mind.modules.inhibition import DisconfirmInhibition
 from arcagent.mind.modules.metacognition import ConfidenceMetacognition
+from arcagent.mind.modules.transfer import CarryTransfer
 from arcagent.mind.modules.voi import DisagreementVoi
 
 MODULE_NAMES = ("metacognition", "inhibition", "voi", "transfer")
@@ -104,6 +105,5 @@ def build_modules(cfg: MindConfig) -> Modules:
         metacognition=ConfidenceMetacognition() if cfg.metacognition else NullMetacognition(),
         inhibition=DisconfirmInhibition() if cfg.inhibition else NullInhibition(),
         voi=DisagreementVoi() if cfg.voi else NullVoi(),
-        # The real transfer arrives in Task 18; until then it is a null.
-        transfer=NullTransfer(),
+        transfer=CarryTransfer() if cfg.transfer else NullTransfer(),
     )
