@@ -36,6 +36,21 @@ def test_runlog_writes_one_json_line_per_call_with_plain_types(tmp_path: Path) -
     assert a["entropy"] == 0.5 and a["done"] is True
     assert a["action"] == [6, 1, 2] and a["grid"] == [[1, 2]]
     assert rows[1]["n"] == 2
+    e = rows[1]
+    assert (e["game"], e["config"], e["seed"]) == ("ls20", "full", 3)
+    assert isinstance(e["t"], float)
+
+
+def test_runlog_envelope_fields_cannot_be_overwritten(tmp_path: Path) -> None:
+    path = tmp_path / "g.jsonl"
+    log = RunLog(path, game="g", config="c", seed=0)
+    for name in ("type", "t", "game", "config", "seed"):
+        with pytest.raises(ValueError, match=name):
+            log.event("plan", **{name: "x"})
+        with pytest.raises(ValueError, match=name):
+            log.action(**{name: "x"})
+    log.close()
+    assert path.read_text(encoding="utf-8") == ""
 
 
 def test_runlog_lines_survive_without_close(tmp_path: Path) -> None:

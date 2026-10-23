@@ -192,3 +192,17 @@ def test_load_skips_and_counts_malformed_lines_and_stamps_events(tmp_path: Path)
     assert [r["type"] for r in records] == ["action", "level_up"]
     assert records[1]["game"] == GAME
     assert per_game(records)["levels_completed"] == 1
+
+
+def test_load_keeps_a_game_already_on_the_record(tmp_path: Path) -> None:
+    """Only records missing ``game`` are stamped; new-style events keep their own."""
+    path = tmp_path / "file-stem.jsonl"
+    lines = [
+        json.dumps(act(0, 0, "a")),
+        json.dumps({"type": "level_up", "game": "zz99", "step": 0, "level": 1}),
+        json.dumps({"type": "sleep", "step": 1}),
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    records, bad = mm.load([path])
+    assert bad == 0
+    assert [r["game"] for r in records] == [GAME, "zz99", GAME]

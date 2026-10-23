@@ -43,7 +43,11 @@ Invariants:
   action, set by the executive. A goal plan needs ``plan_min_trials`` and
   ``plan_threshold``; a lone program below them may only plan to novelty.
 - At most ``max_calls_per_game`` calls; planner bounds come from the drive state.
-- No call starts within ``cfg.synth_cutoff_s`` of the game (or run) deadline.
+- No call starts within the effective cutoff of the game (or run) deadline:
+  ``min(cfg.synth_cutoff_s, SYNTH_CUTOFF_FRACTION * budget)``, where ``budget``
+  is ``min(game_deadline, run_deadline)`` minus the agent's start time. The
+  fraction keeps games shorter than the absolute cutoff (the scheduler floor is
+  120 s) able to call the model at all; long games keep the absolute cutoff.
 
 Threading: the agent runs on its game's thread. Its synthesis call runs on a
 pool thread and touches only the sandbox (which is locked) and its own
@@ -77,6 +81,7 @@ from arcagent.mind.synthesizer import Synthesizer, SynthResult
 from arcagent.mind.types import ActionKey, Decision, Program, Step
 
 MISS_MEMORY = 20  # recent missed step indices kept per program, for the repair prompt
+SYNTH_CUTOFF_FRACTION = 0.25  # share of a game's budget in which no call may start
 MAX_ERROR_CHARS = 300  # per logged error, so one traceback cannot flood the log
 
 
@@ -325,7 +330,9 @@ class MindAgent:
         """Salience's wake reason if it started a call, else None."""
         if self._synth is None or self._future is not None or step is None:
             return None
-        if now >= min(self._game_deadline, self._run_deadline) - self.cfg.synth_cutoff_s:
+        deadline = min(self._game_deadline, self._run_deadline)
+        cutoff = min(self.cfg.synth_cutoff_s, SYNTH_CUTOFF_FRACTION * (deadline - self._started))
+        if now >= deadline - cutoff:
             return None  # a call started now could not finish before the game ends
         if not self.wm.steps:
             return None  # a call with no transitions to score on can only be dropped

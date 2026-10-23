@@ -4,10 +4,12 @@ Thread contract: a ``RunLog`` is written from one game's thread only (one file
 per game), so it takes no lock. Every call writes one JSON line and flushes, so
 a killed run keeps everything logged so far.
 
-``action(**fields)`` writes ``{"type": "action", "t", "game", "config",
-"seed", ...fields}``; ``event(kind, **fields)`` writes ``{"type": kind, ...}``
-with ``t`` as well. ``t`` is ``time.time()`` rounded to milliseconds. The log
-accepts arbitrary keyword fields; the lists below document what later tasks
+Every record starts with the same envelope ``type, t, game, config, seed``:
+``action(**fields)`` writes ``{"type": "action", ...envelope, ...fields}`` and
+``event(kind, **fields)`` writes ``{"type": kind, ...envelope, ...fields}``.
+``t`` is ``time.time()`` rounded to milliseconds. A caller field named like an
+envelope key raises ``ValueError`` and nothing is written. Other keyword fields
+are accepted; the lists below document what later tasks
 write and what the metrics script reads.
 
 Action record fields: ``level, step, frame_hash, action [id, x, y], branch,
@@ -32,6 +34,8 @@ from pathlib import Path
 from typing import IO
 
 import numpy as np
+
+ENVELOPE = frozenset({"type", "t", "game", "config", "seed"})
 
 
 def _plain(value: object) -> object:
@@ -63,22 +67,26 @@ class RunLog:
         self._fh.write(line + "\n")
         self._fh.flush()
 
+    def _record(self, kind: str, fields: dict[str, object]) -> dict[str, object]:
+        clash = sorted(ENVELOPE.intersection(fields))
+        if clash:
+            raise ValueError(f"reserved record fields: {', '.join(clash)}")
+        return {
+            "type": kind,
+            "t": round(time.time(), 3),
+            "game": self._game,
+            "config": self._config,
+            "seed": self._seed,
+            **fields,
+        }
+
     def action(self, **fields: object) -> None:
-        """Write one action record."""
-        self._write(
-            {
-                "type": "action",
-                "t": round(time.time(), 3),
-                "game": self._game,
-                "config": self._config,
-                "seed": self._seed,
-                **fields,
-            }
-        )
+        """Write one action record. Raises ``ValueError`` on an envelope field."""
+        self._write(self._record("action", fields))
 
     def event(self, kind: str, **fields: object) -> None:
-        """Write one event record of the given kind."""
-        self._write({"type": kind, "t": round(time.time(), 3), **fields})
+        """Write one event record of the given kind. Raises ``ValueError`` on an envelope field."""
+        self._write(self._record(kind, fields))
 
     def close(self) -> None:
         """Close the file; later writes raise ``ValueError``."""

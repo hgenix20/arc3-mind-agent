@@ -43,6 +43,9 @@ class MindConfig:
     action. ``synth_wait_poll_s``: the slice a waiting game sleeps between checks.
     ``synth_cutoff_s``: no synthesis call starts with less than this left before
     the game (or run) deadline, so none is still running when the game ends.
+    The agent caps it at ``SYNTH_CUTOFF_FRACTION`` (0.25) of the game's budget
+    (agent start to deadline), so a game shorter than this value can still call
+    the model during the first 75% of its time.
     """
 
     name: str

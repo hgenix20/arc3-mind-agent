@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from arcagent.core.types import GRID_SIZE, RESET_ID, Action, Grid, Observation, Phase
-from arcagent.mind.agent import ActivityClock, MindAgent
+from arcagent.mind.agent import SYNTH_CUTOFF_FRACTION, ActivityClock, MindAgent
 from arcagent.mind.config import CONFIGS, MindConfig, build_modules
 from arcagent.mind.modules.base import NullTransfer, NullVoi
 from arcagent.mind.modules.inhibition import DisconfirmInhibition
@@ -564,7 +564,12 @@ def test_no_synthesis_call_starts_inside_the_cutoff(
     """With less than ``synth_cutoff_s`` left, the agent plays on without calling the model."""
     chat, calls = counting_chat(TRUE_RULES)
     cfg = CONFIGS["FULL"]
-    agent, _ = make_agent(tmp_path, sandbox, cfg, chat, game_s=cfg.synth_cutoff_s - 10.0)
+    budget = 4 * cfg.synth_cutoff_s  # long enough that the absolute cutoff binds
+    now = [1000.0]
+    agent, _ = make_agent(
+        tmp_path, sandbox, cfg, chat, clock=lambda: now[0], sleep=lambda _s: None, game_s=budget
+    )
+    now[0] += budget - cfg.synth_cutoff_s + 10.0  # inside the last 300 s
     play(agent, Corridor(), 40)
     agent.close()
     recs = records(tmp_path)
@@ -578,3 +583,35 @@ def test_no_synthesis_call_starts_inside_the_cutoff(
         play(agent2, Corridor(), 40)
         agent2.close()
     assert calls2
+
+
+def test_cutoff_scales_to_a_short_game_budget(tmp_path: Path, sandbox: ProgramSandbox) -> None:
+    """A 120 s game still calls the model early; the last 25% of its budget is off limits."""
+    cfg = CONFIGS["FULL"]
+    budget = 120.0
+    assert budget < cfg.synth_cutoff_s
+    chat, calls = counting_chat(TRUE_RULES)
+    now = [1000.0]
+    agent, _ = make_agent(
+        tmp_path, sandbox, cfg, chat, clock=lambda: now[0], sleep=lambda _s: None, game_s=budget
+    )
+    play(agent, Corridor(), 40)
+    agent.close()
+    assert calls, "a short game must still start a synthesis call"
+    # Inside the last 25% (30 s) of the same budget no call starts.
+    chat2, calls2 = counting_chat(TRUE_RULES)
+    now2 = [1000.0]
+    with ProgramSandbox(timeout_s=2.0) as fresh:
+        agent2, _ = make_agent(
+            tmp_path / "b",
+            fresh,
+            cfg,
+            chat2,
+            clock=lambda: now2[0],
+            sleep=lambda _s: None,
+            game_s=budget,
+        )
+        now2[0] += budget * (1.0 - SYNTH_CUTOFF_FRACTION) + 1.0
+        play(agent2, Corridor(), 40)
+        agent2.close()
+    assert calls2 == []
