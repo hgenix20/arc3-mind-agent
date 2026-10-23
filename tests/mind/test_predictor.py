@@ -261,6 +261,16 @@ def test_borrowed_fact_sets_borrowed() -> None:
     assert p.borrowed and player_in(p.scene).x == 4
 
 
+def test_borrowed_fact_miss_fails_check_without_blaming_the_sibling() -> None:
+    before, diff = transition({(5, 5): 1}, {(5, 5): 1})  # it stayed put
+    mem = mem_with((("A3", f"c2:{DOT}", "any"), Effect("move", dx=-1)))
+    p = predict(before, Action(3), mem)
+    assert p.borrowed and p.lent == {player_in(before).id}
+    assert check(p, before, diff) == (False, [])
+    _, moved = transition({(5, 5): 1}, {(4, 5): 1})
+    assert check(p, before, moved) == (True, [])
+
+
 def test_click_uses_self_subject() -> None:
     before = scene_of({(5, 5): 1, (9, 9): 2})
     mem = mem_with(

@@ -64,7 +64,9 @@ class Prediction:
     a usable fact (and each predicted spawn, under a new id) to its resolved effects.
     ``sources`` maps the same ids to the key of the fact the prediction came from, which
     is what ``check`` reports on a miss; for a blocked mover with no stored ``blocked``
-    fact it names that ``blocked`` key, since the blocker guess is what failed.
+    fact it names that ``blocked`` key, since the blocker guess is what failed. ``lent``
+    holds the ids whose prediction came from a fact borrowed from a same-shape sibling;
+    ``check`` never blames that fact for their misses.
     """
 
     scene: Scene | None
@@ -74,6 +76,7 @@ class Prediction:
     game_over: bool
     borrowed: bool
     sources: dict[int, FactKey] = field(default_factory=dict[int, FactKey])
+    lent: frozenset[int] = frozenset()
 
 
 def _shifted(cells: Iterable[Cell], dx: int, dy: int) -> frozenset[Cell]:
@@ -109,6 +112,8 @@ class _Run:
         self.pending: dict[int, Pair] = {}  # thing id -> pair, unless resolved later
         self.unknown: dict[Pair, None] = {}
         self.borrowed = False
+        self.lent: set[int] = set()  # ids predicted from a borrowed fact
+        self.push_borrowed: set[int] = set()  # ids whose pushed fact was borrowed
         self.shift: dict[int, tuple[int, int]] = {}
         self._owner: Owner | None = None
         self._by_id: dict[int, Thing] | None = None
@@ -131,10 +136,14 @@ class _Run:
         self.used[fact.key] = None
         self.borrowed = self.borrowed or borrowed
 
-    def assign(self, tid: int, fact: Fact, effects: tuple[Effect, ...] | None = None) -> None:
-        self.effects[tid] = fact.effects if effects is None else effects
+    def assign(self, tid: int, fact: Fact, borrowed: bool = False) -> None:
+        self.effects[tid] = fact.effects
         self.sources[tid] = fact.key
         self.pending.pop(tid, None)
+        if borrowed:
+            self.lent.add(tid)
+        else:
+            self.lent.discard(tid)
 
     # --- blocking -------------------------------------------------------------------
 
@@ -164,6 +173,8 @@ class _Run:
         if found[0].status == "broken":
             self.unknown[(self.label, subject)] = None
             return None
+        if found[1]:
+            self.push_borrowed.add(tid)
         return found[0]
 
 
@@ -187,7 +198,7 @@ def _base(run: _Run) -> dict[int, _Mover]:
             continue
         fact, borrowed = found
         run.use(fact, borrowed)
-        run.assign(t.id, fact)
+        run.assign(t.id, fact, borrowed)
         for e in fact.effects:
             if e.kind == "move" and (e.dx or e.dy):
                 movers[t.id] = _Mover(t, "move", (e.dx, e.dy))
@@ -274,6 +285,7 @@ def _block(run: _Run, body: list[_Mover]) -> None:
         if fact is None:
             run.effects[tid] = _NONE
             run.sources[tid] = key
+            run.lent.discard(tid)
         elif fact.status == "broken":
             run.effects.pop(tid, None)
             run.unknown[(run.label, run.subject[tid])] = None
@@ -317,8 +329,9 @@ def _resolve_body(run: _Run, body: list[_Mover], movers: set[int]) -> None:
         run.skip[m.thing.id] = mates | pushed
     by_id = run.by_id
     for tid, fact in targets.items():
-        run.use(fact)
-        run.assign(tid, fact)
+        lent = tid in run.push_borrowed
+        run.use(fact, lent)
+        run.assign(tid, fact, lent)
         d = _displacement(by_id[tid], fact.effects)
         if d is not None:
             run.shift[tid] = d
@@ -338,7 +351,10 @@ def _toggle(run: _Run) -> None:
                     x for x in run.effects.get(t.id, ()) if x.kind not in ("none", "recolor")
                 )
                 run.effects[t.id] = (*keep, recolor)
-                run.sources.setdefault(t.id, run.sources[tid])
+                if t.id not in run.sources:
+                    run.sources[t.id] = run.sources[tid]
+                    if tid in run.lent:
+                        run.lent.add(t.id)
                 run.pending.pop(t.id, None)
 
 
@@ -443,6 +459,7 @@ def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
         game_over,
         run.borrowed,
         run.sources,
+        frozenset(run.lent),
     )
 
 
@@ -458,15 +475,32 @@ def _matches(t: Thing, effects: tuple[Effect, ...], change: Change) -> bool:
     return (change.dx, change.dy) == shift and change.sig == sig
 
 
+def _spawns(pred: Prediction, before: dict[int, Thing]) -> tuple[Counter[str], FactKey | None]:
+    """Predicted spawn sigs as a multiset, and the spawn fact they came from."""
+    spawned: Counter[str] = Counter()
+    spawn_key: FactKey | None = None
+    for tid, effects in pred.effects.items():
+        if tid in before:
+            continue
+        for e in effects:
+            if e.kind == "appear":
+                spawned[e.sig] += 1
+                spawn_key = pred.sources.get(tid, spawn_key)
+    return spawned, spawn_key
+
+
 def check(pred: Prediction, before: Scene, diff: SceneDiff) -> tuple[bool, list[FactKey]]:
     """(hit, keys whose effect missed). A hit means every predicted effect matched its Change.
 
     Appeared things match predicted spawns by sig (as a multiset); a spawn mismatch is a
-    miss of the spawn fact. An appear nothing predicted makes the check fail with no key
-    to blame. Things with no prediction never count as a miss.
+    miss of the spawn fact. An appear nothing predicted, or a miss of a fact borrowed from
+    a sibling (``pred.lent``), makes the check fail with no key to blame: charging the
+    sibling would break a fact that is right for its own sig. Things with no prediction
+    never count as a miss.
     """
     by_id = before.by_id()
     missed: dict[FactKey, None] = {}
+    surprise = False
     appeared: Counter[str] = Counter()
     for change in diff.changes:
         if change.kind == "appeared":
@@ -478,18 +512,11 @@ def check(pred: Prediction, before: Scene, diff: SceneDiff) -> tuple[bool, list[
             continue
         if not _matches(t, effects, change):
             key = pred.sources.get(change.id)
-            if key is not None:
+            if key is None or change.id in pred.lent:
+                surprise = True  # a borrowed fact missed: not this subject's fact to break
+            else:
                 missed[key] = None
-    spawned: Counter[str] = Counter()
-    spawn_key: FactKey | None = None
-    for tid, effects in pred.effects.items():
-        if tid in by_id:
-            continue
-        for e in effects:
-            if e.kind == "appear":
-                spawned[e.sig] += 1
-                spawn_key = pred.sources.get(tid, spawn_key)
-    surprise = False
+    spawned, spawn_key = _spawns(pred, by_id)
     if spawned != appeared:
         if spawn_key is not None:
             missed[spawn_key] = None
