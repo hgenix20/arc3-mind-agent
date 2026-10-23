@@ -114,6 +114,8 @@ class _Run:
         self.borrowed = False
         self.lent: set[int] = set()  # ids predicted from a borrowed fact
         self.push_borrowed: set[int] = set()  # ids whose pushed fact was borrowed
+        self.movers: set[int] = set()
+        self._pushable: dict[int, Fact | None] = {}
         self.shift: dict[int, tuple[int, int]] = {}
         self._owner: Owner | None = None
         self._by_id: dict[int, Thing] | None = None
@@ -147,8 +149,13 @@ class _Run:
 
     # --- blocking -------------------------------------------------------------------
 
-    def hits(self, t: Thing, dest: frozenset[Cell], skip: frozenset[int]) -> bool:
-        """Whether ``t`` landing on ``dest`` hits the edge, padding or a blocker color."""
+    def hits(self, t: Thing, dest: frozenset[Cell], skip: frozenset[int], *, pushing: bool) -> bool:
+        """Whether ``t`` landing on ``dest`` hits the edge, padding or a blocker color.
+
+        With ``pushing`` (a move body), a non-mover with a usable pushed fact never blocks
+        here: ``_push_targets`` decides, since a box once blocked into a wall puts its
+        color in the pusher's blockers.
+        """
         stop = self.mem.blockers.get(t.sig, ())
         owner = self.owner
         padding = self.scene.blocked
@@ -157,15 +164,43 @@ class _Run:
             if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or c in padding:
                 return True
             other = owner.get(c)
-            if other is not None and other[0] not in skip and other[1] in stop:
+            if other is None or other[0] in skip or other[1] not in stop:
+                continue
+            if pushing and other[0] not in self.movers and self.pushed_fact(other[0]):
+                continue
+            return True
+        return False
+
+    def body_hits(
+        self, body: list[_Mover], step: tuple[int, int], skip: frozenset[int], *, pushing: bool
+    ) -> bool:
+        dx, dy = step
+        return any(
+            self.hits(m.thing, _shifted(m.thing.cells, dx, dy), skip, pushing=pushing) for m in body
+        )
+
+    def stuck(self, dest: frozenset[Cell], skip: frozenset[int]) -> bool:
+        """Whether a pushed thing landing on ``dest`` hits the edge, padding or any thing."""
+        owner = self.owner
+        padding = self.scene.blocked
+        for c in dest:
+            x, y = c
+            if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or c in padding:
+                return True
+            other = owner.get(c)
+            if other is not None and other[0] not in skip:
                 return True
         return False
 
-    def body_hits(self, body: list[_Mover], dx: int, dy: int, skip: frozenset[int]) -> bool:
-        return any(self.hits(m.thing, _shifted(m.thing.cells, dx, dy), skip) for m in body)
-
     def pushed_fact(self, tid: int) -> Fact | None:
-        """The thing's pushed fact, own or borrowed; a broken one marks it unknown."""
+        """The thing's pushed fact, own or borrowed, cached; a broken one marks it unknown."""
+        if tid in self._pushable:
+            return self._pushable[tid]
+        fact = self._pushed_fact(tid)
+        self._pushable[tid] = fact
+        return fact
+
+    def _pushed_fact(self, tid: int) -> Fact | None:
         subject = self.subject[tid]
         found = self.mem.lookup(self.label, subject, "pushed")
         if found is None or found[0].key[2] != "pushed":
@@ -266,14 +301,8 @@ def _push_targets(
             if any(e.kind == "disappear" for e in fact.effects):
                 continue
             return None
-        dest = _shifted(t.cells, *d)
-        skip = mates | {tid}
-        if run.hits(t, dest, skip):
+        if run.stuck(_shifted(t.cells, *d), mates | {tid}):
             return None
-        for c in dest:
-            other = run.owner.get(c)
-            if other is not None and other[0] not in skip and run.pushed_fact(other[0]):
-                return None
     return targets
 
 
@@ -300,7 +329,9 @@ def _resolve_body(run: _Run, body: list[_Mover], movers: set[int]) -> None:
     if head.kind == "slide":
         ux, uy = head.step
         n = 0
-        while n < GRID_SIZE and not run.body_hits(body, ux * (n + 1), uy * (n + 1), mates):
+        while n < GRID_SIZE and not run.body_hits(
+            body, (ux * (n + 1), uy * (n + 1)), mates, pushing=False
+        ):
             n += 1
         if n == 0:
             _block(run, body)
@@ -313,7 +344,7 @@ def _resolve_body(run: _Run, body: list[_Mover], movers: set[int]) -> None:
             run.effects[tid] = (Effect("move", dx=ux * n, dy=uy * n), *rest)
         return
     dx, dy = head.step
-    if run.body_hits(body, dx, dy, mates):
+    if run.body_hits(body, (dx, dy), mates, pushing=head.kind == "move"):
         _block(run, body)
         return
     targets: dict[int, Fact] = {}
@@ -434,9 +465,9 @@ def predict(scene: Scene, action: Action, mem: FactMemory) -> Prediction:
     run = _Run(scene, action, mem)
     movers = _base(run)
     if movers:
-        ids = set(movers)
+        run.movers = set(movers)
         for body in _bodies(movers):
-            _resolve_body(run, body, ids)
+            _resolve_body(run, body, run.movers)
     _toggle(run)
     spawned = _spawn(run)
     game_over = _deadly(run)
@@ -489,8 +520,39 @@ def _spawns(pred: Prediction, before: dict[int, Thing]) -> tuple[Counter[str], F
     return spawned, spawn_key
 
 
-def check(pred: Prediction, before: Scene, diff: SceneDiff) -> tuple[bool, list[FactKey]]:
+def _ignored_appears(
+    diff: SceneDiff, before: dict[int, Thing], after: Scene | None, ignore: frozenset[int]
+) -> set[int]:
+    """Ids of appeared things that overlap an ignored thing's cells in ``before``."""
+    if not ignore or after is None:
+        return set()
+    noise: set[Cell] = set()
+    for tid in ignore:
+        t = before.get(tid)
+        if t is not None:
+            noise |= t.cells
+    now = after.by_id()
+    out: set[int] = set()
+    for c in diff.changes:
+        t = now.get(c.id)
+        if c.kind == "appeared" and t is not None and not t.cells.isdisjoint(noise):
+            out.add(c.id)
+    return out
+
+
+def check(
+    pred: Prediction,
+    before: Scene,
+    diff: SceneDiff,
+    *,
+    ignore: frozenset[int] = frozenset(),
+    after: Scene | None = None,
+) -> tuple[bool, list[FactKey]]:
     """(hit, keys whose effect missed). A hit means every predicted effect matched its Change.
+
+    Changes whose id is in ``ignore`` (noise ids) are skipped, and so are appeared things
+    overlapping an ignored thing's cells in ``before``; that overlap needs ``after`` (the
+    scene the diff came from) to place appeared things, and without it no appear is skipped.
 
     Appeared things match predicted spawns by sig (as a multiset); a spawn mismatch is a
     miss of the spawn fact. An appear nothing predicted, or a miss of a fact borrowed from
@@ -499,10 +561,13 @@ def check(pred: Prediction, before: Scene, diff: SceneDiff) -> tuple[bool, list[
     never count as a miss.
     """
     by_id = before.by_id()
+    skip = _ignored_appears(diff, by_id, after, ignore)
     missed: dict[FactKey, None] = {}
     surprise = False
     appeared: Counter[str] = Counter()
     for change in diff.changes:
+        if change.id in ignore or change.id in skip:
+            continue
         if change.kind == "appeared":
             appeared[change.sig] += 1
             continue

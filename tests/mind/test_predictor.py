@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from arcagent.core.types import Action, Grid
-from arcagent.mind.facts import SPAWN, Effect, FactKey, FactMemory
+from arcagent.mind.facts import SPAWN, Effect, FactKey, FactMemory, learn
 from arcagent.mind.objects import Change, Scene, SceneDiff, Thing, Tracker, shape_of
 from arcagent.mind.predictor import Prediction, check, predict
 
@@ -243,6 +243,60 @@ def test_pushed_box_without_any_fact_is_known() -> None:
     )
     p = predict(scene_of({(5, 5): 1, (6, 5): 3}), Action(4), mem)
     assert p.unknown == () and at(p.scene, BSIG) == [(7, 5)]
+
+
+def learn_step(mem: FactMemory, before: Cells, after: Cells, action: int, move: int) -> None:
+    tr = Tracker()
+    s0, _ = tr.update(grid_with(before), frozenset())
+    s1, d = tr.update(grid_with(after), frozenset())
+    assert d is not None
+    learn(mem, s0, Action(action), d, move=move, level_up=False, game_over=False, after=s1)
+
+
+def test_push_on_free_floor_survives_a_box_blocked_into_a_wall() -> None:
+    walls = wall_cells(9)
+    mem = FactMemory()
+    learn_step(mem, {(2, 5): 1, (6, 5): 3, **walls}, {(3, 5): 1, (6, 5): 3, **walls}, 4, 0)
+    learn_step(mem, {(3, 5): 1, (6, 5): 3, **walls}, {(4, 5): 1, (6, 5): 3, **walls}, 4, 1)
+    learn_step(mem, {(5, 5): 1, (6, 5): 3, **walls}, {(6, 5): 1, (7, 5): 3, **walls}, 4, 2)
+    learn_step(mem, {(7, 5): 1, (8, 5): 3, **walls}, {(7, 5): 1, (8, 5): 3, **walls}, 4, 3)
+    assert 3 in mem.blockers[PSIG]  # learn blamed the box color for stopping the player
+    p = predict(scene_of({(5, 5): 1, (6, 5): 3, **walls}), Action(4), mem)
+    assert at(p.scene, PSIG) == [(6, 5)] and at(p.scene, BSIG) == [(7, 5)]
+    p = predict(scene_of({(7, 5): 1, (8, 5): 3, **walls}), Action(4), mem)
+    assert at(p.scene, PSIG) == [(7, 5)] and at(p.scene, BSIG) == [(8, 5)]
+
+
+def test_box_pushed_into_any_thing_blocks_the_push() -> None:
+    mem = mem_with(
+        (("A4", PSIG, "any"), Effect("move", dx=1)),
+        (("A4", BSIG, "any"), Effect("none")),
+        (("A4", BSIG, "pushed"), Effect("move", dx=1)),
+        (("A4", WSIG, "any"), Effect("none")),
+    )  # no blockers recorded for the box at all
+    p = predict(scene_of({(5, 5): 1, (6, 5): 3, **wall_cells(7)}), Action(4), mem)
+    assert at(p.scene, PSIG) == [(5, 5)] and at(p.scene, BSIG) == [(6, 5)]
+
+
+def test_check_skips_ignored_ids_and_appears_on_noise() -> None:
+    noise_before = {(30, 30): 7, (31, 30): 7}
+    noise_after = {(30, 30): 8}  # the noise thing changes shape and color: a new thing
+    before_c = {(5, 5): 1, **noise_before}
+    after_c = {(4, 5): 1, **noise_after}
+    tr = Tracker()
+    before, _ = tr.update(grid_with(before_c), frozenset())
+    after, diff = tr.update(grid_with(after_c), frozenset())
+    assert diff is not None
+    noise_id = next(t.id for t in before.things if t.color == 7)
+    mem = mem_with(
+        (("A3", PSIG, "any"), Effect("move", dx=-1)),
+        (("A3", f"c7:{shape_of([(0, 0), (1, 0)])}", "any"), Effect("none")),
+    )
+    p = predict(before, Action(3), mem)
+    assert check(p, before, diff)[0] is False
+    ignore = frozenset({noise_id})
+    assert check(p, before, diff, ignore=ignore, after=after) == (True, [])
+    assert check(p, before, diff, ignore=ignore) == (False, [])  # appear not placed
 
 
 # --- facts of other kinds -------------------------------------------------------------
