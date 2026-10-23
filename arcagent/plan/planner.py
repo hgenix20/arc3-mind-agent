@@ -1,17 +1,9 @@
-"""Search over the LLM's own world model, so it can hand off a level it understands.
+"""Search over a model-written world model.
 
-Why: in the 25-game evaluation (eval v2) about 54 of the 100 possible points per
-game were lost on levels the agent never finished, against about 4 lost to
-spending extra actions. Transcripts show the model deriving a Python world model
-that already reproduces nearly every observed transition (sk48: 62 of 63) and then
-running out of clock while it reasons out the action sequence turn by turn. A
-breadth-first or best-first search over that model finds the sequence in seconds
-of CPU and no tokens.
-
-What: ``plan(step, start, goal, actions)`` searches from ``start`` with the
-model's ``step(state, action) -> state`` until ``goal(state)`` is true, and
-returns the shortest action list it found (fewest actions is what the score
-rewards). With ``heuristic`` it runs A* (``g + h``); without, breadth-first.
+``plan(step, start, goal, actions)`` searches from ``start`` with the model's
+``step(state, action) -> state`` until ``goal(state)`` is true, and returns the
+shortest action list it found (fewest actions is what the score rewards). With
+``heuristic`` it runs A* (``g + h``); without, breadth-first.
 
 Contract:
 - ``step`` must be pure: it must not mutate its input. States are compared by a
@@ -24,8 +16,8 @@ Contract:
 - Bounded: stops at ``max_nodes`` expanded states or ``time_limit_s`` seconds,
   whichever comes first, and says which in ``PlanResult.stopped``.
 
-The file is copied verbatim into the Kaggle notebook by
-``scripts/kaggle_duck_notebook.py``; standard library only, no ``from __future__``.
+Standard library only, with no ``from __future__`` import: a sandbox worker
+subprocess loads this file by path, so it cannot depend on the package.
 """
 
 import heapq

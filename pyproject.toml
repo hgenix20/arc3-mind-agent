@@ -18,6 +18,7 @@ include = ["arcagent*"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["archive"]
 target-version = "py312"
 
 [tool.ruff.lint]
@@ -45,4 +46,5 @@ venv = "arc-agent-venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["archive"]
 addopts = "-q"
