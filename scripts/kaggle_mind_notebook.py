@@ -9,7 +9,8 @@ Intent: one self-contained .ipynb plus kernel-metadata.json under build/kaggle-m
 3. installs the vLLM wheelhouse and serves Qwen3.6-27B-FP8 on 127.0.0.1:1234,
    waiting for ``/v1/models`` (``SERVE_CELL`` from ``kaggle_synth_notebook.py``, run
    inside a ``try`` that sets ``MODEL_OK``);
-4. writes every ``.py`` under ``arcagent/``, ``data/public_human_actions.json`` and
+4. writes every ``.py`` under ``arcagent/`` except ``core/oracle.py``,
+   ``data/public_human_actions.json`` and
    ``scripts/mind_metrics.py`` into /kaggle/working at their repo-relative paths
    (the sandbox loads ``arcagent/mind/_worker.py`` and ``arcagent/plan/planner.py``
    by file path, so the layout has to match the repo);
@@ -91,9 +92,18 @@ PRIVATE_GAMES = 110
 PUBLIC_GAMES = 25
 
 
+# The oracle wraps the real engine and reads game source. Only the probe experiment's
+# trace collection imports it (lazily); the agent never does, so it is left out.
+NOT_SHIPPED = frozenset({ROOT / "arcagent" / "core" / "oracle.py"})
+
+
 def source_files() -> list[Path]:
     """Every file the notebook writes, in a stable order."""
-    py = sorted(p for p in (ROOT / "arcagent").rglob("*.py") if "__pycache__" not in p.parts)
+    py = sorted(
+        p
+        for p in (ROOT / "arcagent").rglob("*.py")
+        if "__pycache__" not in p.parts and p not in NOT_SHIPPED
+    )
     return [*py, ROOT / "data" / "public_human_actions.json", ROOT / "scripts" / "mind_metrics.py"]
 
 

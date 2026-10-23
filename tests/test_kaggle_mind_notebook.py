@@ -59,7 +59,10 @@ def test_notebook_builds_valid_json_with_all_mind_sources(tmp_path: Path) -> Non
         if "__pycache__" not in p.parts
     }
     expected |= {"data/public_human_actions.json", "scripts/mind_metrics.py"}
+    # The oracle reads game source; nothing the agent runs imports it, so it does not ship.
+    expected -= {"arcagent/core/oracle.py"}
     assert set(files) == expected
+    assert not any("oracle" in rel for rel in files)
     # The sandbox loads these two by file path, so they must keep their layout.
     assert "arcagent/plan/planner.py" in files and "arcagent/mind/_worker.py" in files
     assert files["arcagent/mind/sandbox.py"] == (ROOT / "arcagent/mind/sandbox.py").read_text(
