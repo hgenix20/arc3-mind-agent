@@ -185,9 +185,9 @@ plan:
 
 ### LLM budget
 
-The GPU is shared by every game. Salience decides when the executive wakes, so it
+The GPU is shared by every game. Salience functions as an automated filtering and switching mechanism, so it
 decides when the LLM is called: at a new game (after a short B0 exploration to gather
-transitions), when prediction error crosses the wake threshold and metacognition
+transitions), when prediction error crosses the threshold and metacognition
 empties belief, and when transfer fails on a new level. Games run concurrently so vLLM batches their calls.
 Each game gets a cap on synthesis calls and a wall budget; the scheduler moves time
 from finished games to unfinished ones. Exact numbers are the builder's to set from
