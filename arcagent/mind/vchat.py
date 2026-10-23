@@ -14,6 +14,13 @@ Contract:
   inner call writes nothing and re-raises.
 - ``replaying`` answers by that key only; a missing or unreadable recording answers
   ``{}`` so the run continues on slice 1 logic.
+- Replay reproduces a prompt only when every earlier reply arrived at the same move as
+  in the recorded run, since each reply changes the moves, scene and facts the next
+  prompt shows. The fluid agent waits for its turn inside the move that asked, but a
+  turn that timed out live (its reply recorded later, or never) gets an instant answer
+  or ``{}`` on replay, and any timing-dependent choice (deadlines, the 75% turn cutoff)
+  can differ. So a live run can't be replayed exactly; replay is exact only for a run
+  that was itself recorded offline with no timeouts.
 - ``scripted`` returns fixed replies in order, then ``{}``; for offline tests.
 """
 

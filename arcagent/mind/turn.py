@@ -13,15 +13,23 @@ Contract:
   ``ImagesRejected`` propagates. Any other exception from the chat or the parser gives an
   empty ``Reply`` whose ``dropped`` holds the reason. ``seed`` goes to the chat unchanged.
 - Ids in the text are valid for this turn only; the parser maps them back to sigs.
+- Facts and goals reach the prompt through ``render_fact`` and ``name_sigs`` (the caller
+  renders them on the game thread): every sig becomes the ``#id`` list of the things on
+  screen with that sig (at most ``MAX_IDS`` ids, then ``+N``), or ``(off screen)``. A
+  click label ``A6:<sig>@<ring>`` reads ``click on #ids``, listing only the things of that
+  sig whose ``click_ring`` is ``ring``. The model never sees a raw sig.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from arcagent.core.types import Grid
 from arcagent.mind.contract import Reply, parse_reply
+from arcagent.mind.facts import Fact, Owner, cell_owner, click_ring
 from arcagent.mind.objects import Scene, Thing
 from arcagent.mind.screen import data_url, diff_png, png
 from arcagent.mind.vchat import ImagesRejected, VisionChat, VMessage
@@ -29,6 +37,7 @@ from arcagent.mind.vchat import ImagesRejected, VisionChat, VMessage
 MAX_OBJECTS = 40
 MAX_PROMPT_CHARS = 6000
 MOVE_LOG_LINES = 8
+MAX_IDS = 4  # ids listed per sig in a fact or goal line before ``+N``
 
 _MAX_FACTS = 12
 _MAX_GOALS = 10
@@ -86,6 +95,52 @@ class TurnInput:
 def _clip(s: str, width: int) -> str:
     s = " ".join(s.split())
     return s if len(s) <= width else s[: width - 3] + "..."
+
+
+_SIG_RE = re.compile(r"c\d+:[0-9a-f]{10}")
+OFF_SCREEN = "(off screen)"
+
+
+def _id_list(things: Iterable[Thing]) -> str:
+    ids = sorted(t.id for t in things)
+    if not ids:
+        return OFF_SCREEN
+    shown = " ".join(f"#{i}" for i in ids[:MAX_IDS])
+    return shown if len(ids) <= MAX_IDS else f"{shown} +{len(ids) - MAX_IDS}"
+
+
+def name_sigs(text: str, scene: Scene) -> str:
+    """``text`` with every full sig replaced by the ids of the things on screen with it."""
+    return _SIG_RE.sub(lambda m: _id_list(t for t in scene.things if t.sig == m.group(0)), text)
+
+
+def _click_text(label: str, scene: Scene, owner: Owner) -> str:
+    """``A6:<sig>@<ring>`` as ``click on #ids`` (things of that sig with that ring)."""
+    body = label[3:]
+    sig, _, ring_text = body.partition("@")
+    if sig == "none":
+        return "click on nothing"
+    ring = int(ring_text) if ring_text.lstrip("-").isdigit() else None
+    hits = [
+        t
+        for t in scene.things
+        if t.sig == sig and (ring is None or click_ring(scene, t, owner) == ring)
+    ]
+    return f"click on {_id_list(hits)}"
+
+
+def render_fact(fact: Fact, scene: Scene, owner: Owner | None = None) -> str:
+    """One fact line for the prompt, e.g. ``A3 #2 any: moves 1 cell left [solid 6/0]``.
+
+    Same fields as ``Fact.line`` with sigs named by on-screen ids (see the module
+    docstring). ``owner`` is ``cell_owner(scene)`` when the caller has one.
+    """
+    label, subject, context = fact.key
+    if label.startswith("A6:"):
+        label = _click_text(label, scene, cell_owner(scene) if owner is None else owner)
+    what = "; ".join(e.text() for e in fact.effects)
+    score = f"[{fact.status} {fact.hits}/{fact.misses}]"
+    return name_sigs(f"{label} {subject} {context}: {what} {score}", scene)
 
 
 def _object_line(t: Thing) -> str:

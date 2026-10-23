@@ -28,9 +28,8 @@ plus ``tests`` and ``vetoes``. Its action records score facts in ``programs``
 (id is the fact key joined by spaces) and log ``active`` null and ``voi`` empty.
 With the executive turn (``FLUID-LLM``) it also writes ``wake`` (``step, reason``;
 the action record's ``wake`` holds the reason on the move that started a turn),
-``exec_turn`` (``step, call, seconds, goals, plan_len, test, dropped``),
-``exec_failed`` (``step, call, reason``) and ``exec_stale`` (``step, call,
-asked_level``), and its ``game_end`` adds ``turns``.
+``exec_turn`` (``step, call, seconds, goals, plan_len, test, dropped``) and
+``exec_failed`` (``step, call, reason``), and its ``game_end`` adds ``turns``.
 
 Conversion: numpy integer, floating and bool scalars and arrays become plain
 Python values and tuples become lists. Anything else unserializable raises

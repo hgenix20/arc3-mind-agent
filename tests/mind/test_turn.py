@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from arcagent.core.types import Action
+from arcagent.mind.facts import Effect, Fact
 from arcagent.mind.objects import Scene, Thing, shape_of
 from arcagent.mind.turn import (
     MAX_OBJECTS,
@@ -19,6 +20,8 @@ from arcagent.mind.turn import (
     TurnInput,
     _available,  # pyright: ignore[reportPrivateUsage]
     build_messages,
+    name_sigs,
+    render_fact,
     take_turn,
 )
 from arcagent.mind.vchat import ImagesRejected, VMessage, scripted
@@ -212,3 +215,24 @@ def test_available_actions_hide_reset_and_raw_a6() -> None:
     assert _available((0, 1, 2, 6)) == "A1, A2, click #<id>"
     assert _available((6,)) == "click #<id>"
     assert _available(()) == "none"
+
+
+def test_sigs_render_as_on_screen_ids() -> None:
+    things = [_thing(i, 3, 10 * i, 4) for i in range(1, 7)]
+    things = [replace(t, sig="c3:00000000aa") for t in things] + [_thing(9, 4, 40, 40)]
+    sc = _scene(things)
+    assert name_sigs("reach c4:0000000009>c3:00000000aa", sc) == "reach #9>#1 #2 #3 #4 +2"
+    assert name_sigs("reach c4:0000000009>c7:00000000bb", sc) == "reach #9>(off screen)"
+
+
+def test_fact_lines_name_things_and_clicks_by_id() -> None:
+    a, b = _thing(1, 3, 10, 10), _thing(2, 4, 30, 30)
+    sc = _scene([a, b])
+    move = Fact(("A3", a.sig, "any"), (Effect("move", dx=-1),), [1], hits=6)
+    assert render_fact(move, sc) == "A3 #1 any: moves 1 cell left [solid 6/0]"
+    click = Fact((f"A6:{b.sig}@0", "self", "any"), (Effect("recolor", color=5),), [2], hits=1)
+    assert render_fact(click, sc) == "click on #2 self any: turns color 5 [thin 1/0]"
+    elsewhere = Fact((f"A6:{b.sig}@7", "self", "any"), (Effect("none"),), [3], hits=1)
+    assert render_fact(elsewhere, sc).startswith("click on (off screen) self any")
+    spawn = Fact(("A1", "spawn", "any"), (Effect("appear", sig=a.sig, at=(1, 1)),), [4], hits=1)
+    assert render_fact(spawn, sc) == "A1 spawn any: spawns #1 at (1, 1) [thin 1/0]"
