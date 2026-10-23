@@ -17,6 +17,7 @@ from arcagent.mind.turn import (
     MOVE_LOG_LINES,
     SYSTEM_PROMPT,
     TurnInput,
+    _available,  # pyright: ignore[reportPrivateUsage]
     build_messages,
     take_turn,
 )
@@ -205,3 +206,9 @@ def test_take_turn_images_rejected_propagates() -> None:
 
     with pytest.raises(ImagesRejected):
         take_turn(chat, _inp(), seed=1)
+
+
+def test_available_actions_hide_reset_and_raw_a6() -> None:
+    assert _available((0, 1, 2, 6)) == "A1, A2, click #<id>"
+    assert _available((6,)) == "click #<id>"
+    assert _available(()) == "none"

@@ -115,6 +115,18 @@ def _object_section(inp: TurnInput) -> str:
     return "\n".join(lines) if lines else "(none)"
 
 
+def _available(ids: tuple[int, ...]) -> str:
+    """Simple actions as ``A<n>``; ACTION6 as the click form the contract accepts.
+
+    RESET (0) is never offered, and ``A6`` is never shown: the parser rejects it as a
+    simple action, so listing it would invite a step that gets dropped.
+    """
+    names = [f"A{a}" for a in ids if a not in (0, 6)]
+    if 6 in ids:
+        names.append("click #<id>")
+    return ", ".join(names) or "none"
+
+
 def _block(title: str, lines: list[str]) -> str:
     return f"{title}:\n" + ("\n".join(lines) if lines else "(none)")
 
@@ -127,7 +139,7 @@ def _text(inp: TurnInput) -> str:
     parts = [
         f"Wake: {_clip(inp.wake, 80)}",
         f"Level: {inp.level}",
-        "Available actions: " + ", ".join(f"A{a}" for a in inp.available),
+        "Available actions: " + _available(inp.available),
         _block("Objects", _object_section(inp).split("\n")),
         _block("Facts", facts),
         _block("Goals", goals),
