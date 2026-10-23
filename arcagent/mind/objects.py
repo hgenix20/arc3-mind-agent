@@ -143,12 +143,25 @@ Pairs = dict[int, int]
 
 
 def _match_same_sig(before: list[Thing], after: list[Thing], pairs: Pairs, used: set[int]) -> None:
-    """Same sig, nearest top-left within the radius (greedy by distance, then index)."""
+    """Same sig: stationary pairs first, then nearest top-left within the radius.
+
+    Stationary pairs (same sig, same top-left) are unique, so a dict finds them in
+    linear time. Only the leftovers pay for the greedy nearest search.
+    """
+    here = {(a.sig, a.x, a.y): j for j, a in enumerate(after)}
+    for i, b in enumerate(before):
+        j = here.get((b.sig, b.x, b.y))
+        if j is not None:
+            pairs[i] = j
+            used.add(j)
     by_sig: dict[str, list[int]] = defaultdict(list)
     for j, a in enumerate(after):
-        by_sig[a.sig].append(j)
+        if j not in used:
+            by_sig[a.sig].append(j)
     cands: list[tuple[int, int, int]] = []
     for i, b in enumerate(before):
+        if i in pairs:
+            continue
         for j in by_sig.get(b.sig, ()):
             d = abs(after[j].x - b.x) + abs(after[j].y - b.y)
             if d <= MATCH_RADIUS:

@@ -100,3 +100,52 @@ def test_stray_cells_count_changes_outside_things() -> None:
     h = grid_with({(5, 5): 2, (1, 1): 9})
     _, masked = t.update(h, frozenset({(1, 1)}))
     assert masked is not None and masked.stray_cells == 0 and masked.empty
+
+
+def test_many_identical_objects_track_fast() -> None:
+    g = grid_with({(x, y): 1 for x in range(0, 64, 2) for y in range(0, 64, 2)})
+    t = Tracker()
+    t.update(g, frozenset())
+    start = time.perf_counter()
+    _, d = t.update(g.copy(), frozenset())
+    assert time.perf_counter() - start < 0.2
+    assert d is not None and d.empty
+
+
+def test_ids_are_stable_and_never_reused() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(5, 5): 2, (20, 20): 7}), frozenset())
+    ids0 = {th.color: th.id for th in s0.things}
+    t.update(grid_with({(6, 5): 2, (20, 20): 7}), frozenset())
+    t.update(grid_with({(6, 5): 2}), frozenset())  # color 7 disappears
+    s3, _ = t.update(grid_with({(7, 5): 2, (30, 30): 7}), frozenset())  # a new 7 appears
+    by_color = {th.color: th.id for th in s3.things}
+    assert by_color[2] == ids0[2]
+    assert by_color[7] not in ids0.values()
+    assert by_color[7] > max(ids0.values())
+
+
+def test_recolor_keeps_the_id() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(5, 5): 2, (6, 5): 2}), frozenset())
+    s1, d = t.update(grid_with({(5, 5): 3, (6, 5): 3}), frozenset())
+    assert d is not None and [c.kind for c in d.changes] == ["recolored"]
+    assert s0.things[0].id == s1.things[0].id and d.changes[0].color == 3
+
+
+def test_move_beyond_radius_is_disappear_plus_appear() -> None:
+    t = Tracker()
+    t.update(grid_with({(5, 5): 2}), frozenset())
+    _, near = t.update(grid_with({(21, 5): 2}), frozenset())  # 16 cells: still a move
+    assert near is not None and [c.kind for c in near.changes] == ["moved"]
+    _, far = t.update(grid_with({(38, 5): 2}), frozenset())  # 17 cells
+    assert far is not None and sorted(c.kind for c in far.changes) == ["appeared", "disappeared"]
+
+
+def test_scene_key_ignores_ids() -> None:
+    a, _ = Tracker().update(grid_with({(5, 5): 2, (9, 9): 4}), frozenset())
+    t = Tracker()
+    t.update(grid_with({(30, 30): 6}), frozenset())
+    b, _ = t.update(grid_with({(5, 5): 2, (9, 9): 4}), frozenset())
+    assert {x.id for x in a.things} != {x.id for x in b.things}
+    assert a.key() == b.key()
