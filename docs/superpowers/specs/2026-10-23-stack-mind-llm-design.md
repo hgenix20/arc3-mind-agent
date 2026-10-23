@@ -98,7 +98,7 @@ What the measurements so far say about where points are (sources in
   (duck v1 or v2) is selected, even as a backup (Kameron, 2026-10-23).
 - The agent carries Genix Mind's own structure (the three loops, the wisdom function,
   working memory, sleep, drive state), mapped below from the design of record
-  `C:\genix-mind\docs\superpowers\specs6-09-03-mind-architecture-design.md`.
+  `genix-mind/docs/superpowers/specs/2026-09-03-mind-architecture-design.md`.
 
 ## Design
 
