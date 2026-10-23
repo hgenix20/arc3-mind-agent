@@ -5,9 +5,14 @@ argv for ``arcagent.agent.submit.main`` (``--mode offline --policy mind
 --replay``) and calls it in-process; it adds no agent logic. It never calls
 ``submit.cli`` because that ends the process with ``os._exit``.
 
-``submit`` has a per-game ``--game-seconds`` flag, but the mind policy is
-bounded by ``--total-seconds`` alone. The wrapper therefore derives
-``--total-seconds = game_seconds * n_games / workers + TOTAL_MARGIN_S``.
+The mind policy ignores ``--game-seconds``; the scheduler splits
+``--total-seconds`` itself (``scheduler.game_budget``: time left minus
+``RESERVE_S``, spread over the games still to start). The wrapper derives
+``--total-seconds = RESERVE_S + game_seconds * n_games / workers`` so the
+first wave of games gets ``--game-seconds`` each. ``MIN_GAME_S`` (120 s) is a
+floor in the scheduler, so a ``--game-seconds`` below 120 gives each game 120 s
+(capped by the run's deadline). ``n_games`` is the count ``submit`` resolves
+from ``--env-dir`` and ``--games``.
 
 Replies: ``--replies`` or else the newest ``bench/evals/*/replies`` by
 directory mtime. With none, replay answers with the identity program and the
@@ -22,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -32,8 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from arcagent.agent import submit  # noqa: E402
-
-TOTAL_MARGIN_S = 30.0  # scorecard open/close and agent start-up, outside the per-game budget
+from arcagent.agent.scheduler import RESERVE_S  # noqa: E402
 
 
 def newest_replies(root: Path) -> Path | None:
@@ -49,6 +54,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--replies", default=None, help="default: newest bench/evals/*/replies")
     p.add_argument("--game-seconds", type=float, default=120.0)
     p.add_argument("--workers", type=int, default=submit.DEFAULT_WORKERS)
+    p.add_argument("--max-actions", type=int, default=None, help="default: submit's mind default")
     p.add_argument("--env-dir", default=None)
     p.add_argument("--out", default=None, help="default: bench/offline/<UTC stamp>")
     args = p.parse_args(argv)
@@ -57,11 +63,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def derive_total_seconds(game_seconds: float, n_games: int, workers: int) -> float:
+    """Run budget so the scheduler's first-wave game budget equals ``game_seconds``."""
+    return RESERVE_S + game_seconds * n_games / workers
+
+
+def count_games(env_dir: str, out: Path, wanted: Sequence[str] | None) -> int:
+    """Games ``submit`` would play: its own arcade and ``select_games``, no scorecard opened."""
+    arcade = submit.make_arcade("offline", env_dir, out)
+    available = [e.game_id for e in arcade.available_environments]
+    return len(submit.select_games(available, wanted))
+
+
 def build_submit_argv(
     args: argparse.Namespace, out: Path, replies: Path, n_games: int
 ) -> list[str]:
     """The argv handed to ``submit.main``; pure so the budget arithmetic is checkable."""
-    total = args.game_seconds * n_games / args.workers + TOTAL_MARGIN_S
+    total = derive_total_seconds(args.game_seconds, n_games, args.workers)
     argv = [
         "--mode",
         "offline",
@@ -72,8 +90,6 @@ def build_submit_argv(
         args.config,
         "--workers",
         str(args.workers),
-        "--game-seconds",
-        str(args.game_seconds),
         "--total-seconds",
         str(total),
         "--out",
@@ -85,6 +101,8 @@ def build_submit_argv(
         argv += ["--games", *args.games]
     if args.env_dir:
         argv += ["--env-dir", args.env_dir]
+    if args.max_actions is not None:
+        argv += ["--max-actions", str(args.max_actions)]
     return argv
 
 
@@ -111,7 +129,8 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
         replies = out / "replies"
     else:
         print(f"replaying replies from {replies}")
-    n_games = len(args.games) if args.games else 25
+    env_dir = args.env_dir or os.environ.get("ARC_ENV_DIR", submit.DEFAULT_ENV_DIR)
+    n_games = count_games(env_dir, out, args.games)
     doc = submit.main(build_submit_argv(args, out, replies, n_games))
     for g in doc["games"]:
         print(
