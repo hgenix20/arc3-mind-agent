@@ -10,6 +10,8 @@ SHIPPED = [
     ROOT / "arcagent",
     ROOT / "scripts" / "kaggle_mind_notebook.py",
     ROOT / "scripts" / "kaggle_synth_notebook.py",
+    ROOT / "scripts" / "kaggle_agent_notebook.py",  # INSTALL_CELL and the image come from here
+    ROOT / "scripts" / "mind_metrics.py",  # written into the notebook
     ROOT / "data",
 ]
 SUFFIXES = {".py", ".json", ".md"}
@@ -28,6 +30,7 @@ def iter_lines(paths: list[Path]) -> Iterator[tuple[Path, int, str]]:
 
 
 def test_shipped_tree_has_no_franzen_period_names() -> None:
+    assert [p for p in SHIPPED if not p.exists()] == []  # a renamed file must not drop out
     hits = [
         f"{p}:{n}"
         for p, n, line in iter_lines(SHIPPED)
