@@ -61,12 +61,12 @@ def test_change_after_only_one_action_is_never_noise() -> None:
     assert m.noisy_ids == frozenset()
 
 
-def test_reset_tracks_keeps_cells_and_forgets_history() -> None:
+def test_reset_tracks_forgets_history_and_cells() -> None:
     m = NoiseMask()
     m.observe(_scene(), 1, reshape_diff(7, -1))
     m.observe(_scene(), 2, reshape_diff(7, -1))
     m.reset_tracks()
-    assert m.noisy_ids == frozenset() and m.cells >= BAR_CELLS
+    assert m.noisy_ids == frozenset() and m.cells == frozenset()
     assert m.observe(_scene(), 3, reshape_diff(7, -1)) == []
 
 
@@ -75,4 +75,19 @@ def test_same_move_under_two_actions_is_never_noise() -> None:
     for _ in range(3):
         for a in (1, 5):
             m.observe(_scene(), a, move_diff(1, 0, -1))
+    assert m.noisy_ids == frozenset()
+
+
+def test_turning_sprite_is_never_noise() -> None:
+    m = NoiseMask()
+    for _ in range(3):
+        for a, sig in ((3, "c2:L"), (4, "c2:R")):
+            m.observe(_scene(), a, _diff(Change(1, "reshaped", color=2, sig=sig)))
+    assert m.noisy_ids == frozenset()
+
+
+def test_reshape_with_shift_is_motion_never_noise() -> None:
+    m = NoiseMask()
+    for i, a in enumerate((1, 2, 1, 2)):
+        m.observe(_scene(), a, _diff(Change(1, "reshaped", dx=1, color=2, sig=f"c2:w{i}")))
     assert m.noisy_ids == frozenset()

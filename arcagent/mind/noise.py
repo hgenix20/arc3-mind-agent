@@ -10,14 +10,16 @@ rule fires:
 Moves never count toward either rule: masking a player that two actions move the same
 way would blind the agent.
 
-The descriptor is ``(kind, dx, dy, color)``. A reshape descriptor leaves out the new
-signature and the size delta: ``Change`` carries only the new sig (a hash), so the
-size delta is not derivable from ``before`` and the diff. Two reshapes of one track
-with the same shift and color therefore count as the same change.
+A reshape with a nonzero shift is motion (a walking sprite that animates while it
+moves) and is treated as a move. The descriptor is ``(kind, dx, dy, color, sig)``, where
+``sig`` is the new signature, so a sprite that turns left under one action and right
+under another has two different descriptors and is not noise. A timer that changes
+every step through new states is caught by the second rule, which needs the last
+``WINDOW`` descriptors to be all different (a sprite flipping between two poses is not
+noise; a two-state blink that alternates exactly with the actions is missed).
 
 The mask cells are the bboxes of noise tracks' things in ``before``, so the mask only
-grows. ``reset_tracks`` drops track history and flagged ids (ids restart on a level
-change) but keeps the cells.
+grows within a level. ``reset_tracks`` drops history, flagged ids and cells.
 """
 
 from __future__ import annotations
@@ -26,11 +28,16 @@ from arcagent.mind.objects import Cell, Change, Scene, SceneDiff
 
 WINDOW = 4
 
-Descriptor = tuple[str, int, int, int]
+Descriptor = tuple[str, int, int, int, str]
+
+
+def _kind(c: Change) -> str:
+    """A reshape with a shift is motion (an animated walking sprite): treat it as a move."""
+    return "moved" if c.kind == "reshaped" and (c.dx or c.dy) else c.kind
 
 
 def _descriptor(c: Change) -> Descriptor:
-    return (c.kind, c.dx, c.dy, c.color)
+    return (c.kind, c.dx, c.dy, c.color, c.sig)
 
 
 class NoiseMask:
@@ -40,7 +47,7 @@ class NoiseMask:
         self._cells: set[Cell] = set()
         self._noisy: set[int] = set()
         self._by_descriptor: dict[int, dict[Descriptor, set[int]]] = {}
-        self._recent: dict[int, list[tuple[int, str]]] = {}
+        self._recent: dict[int, list[tuple[int, str, Descriptor]]] = {}
 
     @property
     def cells(self) -> frozenset[Cell]:
@@ -55,12 +62,13 @@ class NoiseMask:
         old = before.by_id()
         flagged: list[int] = []
         for c in diff.changes:
-            if c.kind not in ("same", "moved"):
+            kind = _kind(c)
+            if kind not in ("same", "moved"):
                 self._by_descriptor.setdefault(c.id, {}).setdefault(_descriptor(c), set()).add(
                     action_id
                 )
             recent = self._recent.setdefault(c.id, [])
-            recent.append((action_id, c.kind))
+            recent.append((action_id, kind, _descriptor(c)))
             del recent[:-WINDOW]
             if c.id in self._noisy or not self._is_noise(c.id):
                 continue
@@ -81,12 +89,18 @@ class NoiseMask:
         recent = self._recent.get(tid, [])
         return (
             len(recent) == WINDOW
-            and all(k not in ("moved", "same") for _, k in recent)
-            and len({a for a, _ in recent}) >= 2
+            and all(k not in ("moved", "same") for _, k, _ in recent)
+            and len({d for _, _, d in recent}) == WINDOW
+            and len({a for a, _, _ in recent}) >= 2
         )
 
     def reset_tracks(self) -> None:
-        """Level change: forget track history and flagged ids, keep the cells."""
+        """Level change: forget history, flagged ids and cells.
+
+        A new level may put real objects where the old animation was; a timer is
+        flagged again within a few steps.
+        """
+        self._cells.clear()
         self._noisy.clear()
         self._by_descriptor.clear()
         self._recent.clear()
