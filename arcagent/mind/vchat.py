@@ -6,8 +6,8 @@ Contract:
   ``{"type": "image_url", "image_url": {"url": <data url>}}``.
 - ``http_vision_chat`` posts to an OpenAI-compatible ``/chat/completions`` with the body
   of ``arcagent.synth.run.request_body`` (same temperature, thinking off) and the given
-  ``max_tokens``. HTTP 400 raises ``ImagesRejected`` (the server does not take images);
-  any other failure raises ``requests`` or parse errors. ``timeout_s`` is the socket
+  ``max_tokens``. HTTP 400 whose body mentions images raises ``ImagesRejected``; any other failure
+  (including another 400) raises ``requests`` or parse errors. ``timeout_s`` is the socket
   timeout of ``requests``, not a wall-clock bound; the caller enforces the deadline.
 - ``recording`` saves every reply to ``<directory>/<sha1>.json`` (sha1 over
   ``json.dumps(messages, sort_keys=True) + str(seed)``), written atomically. A failed
@@ -55,6 +55,14 @@ def vision_key(messages: list[VMessage], seed: int) -> str:
     ).hexdigest()  # a content key, not a security use
 
 
+_IMAGE_WORDS = ("image", "multimodal", "mm_", "vision")
+
+
+def _mentions_images(body: str) -> bool:
+    low = body.lower()
+    return any(w in low for w in _IMAGE_WORDS)
+
+
 def http_vision_chat(endpoint: str, model: str, *, max_tokens: int, timeout_s: float) -> VisionChat:
     """A ``VisionChat`` over an OpenAI-compatible endpoint."""
     url = endpoint.rstrip("/") + "/chat/completions"
@@ -69,7 +77,7 @@ def http_vision_chat(endpoint: str, model: str, *, max_tokens: int, timeout_s: f
         t0 = time.perf_counter()
         resp = requests.post(url, json=body, headers=headers, timeout=timeout_s)
         secs = time.perf_counter() - t0
-        if resp.status_code == 400:
+        if resp.status_code == 400 and _mentions_images(resp.text):
             raise ImagesRejected(resp.text[:200])
         resp.raise_for_status()
         return parse_completion(resp.json(), secs)

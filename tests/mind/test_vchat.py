@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import requests
 
 from arcagent.mind.vchat import (
     ImagesRejected,
@@ -62,7 +63,7 @@ def test_failed_inner_call_records_nothing(tmp_path: Path) -> None:
 
 
 @contextmanager
-def _stub(status: int) -> Generator[tuple[str, list[dict[str, Any]]]]:
+def _stub(status: int, error: str = "") -> Generator[tuple[str, list[dict[str, Any]]]]:
     seen: list[dict[str, Any]] = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -75,6 +76,8 @@ def _stub(status: int) -> Generator[tuple[str, list[dict[str, Any]]]]:
                     "usage": {"prompt_tokens": 5, "completion_tokens": 2},
                 }
             ).encode()
+            if status != 200:
+                body = error.encode()
             self.send_response(status)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -105,8 +108,23 @@ def test_http_sends_image_parts_and_parses_reply() -> None:
     assert content[1]["image_url"]["url"].startswith("data:image/png")
 
 
-def test_http_400_raises_images_rejected() -> None:
-    with _stub(400) as (url, _):
+def test_http_400_about_images_raises_images_rejected() -> None:
+    with _stub(400, "Multimodal inputs are not supported") as (url, _):
         chat = http_vision_chat(url, "m", max_tokens=10, timeout_s=5)
         with pytest.raises(ImagesRejected):
             chat(MSGS, 0)
+
+
+def test_http_other_400_is_a_plain_http_error() -> None:
+    with _stub(400, "max_tokens too large") as (url, _):
+        chat = http_vision_chat(url, "m", max_tokens=10, timeout_s=5)
+        with pytest.raises(requests.HTTPError):
+            chat(MSGS, 0)
+
+
+def test_record_then_replay_round_trip_with_image_part(tmp_path: Path) -> None:
+    rec = recording(scripted(["reply"]), tmp_path)
+    rec(MSGS, 9)
+    assert replaying(tmp_path)(MSGS, 9).text == "reply"
+    other: list[VMessage] = [{"role": "user", "content": "no image"}]
+    assert replaying(tmp_path)(other, 9).text == "{}"

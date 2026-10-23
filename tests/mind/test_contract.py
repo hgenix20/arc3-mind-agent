@@ -114,3 +114,15 @@ def test_clear_and_count_map_colors() -> None:
     r = parse_reply(json.dumps({"goals": goals}), SCENE, AVAIL)
     assert r.goals == (Goal("clear", color=9), Goal("count", color=8, n=0))
     assert len(r.dropped) == 4
+
+
+def test_overlong_click_id_drops_only_that_step() -> None:
+    text = json.dumps({"plan": [{"action": "click #" + "9" * 5000}, {"action": "A1"}]})
+    r = parse_reply(text, SCENE, AVAIL)
+    assert [p.action for p in r.plan] == [Action(1)] and len(r.dropped) == 1
+
+
+def test_deeply_nested_object_is_skipped_for_a_later_valid_one() -> None:
+    text = "{" * 100000 + ' junk {"plan": [{"action": "A2"}]}'
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.plan[0].action == Action(2)

@@ -31,7 +31,7 @@ from arcagent.mind.objects import Scene, Thing, click_cell
 MAX_PLAN_STEPS = 8
 _MAX_TEXT = 300
 _ACTION_RE = re.compile(r"^A([1-7])$")
-_CLICK_RE = re.compile(r"^click\s*#\s*(\d+)$", re.IGNORECASE)
+_CLICK_RE = re.compile(r"^click\s*#\s*(\d{1,6})$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +59,7 @@ def _first_object(text: str) -> dict[str, Any] | None:
     while pos != -1:
         try:
             obj, _ = dec.raw_decode(text, pos)
-        except ValueError:
+        except (ValueError, RecursionError):
             obj = None
         if isinstance(obj, dict):
             return dict(obj)  # pyright: ignore[reportUnknownArgumentType]
