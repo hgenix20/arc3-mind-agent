@@ -43,7 +43,7 @@ making it, and carry what it learned forward.
   Sokoban, Breakout). Shared root mechanics (move, click, jump, push,
   collect, toggle, rotate, spawn, destroy) may be proposed as hypotheses, and
   each must pass a test before it is trusted.
-- The laptop's RTX 4080 runs nothing unless Kameron says so for that run.
+- The laptop's RTX 4080 runs nothing outside a window Kameron grants.
 - Anti-goal: an agent that thinks for minutes per move. Time lost to thinking
   costs more than one well-chosen test move.
 
@@ -283,8 +283,11 @@ per game:
 - Kaggle: notebook only, internet off, under 9 hours for 110 games, RTX PRO
   6000 (97 GB), one submission per day, scorecard closes after 15 minutes
   without an action.
-- Iteration: Kaggle GPU evals on the 25 public games, sized to the quota;
-  paired comparisons for any claimed gain.
+- Iteration: Kaggle GPU evals on the 25 public games, up to 5 GPU hours a
+  day (Kameron, 2026-10-23); paired comparisons for any claimed gain. Quick
+  checks of the executive's replies may run first on the laptop's RTX 4080
+  with a smaller model, only in windows Kameron grants (50 minutes granted
+  on 2026-10-23).
 - Repo rules: ruff, pyright strict, pytest, commit trailer as in
   `CLAUDE.md`, no em-dashes in prose, the toolkit's own scoring.
 
