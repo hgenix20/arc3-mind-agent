@@ -13,6 +13,7 @@ from arcagent.mind.facts import (
     FactMemory,
     action_label,
     learn,
+    touch_contexts,
 )
 from arcagent.mind.objects import Scene, SceneDiff, Thing, Tracker
 
@@ -294,7 +295,7 @@ def test_game_over_records_touch_fact_only() -> None:
     before, _, diff = transition({(5, 5): 1, (3, 5): 9}, {(4, 5): 1, (3, 5): 9})
     player = thing_at(before, 5, 5)
     keys = learn(mem, before, Action(4), diff, move=3, level_up=False, game_over=True)
-    assert keys == [("any", player.sig, "touch:9")]
+    assert keys == [("any", player.sig, "near:9")]
     assert list(mem.facts) == keys
     f = fact(mem, keys[0])
     assert f.effects == (Effect("game_over"),) and f.tags == {"die"}
@@ -329,21 +330,53 @@ def test_wall_beside_lava_is_spared_only_after_a_safe_touch() -> None:
     # no safe history: both adjacent colors are suspects
     mem = FactMemory()
     keys = learn(mem, before, Action(3), diff, move=1, level_up=False, game_over=True)
-    assert keys == [("any", sig, "touch:8"), ("any", sig, "touch:9")]
+    assert keys == [("any", sig, "near:8"), ("any", sig, "near:9")]
     # the wall was touched safely first: only lava gets the death fact
     mem = FactMemory()
     learn_plain(mem, {(6, 3): 1, **lava_row}, {(6, 4): 1, **lava_row}, Action(2), 0)
-    assert 8 in mem.safe_touch[sig] and 9 not in mem.safe_touch[sig]
+    assert 8 in mem.safe_near[sig] and 9 not in mem.safe_near[sig]
     keys = learn(mem, before, Action(3), diff, move=1, level_up=False, game_over=True)
-    assert keys == [("any", sig, "touch:9")]
+    assert keys == [("any", sig, "near:9")]
 
 
-def test_two_safe_touches_break_a_death_fact() -> None:
+def test_two_safe_passes_beside_break_a_near_death_fact() -> None:
     mem = FactMemory()
     before, _, diff = transition({(6, 5): 1, (4, 5): 9}, {(5, 5): 1, (4, 5): 9})
-    key = ("any", thing_at(before, 6, 5).sig, "touch:9")
+    key = ("any", thing_at(before, 6, 5).sig, "near:9")
     learn(mem, before, Action(3), diff, move=0, level_up=False, game_over=True)
     _, _, keys = learn_plain(mem, {(3, 6): 1, (4, 5): 9}, {(3, 5): 1, (4, 5): 9}, Action(1), 1)
     assert key in keys and fact(mem, key).status == "thin"
     learn_plain(mem, {(4, 7): 1, (4, 5): 9}, {(4, 6): 1, (4, 5): 9}, Action(1), 2)
     assert fact(mem, key).status == "broken"
+
+
+def test_touch_contexts_split_overlap_and_adjacency() -> None:
+    s0, _, _ = transition({(5, 5): 9, (5, 4): 8, (9, 9): 7}, {(5, 5): 9, (5, 4): 8, (9, 9): 7})
+    cells = frozenset({(5, 5), (6, 5)})
+    assert touch_contexts(cells, s0, -1) == ["touch:9", "near:8"]
+    assert touch_contexts(cells, s0, thing_at(s0, 5, 5).id) == ["near:8"]
+
+
+def test_passing_beside_a_stepped_on_killer_leaves_its_touch_fact_solid() -> None:
+    mem = FactMemory()
+    before, _, diff = transition({(6, 5): 1, (5, 5): 9}, {(5, 5): 1})
+    key = ("any", thing_at(before, 6, 5).sig, "touch:9")
+    for i in range(5):
+        assert learn(mem, before, Action(3), diff, move=i, level_up=False, game_over=True) == [key]
+    assert fact(mem, key).status == "solid"
+    learn_plain(mem, {(5, 7): 1, (5, 5): 9}, {(5, 6): 1, (5, 5): 9}, Action(1), 5)
+    learn_plain(mem, {(4, 4): 1, (5, 5): 9}, {(4, 5): 1, (5, 5): 9}, Action(2), 6)
+    assert 9 in mem.safe_near[key[1]] and 9 not in mem.safe_touch.get(key[1], set())
+    assert fact(mem, key).status == "solid" and fact(mem, key).misses == 0
+
+
+def test_safe_overlap_charges_only_the_touch_fact() -> None:
+    mem = FactMemory()
+    s0, _, _ = learn_plain(mem, {(6, 5): 1, (5, 5): 6}, {(5, 5): 1}, Action(3), 0)
+    sig = thing_at(s0, 6, 5).sig
+    assert 6 in mem.safe_touch[sig]
+    mem.record(("any", sig, "touch:6"), (Effect("game_over"),), 1)
+    mem.record(("any", sig, "near:6"), (Effect("game_over"),), 1)
+    learn_plain(mem, {(6, 5): 1, (5, 5): 6}, {(5, 5): 1}, Action(3), 2)
+    assert fact(mem, ("any", sig, "touch:6")).misses == 1
+    assert fact(mem, ("any", sig, "near:6")).misses == 0
