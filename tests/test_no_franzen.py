@@ -6,7 +6,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SHIPPED = [ROOT / "arcagent", ROOT / "scripts" / "kaggle_mind_notebook.py", ROOT / "data"]
+SHIPPED = [
+    ROOT / "arcagent",
+    ROOT / "scripts" / "kaggle_mind_notebook.py",
+    ROOT / "scripts" / "kaggle_synth_notebook.py",
+    ROOT / "data",
+]
 SUFFIXES = {".py", ".json", ".md"}
 
 
