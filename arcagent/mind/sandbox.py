@@ -21,6 +21,10 @@ Contract:
   timeout or an invalid grid (anything but 64 rows of 64 ints in -1..15).
 - Failing to start the worker at all raises ``OSError``: that is a broken
   environment, not model behavior.
+- After ``close`` every request fails the way a dead program does (None,
+  ``(0, n)``, an error string, a plan with no actions) without starting a
+  worker, counting a restart or blaming a program. A synthesis call still
+  running on a pool thread when its game ends hits this path.
 - Thread-safe: every public method holds one re-entrant lock, because the
   game's thread and its synthesis call (on a pool thread) share the sandbox.
   Without it two requests on the one pipe could take each other's replies.
@@ -110,7 +114,13 @@ class ProgramSandbox:
         self._queue: queue.Queue[bytes | None] = queue.Queue()
         self._next_id = 0
         self._lock = threading.RLock()
+        self._closed = False
         self._spawn()
+
+    @property
+    def closed(self) -> bool:
+        """True once ``close`` has run."""
+        return self._closed
 
     def __enter__(self) -> ProgramSandbox:
         return self
@@ -126,6 +136,7 @@ class ProgramSandbox:
     def close(self) -> None:
         """Stop the worker and remove its working directory. Safe to call twice."""
         with self._lock:
+            self._closed = True
             self._kill()
             self._tmp.cleanup()
 
@@ -171,7 +182,10 @@ class ProgramSandbox:
 
         On a deadline or a dead worker: kill, count a restart, drop ``blame``
         (if given) with the reason, start a fresh worker, and return None.
+        A closed sandbox returns None at once.
         """
+        if self._closed:
+            return None
         if self._proc is None:
             self._spawn()
         proc = self._proc
@@ -236,6 +250,8 @@ class ProgramSandbox:
         with self._lock:
             self._codes.pop(pid, None)
             self.dropped.pop(pid, None)
+            if self._closed:
+                return "sandbox closed"
             reply = self._roundtrip({"op": "load", "pid": pid, "code": code}, self.timeout_s, None)
             if reply is None:
                 return "timeout"

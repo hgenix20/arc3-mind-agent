@@ -556,3 +556,25 @@ def test_failed_submit_logs_no_wake(tmp_path: Path, sandbox: ProgramSandbox) -> 
     assert failed and all(r["error"].startswith("submit failed") for r in failed)
     assert calls == []
     assert all(a["wake"] is None for a in actions_of(recs))
+
+
+def test_no_synthesis_call_starts_inside_the_cutoff(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    """With less than ``synth_cutoff_s`` left, the agent plays on without calling the model."""
+    chat, calls = counting_chat(TRUE_RULES)
+    cfg = CONFIGS["FULL"]
+    agent, _ = make_agent(tmp_path, sandbox, cfg, chat, game_s=cfg.synth_cutoff_s - 10.0)
+    play(agent, Corridor(), 40)
+    agent.close()
+    recs = records(tmp_path)
+    assert calls == [] and not [r for r in recs if r["type"] == "llm_call"]
+    acts = actions_of(recs)
+    assert len(acts) == 40 and all(a["why"] != "deadline passed" for a in acts)
+    # Outside the cutoff the same game does call the model.
+    chat2, calls2 = counting_chat(TRUE_RULES)
+    with ProgramSandbox(timeout_s=2.0) as fresh:
+        agent2, _ = make_agent(tmp_path / "b", fresh, cfg, chat2)
+        play(agent2, Corridor(), 40)
+        agent2.close()
+    assert calls2

@@ -326,3 +326,30 @@ def good_after(action_id: int) -> Grid:
     g = zeros()
     g[0, 0] = action_id
     return g
+
+
+def test_closed_sandbox_fails_like_a_dead_program() -> None:
+    sb = ProgramSandbox(timeout_s=1.0)
+    assert sb.load("good", WALKER) is None
+    sb.close()
+    assert sb.closed
+    err = sb.load("other", GOOD)
+    assert isinstance(err, str) and err
+    assert sb.predict(["good"], walker_start(), Action(1)) == {"good": None}
+    assert sb.predict_grid("good", walker_start(), Action(1)) is None
+    assert sb.goal(["good"], walker_start()) == {"good": None}
+    assert sb.score("good", [_step(0, zeros(), Action(1), zeros())]) == (0, 1)
+    res = sb.plan(
+        "good",
+        walker_start(),
+        [Action(1)],
+        target="goal",
+        visited=frozenset(),
+        max_nodes=10,
+        time_limit_s=0.5,
+    )
+    assert res.actions is None
+    sb.unload("good")
+    # No worker was respawned and nothing was blamed for the closed pipe.
+    assert sb.restarts == 0 and sb.dropped == {}
+    sb.close()  # still safe twice

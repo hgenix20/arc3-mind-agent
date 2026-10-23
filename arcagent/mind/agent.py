@@ -43,6 +43,7 @@ Invariants:
   action, set by the executive. A goal plan needs ``plan_min_trials`` and
   ``plan_threshold``; a lone program below them may only plan to novelty.
 - At most ``max_calls_per_game`` calls; planner bounds come from the drive state.
+- No call starts within ``cfg.synth_cutoff_s`` of the game (or run) deadline.
 
 Threading: the agent runs on its game's thread. Its synthesis call runs on a
 pool thread and touches only the sandbox (which is locked) and its own
@@ -324,6 +325,8 @@ class MindAgent:
         """Salience's wake reason if it started a call, else None."""
         if self._synth is None or self._future is not None or step is None:
             return None
+        if now >= min(self._game_deadline, self._run_deadline) - self.cfg.synth_cutoff_s:
+            return None  # a call started now could not finish before the game ends
         if not self.wm.steps:
             return None  # a call with no transitions to score on can only be dropped
         transfer_failed = False

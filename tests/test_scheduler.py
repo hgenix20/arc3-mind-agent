@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,17 +17,21 @@ from arcagent.synth.trace import ProbePolicy
 
 
 def test_game_budget_spreads_time_and_respects_floor() -> None:
-    # 1000 s usable after the reserve, 4 workers, 8 games left: 500 s each.
+    # 1000 s usable after the 300 s reserve, 4 workers, 8 games left: 500 s each.
     assert scheduler.game_budget(0.0, 1300.0, 8, 4) == pytest.approx(500.0)
-    # One game left with many workers is capped by the run deadline, not inflated past it.
-    assert scheduler.game_budget(0.0, 1300.0, 1, 8) == pytest.approx(1300.0)
-    # Too little time per game: the floor applies.
+    # One game left with many workers is capped so the reserve holds.
+    assert scheduler.game_budget(0.0, 1300.0, 1, 8) == pytest.approx(1000.0)
+    # Too little time per game: the floor applies, even inside the reserve.
     assert scheduler.game_budget(0.0, 1300.0, 1000, 1) == pytest.approx(120.0)
+    assert scheduler.game_budget(1100.0, 1300.0, 1, 4) == pytest.approx(120.0)
     # The floor never reaches past the run deadline.
     assert scheduler.game_budget(1250.0, 1300.0, 5, 1) == pytest.approx(50.0)
     assert scheduler.game_budget(1400.0, 1300.0, 5, 1) == 0.0
     # games_left of 0 is treated as 1.
     assert scheduler.game_budget(0.0, 1300.0, 0, 1) == pytest.approx(1000.0)
+    for now in (0.0, 500.0, 1000.0, 1200.0, 1299.0):
+        for left in (1, 3, 30):
+            assert now + scheduler.game_budget(now, 1300.0, left, 8) <= 1300.0
 
 
 @dataclass
@@ -204,3 +209,63 @@ def test_one_scorecard_accepts_concurrent_games(env_dir: Path, tmp_path: Path) -
     assert all(a.closed for a in agents) and len(agents) == 2
     assert card is not None
     assert {e["id"] for e in card["environments"]} == set(games)
+
+
+class HangingEnv(WinningEnv):
+    """``step`` blocks until ``release`` is set: a stuck gateway call."""
+
+    def __init__(self, release: threading.Event) -> None:
+        self.release = release
+
+    def step(self, action: Any, data: Any = None, reasoning: Any = None) -> FakeFrame | None:
+        self.release.wait(30)
+        return FakeFrame(state="WIN", levels_completed=1)
+
+
+class HangingArcade(FakeArcade):
+    def __init__(self, release: threading.Event) -> None:
+        super().__init__()
+        self.release = release
+
+    def make(self, game_id: str, scorecard_id: str, save_recording: bool) -> WinningEnv | None:
+        with self.lock:
+            self.made.append(game_id)
+        return HangingEnv(self.release) if game_id == "hang" else WinningEnv()
+
+
+def test_play_concurrent_gives_up_on_a_hung_game() -> None:
+    pytest.importorskip("arcengine")
+    release = threading.Event()
+    try:
+        arcade = HangingArcade(release)
+        t0 = time.monotonic()
+        results, errors, card = scheduler.play_concurrent(
+            arcade,
+            ["good", "hang"],
+            workers=2,
+            make_agent=lambda g, d: FakeAgent(g, False, []),
+            total_seconds=0.3,
+            hang_grace_s=0.2,
+            report=lambda s: None,
+        )
+        assert time.monotonic() - t0 < 5.0
+        assert [r.stop for r in results] == ["win", "hung"]
+        assert [e["game_id"] for e in errors] == ["hang"] and "hung" in errors[0]["error"]
+        assert arcade.closed == ["card"] and card is not None
+
+        # One worker: the hung game holds it, so the queued game never starts.
+        arcade = HangingArcade(release)
+        results, errors, _ = scheduler.play_concurrent(
+            arcade,
+            ["hang", "later"],
+            workers=1,
+            make_agent=lambda g, d: FakeAgent(g, False, []),
+            total_seconds=0.3,
+            hang_grace_s=0.2,
+            report=lambda s: None,
+        )
+        assert [r.stop for r in results] == ["hung", "skipped"]
+        assert [e["game_id"] for e in errors] == ["hang"]
+        assert arcade.made == ["hang"] and arcade.closed == ["card"]
+    finally:
+        release.set()

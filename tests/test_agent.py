@@ -448,3 +448,128 @@ def test_mind_policy_replay_end_to_end(env_dir: Path, tmp_path: Path) -> None:
         lines = (tmp_path / "logs" / f"{g['game_id']}.jsonl").read_text(encoding="utf-8")
         kinds = [json.loads(line)["type"] for line in lines.splitlines()]
         assert kinds.count("action") == 20 and kinds[-1] == "game_end"
+
+
+class RecordingArcade:
+    """One available game whose ``make`` fails; records the toolkit calls in order."""
+
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+
+        class Env:
+            game_id = "ls20-1"
+
+        self.available_environments = [Env()]
+
+    def open_scorecard(self, tags: list[str]) -> str:
+        self.calls.append("open_scorecard")
+        return "card"
+
+    def make(self, game_id: str, scorecard_id: str, save_recording: bool) -> None:
+        self.calls.append("make")
+
+    def close_scorecard(self, card: str) -> dict[str, Any]:
+        self.calls.append("close_scorecard")
+        return {"score": 0.0, "environments": []}
+
+
+def test_mind_run_deadline_is_anchored_at_the_start_of_main(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("pyarrow")
+    now = [1000.0]
+    calls: list[str] = []
+    seen: dict[str, float] = {}
+
+    def slow_wait(endpoint: str, timeout_s: float = 0.0) -> float:
+        now[0] += 500.0  # the model takes 500 s to load
+        return 500.0
+
+    class Run(submit.MindRun):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            seen["mind_run"] = kwargs["run_deadline"]
+            super().__init__(*args, **kwargs)
+
+    def fake_play(*args: Any, **kwargs: Any) -> tuple[list[GameResult], list[Any], None]:
+        seen["play"] = kwargs["run_deadline"]
+        return [], [], None
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> RecordingArcade:
+        return RecordingArcade(calls)
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    monkeypatch.setattr(submit, "wait_for_model", slow_wait)
+    monkeypatch.setattr(submit, "MindRun", Run)
+    monkeypatch.setattr(submit, "play_concurrent", fake_play)
+    submit.main(
+        [
+            "--mode",
+            "offline",
+            "--policy",
+            "mind",
+            "--out",
+            str(tmp_path),
+            "--total-seconds",
+            "3600",
+        ],
+        clock=lambda: now[0],
+    )
+    # The 500 s model wait comes out of the 3600 s budget.
+    assert seen == {"mind_run": 4600.0, "play": 4600.0}
+
+
+def test_cli_hard_exits_after_the_outputs_for_the_mind_policy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("pyarrow")
+    exits: list[tuple[int, bool, bool]] = []
+
+    def fake_exit(code: int) -> None:
+        exits.append(
+            (code, (tmp_path / "results.json").exists(), (tmp_path / "submission.parquet").exists())
+        )
+
+    def fake_arcade(*_args: Any, **_kw: Any) -> RecordingArcade:
+        return RecordingArcade([])
+
+    monkeypatch.setattr(submit, "make_arcade", fake_arcade)
+    monkeypatch.setattr(submit.os, "_exit", fake_exit)
+    submit.cli(["--mode", "offline", "--policy", "mind", "--replay", "--out", str(tmp_path)])
+    assert exits == [(0, True, True)]
+    exits.clear()
+    submit.cli(["--mode", "offline", "--policy", "probe", "--out", str(tmp_path / "p")])
+    assert exits == []
+
+    # A failing mind run still ends the process, with a nonzero code.
+    def boom(*_args: Any, **_kw: Any) -> None:
+        raise OSError("boom")
+
+    monkeypatch.setattr(submit, "play_mind", boom)
+    submit.cli(["--mode", "offline", "--policy", "mind", "--replay", "--out", str(tmp_path / "f")])
+    assert [e[0] for e in exits] == [1]
+
+
+def test_mind_game_close_always_closes_sandbox_and_log(tmp_path: Path) -> None:
+    from arcagent.mind.runlog import RunLog  # noqa: PLC0415
+
+    class Sandbox:
+        closed = 0
+
+        def close(self) -> None:
+            self.closed += 1
+
+    class BrokenAgent:
+        def choose(self, obs: Observation) -> Action:
+            return Action(1)
+
+        def close(self) -> None:
+            raise RuntimeError("sleep failed")
+
+    log = RunLog(tmp_path / "g.jsonl", "g", "FULL", 0)
+    sandbox = Sandbox()
+    game = submit.MindGame(BrokenAgent(), log, sandbox)  # pyright: ignore[reportArgumentType]  # duck-typed fakes
+    with pytest.raises(RuntimeError, match="sleep failed"):
+        game.close()
+    assert sandbox.closed == 1
+    with pytest.raises(ValueError, match="closed"):
+        log.event("late")

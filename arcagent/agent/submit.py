@@ -26,8 +26,12 @@ each game gets its own sandbox and its run log at ``<log-dir>/<game>.jsonl``.
 Before the scorecard opens, ``wait_for_model`` polls ``<endpoint>/models``
 until the server answers, so the 15-minute idle clock starts only once
 actions can flow. ``--replay`` answers from the recorded replies instead and
-skips the wait, as does the model-free ``EXPLORER`` config. Per-game
-deadlines come from ``scheduler.game_budget``; ``--game-seconds`` is unused.
+skips the wait, as does the model-free ``EXPLORER`` config. The run deadline
+is fixed when ``main`` starts, so the model wait comes out of
+``--total-seconds``. Per-game deadlines come from ``scheduler.game_budget``;
+``--game-seconds`` is unused. Run as a module, a mind run ends with
+``os._exit`` once its outputs are written (see ``cli``), so no in-flight
+model request or hung game thread can hold the process past them.
 ``--max-actions`` defaults to 20000 for the mind policy, 300 otherwise.
 
 Bounds: ``--max-actions`` per game, ``--game-seconds`` per game and
@@ -45,7 +49,9 @@ import argparse
 import json
 import logging
 import os
+import sys
 import time
+import traceback
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
@@ -334,21 +340,30 @@ def play_all(
 
 
 class MindGame:
-    """One game's ``MindAgent`` plus the run log it writes; ``close`` releases both."""
+    """One game's ``MindAgent`` with its run log and sandbox; ``close`` releases all three."""
 
-    def __init__(self, agent: MindAgent, log: RunLog) -> None:
+    def __init__(self, agent: MindAgent, log: RunLog, sandbox: ProgramSandbox) -> None:
         self.agent = agent
         self._log = log
+        self._sandbox = sandbox
 
     def choose(self, obs: Observation) -> Action:
         return self.agent.choose(obs)
 
     def close(self) -> None:
-        """Close the agent (it logs ``game_end``), then the log, even if the agent fails."""
+        """Close the agent (it sleeps and logs ``game_end``), then the sandbox, then the log.
+
+        The sandbox and log are closed even when the agent's close raises (a
+        failing sleep would otherwise leave the worker process running); the
+        agent's exception still propagates. ``ProgramSandbox.close`` is idempotent.
+        """
         try:
             self.agent.close()
         finally:
-            self._log.close()
+            try:
+                self._sandbox.close()
+            finally:
+                self._log.close()
 
 
 class MindRun:
@@ -408,7 +423,7 @@ class MindRun:
                 sandbox.close()
             log.close()
             raise
-        return MindGame(agent, log)
+        return MindGame(agent, log, sandbox)
 
     def close(self) -> None:
         """Cancel queued synthesis calls; a call already running finishes on its own thread."""
@@ -462,18 +477,28 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def play_mind(
-    arcade: Any, games: Sequence[str], args: argparse.Namespace
+    arcade: Any,
+    games: Sequence[str],
+    args: argparse.Namespace,
+    *,
+    run_deadline: float,
+    clock: Callable[[], float] = time.monotonic,
 ) -> tuple[list[GameResult], list[dict[str, Any]], dict[str, Any] | None, dict[str, Any]]:
     """Run ``games`` with the mind policy; also returns the run's config record.
 
-    The model wait comes first so the scorecard opens only once the server can
-    answer. Raises ``TimeoutError`` from ``wait_for_model`` without opening it.
+    ``run_deadline`` is the one absolute deadline (a ``clock`` value) shared by
+    the model wait, every agent and the scheduler, so time spent waiting for the
+    model comes out of the run's budget. The model wait comes first so the
+    scorecard opens only once the server can answer; it is capped by the time
+    left. Raises ``TimeoutError`` from ``wait_for_model`` without opening the
+    scorecard. Whatever time is left after the wait is played, however short.
     """
     cfg = CONFIGS[args.config]
     if args.k is not None:
         cfg = replace(cfg, k=args.k)
     waits = cfg.llm and not args.replay
-    waited = wait_for_model(args.endpoint) if waits else 0.0
+    wait_s = max(0.0, min(MODEL_WAIT_S, run_deadline - clock()))
+    waited = wait_for_model(args.endpoint, wait_s) if waits else 0.0
     if waits:
         _LOG.info("model server %s answered after %.0fs", args.endpoint, waited)
     run = MindRun(
@@ -483,7 +508,7 @@ def play_mind(
         workers=args.workers,
         log_dir=Path(args.log_dir),
         seed=args.seed,
-        run_deadline=time.monotonic() + args.total_seconds,
+        run_deadline=run_deadline,
     )
     try:
         results, errors, scorecard = play_concurrent(
@@ -493,7 +518,9 @@ def play_mind(
             make_agent=run.make_agent,
             total_seconds=args.total_seconds,
             max_actions=args.max_actions,
+            run_deadline=run_deadline,
             tags=MIND_TAGS,
+            clock=clock,
         )
     finally:
         run.close()
@@ -509,9 +536,17 @@ def play_mind(
     return results, errors, scorecard, record
 
 
-def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
-    """Run the agent; returns (and writes) the results document."""
+def main(
+    argv: Sequence[str] | None = None, *, clock: Callable[[], float] = time.monotonic
+) -> dict[str, Any]:
+    """Run the agent; returns (and writes) the results document.
+
+    ``clock`` must share ``time.monotonic``'s timeline outside tests: the mind
+    agents compare the run deadline against ``time.monotonic`` themselves.
+    """
+    t0 = clock()  # the run budget starts here, so the model wait comes out of it
     args = parse_args(argv)
+    run_deadline = t0 + args.total_seconds
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     mode = resolve_mode(args.mode)
     out = Path(args.out)
@@ -525,7 +560,9 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     print(f"mode={mode} policy={args.policy} games={len(games)} max_actions={args.max_actions}")
     extra: dict[str, Any] = {}
     if args.policy == "mind":
-        results, errors, scorecard, extra = play_mind(arcade, games, args)
+        results, errors, scorecard, extra = play_mind(
+            arcade, games, args, run_deadline=run_deadline, clock=clock
+        )
     else:
         results, errors, scorecard = play_all(
             arcade,
@@ -565,5 +602,33 @@ def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
     return doc
 
 
+def cli(argv: Sequence[str] | None = None) -> None:
+    """Command-line entry: ``main``, then for the mind policy end the process at once.
+
+    A synthesis request or a hung game can keep a pool thread alive for up to
+    the HTTP timeout, and the interpreter joins pool threads at exit. With the
+    outputs written and the scorecard closed, the mind policy ends with
+    ``os._exit`` (0, or 1 after printing the traceback when ``main`` failed),
+    after flushing stdout, stderr and the log handlers. Other policies return
+    normally. Safe because the notebook runs this module as a subprocess.
+    """
+    policy = parse_args(argv).policy
+    code = 1
+    try:
+        main(argv)
+        code = 0
+    except Exception:
+        if policy != "mind":
+            raise
+        traceback.print_exc()
+    finally:
+        if policy == "mind":
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(code)
+
+
 if __name__ == "__main__":
-    main()
+    cli()

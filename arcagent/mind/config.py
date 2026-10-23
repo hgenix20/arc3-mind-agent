@@ -41,6 +41,8 @@ class MindConfig:
     evidence a program needs before the executive plans with it.
     ``idle_act_s``: shared idle time after which a waiting game takes a B0
     action. ``synth_wait_poll_s``: the slice a waiting game sleeps between checks.
+    ``synth_cutoff_s``: no synthesis call starts with less than this left before
+    the game (or run) deadline, so none is still running when the game ends.
     """
 
     name: str
@@ -55,6 +57,7 @@ class MindConfig:
     plan_min_trials: int = 5
     idle_act_s: float = 600.0
     synth_wait_poll_s: float = 1.0
+    synth_cutoff_s: float = 300.0
 
 
 @dataclass(frozen=True)
