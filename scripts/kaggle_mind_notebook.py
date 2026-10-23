@@ -23,7 +23,9 @@ Intent: one self-contained .ipynb plus kernel-metadata.json under build/kaggle-m
 Wall clock: Kaggle stops a notebook at 9 h. Setup (wheel installs, model load) took
 several minutes in the probe kernel and the serve cell allows up to an hour, so the
 agent's budget is computed in the notebook at run time:
-``--total-seconds = max(1800, 8.5 * 3600 - (time.time() - NOTEBOOK_T0))``. submit
+``--total-seconds = max(1800, 8.5 * 3600 - (time.time() - NOTEBOOK_T0))`` in the
+competition rerun. The interactive commit caps that at ``RERUN_SECONDS * n_games /
+PRIVATE_GAMES`` (or ``--interactive-seconds``), floor 1800 s. submit
 measures that from its own start and keeps its scorecard reserve inside it; only
 the scheduler's hang grace (120 s) and the metrics cell run past it, which stays
 under 9 h.
@@ -37,6 +39,7 @@ the competition data. The image is pinned to Python 3.12 to match the cp312 whee
 
 Usage: python scripts/kaggle_mind_notebook.py [--slug arc3-mind-agent]
        [--games all|<ids>...] [--config FULL] [--workers 8] [--out DIR]
+       [--interactive-seconds S]
 """
 
 from __future__ import annotations
@@ -67,6 +70,13 @@ COMPETITION = "arc-prize-2026-arc-agi-3"
 COMP_DIR = f"/kaggle/input/competitions/{COMPETITION}"
 ENDPOINT = "http://127.0.0.1:1234/v1"
 
+# The interactive commit plays the 25 public games offline. Giving them the whole 8.5 h
+# burns the weekly GPU quota, so its budget is scaled to the same per-game time as the
+# private run: RERUN_SECONDS for PRIVATE_GAMES games.
+RERUN_SECONDS = 8 * 3600
+PRIVATE_GAMES = 110
+PUBLIC_GAMES = 25
+
 
 def source_files() -> list[Path]:
     """Every file the notebook writes, in a stable order."""
@@ -82,7 +92,17 @@ NOTEBOOK_T0 = time.time()  # the agent's budget is what is left of 8.5 h after s
 RUN_CELL = r"""
 import json, os, subprocess, sys, time
 from pathlib import Path
-total = max(1800, 8.5 * 3600 - (time.time() - NOTEBOOK_T0))
+left = 8.5 * 3600 - (time.time() - NOTEBOOK_T0)
+# Same test as submit's --mode auto.
+rerun = os.environ.get("KAGGLE_IS_COMPETITION_RERUN", "").strip().lower() in {"1", "true"}
+RERUN_SECONDS = %(rerun_seconds)d
+PRIVATE_GAMES = %(private_games)d
+N_GAMES = %(n_games)d
+if rerun:
+    total = max(1800, left)
+else:
+    %(scaled)s
+    total = max(1800, min(left, scaled))
 env = dict(os.environ, PYTHONPATH="/kaggle/working", PYTHONUNBUFFERED="1")
 cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
        "--env-dir", %(env_dir)r, "--config", %(config)r, "--workers", %(workers)r,
@@ -90,7 +110,7 @@ cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--polic
        "--total-seconds", str(int(total)), "--out", "/kaggle/working",
        "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies"]
 cmd += %(games_args)r  # empty means every game; a game list applies offline only
-print(f"setup took {time.time() - NOTEBOOK_T0:.0f}s; agent budget {total:.0f}s")
+print(f"setup took {time.time() - NOTEBOOK_T0:.0f}s; rerun {rerun}; agent budget {total:.0f}s")
 print(" ".join(cmd))
 # Stream the child's output into the cell and keep a copy, so a long run shows progress
 # and its log survives in the kernel output.
@@ -148,9 +168,17 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     ap.add_argument("--config", choices=sorted(CONFIGS), default="FULL")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument(
+        "--interactive-seconds",
+        type=int,
+        default=None,
+        help="interactive-commit budget in seconds, instead of the scaled per-game value",
+    )
     a = ap.parse_args(argv)
     if a.workers < 1:
         ap.error("need --workers >= 1")
+    if a.interactive_seconds is not None and a.interactive_seconds < 1:
+        ap.error("need --interactive-seconds >= 1")
     if "all" in a.games and len(a.games) > 1:
         ap.error("--games takes 'all' alone or a list of ids")
     return a
@@ -190,6 +218,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "config": a.config,
                 "workers": str(a.workers),
                 "served": SERVED_NAME,
+                "rerun_seconds": RERUN_SECONDS,
+                "private_games": PRIVATE_GAMES,
+                "n_games": len(games) if games else PUBLIC_GAMES,
+                "scaled": (
+                    "scaled = RERUN_SECONDS * N_GAMES / PRIVATE_GAMES"
+                    if a.interactive_seconds is None
+                    else f"scaled = {a.interactive_seconds}"
+                ),
                 "games_args": ["--games", *games] if games else [],
             }
         ),

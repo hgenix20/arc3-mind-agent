@@ -114,3 +114,29 @@ def test_run_cell_streams_submit_output_to_a_log(tmp_path: Path) -> None:
     assert 'PYTHONUNBUFFERED="1"' in run
     assert "/kaggle/working/submit.log" in run and "stderr=subprocess.STDOUT" in run
     assert 'raise RuntimeError("submission.parquet was not written")' in run
+
+
+def test_run_cell_scales_the_interactive_budget_and_keeps_the_rerun_formula(
+    tmp_path: Path,
+) -> None:
+    nb, _ = build(tmp_path)
+    run = run_cell(nb)
+    assert '"KAGGLE_IS_COMPETITION_RERUN"' in run and '{"1", "true"}' in run
+    assert "if rerun:" in run and "total = max(1800, left)" in run
+    assert "RERUN_SECONDS = 28800" in run and "PRIVATE_GAMES = 110" in run
+    assert "N_GAMES = 25" in run
+    assert "scaled = RERUN_SECONDS * N_GAMES / PRIVATE_GAMES" in run
+    assert "total = max(1800, min(left, scaled))" in run
+
+
+def test_run_cell_counts_named_games_for_the_scaled_budget(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path, "--games", "ls20", "ft09")
+    assert "N_GAMES = 2" in run_cell(nb)
+
+
+def test_interactive_seconds_overrides_the_scaled_value(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path, "--interactive-seconds", "5400")
+    run = run_cell(nb)
+    assert "scaled = 5400" in run
+    assert "scaled = RERUN_SECONDS * N_GAMES / PRIVATE_GAMES" not in run
+    compile(run, "<cell>", "exec")
