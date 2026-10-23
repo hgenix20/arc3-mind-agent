@@ -300,6 +300,28 @@ engine is slow, and sc25 exposed no usable action. Blind search over even a
 perfect model doesn't finish levels; goal-directed play is what's missing.
 Results: `bench/ceiling/`.
 
+### Fluid agent, slice 1 (no LLM), from 2026-10-23
+
+Spec `docs/superpowers/specs/2026-10-23-fluid-agent-design.md`, plan
+`docs/superpowers/plans/2026-10-23-fluid-agent-slice-1.md`, branch
+`fluid-slice-1`. Config `FLUID`: objects and terrain, noise mask, fact
+dictionary with a table of contents, predictor, heuristic goal guesses
+(reach, clear), short search over predictions, targeted tests, vetoes.
+
+| date | commit | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-23 | a4edb72 | offline, 25 games, 120 s each, CPU | 3 (lf52 1, lp85 2) | 0.13 | 6,273 actions; prediction accuracy 0.91; 1,386 no-op actions, 52 game overs |
+
+It finishes fewer levels than v1 (13, 0.32), which had an 8.5 h budget. Most
+games show high prediction accuracy (0.67 to 1.0), so the agent learns how
+moves change objects; what it lacks is the goal. On ls20, traced move by
+move, stepping into the target needs a condition met first, and touching the
+switch changes the switch's own signature, so `reach` guesses fail and stall.
+The click games (ft09, vc33) need goals like "make this area match that one",
+which slice 1's heuristics don't propose. That is slice 2's job: the LLM reads
+the screen and proposes goals and staged plans. Only one run so far, so no
+paired comparison. Logs: `bench/offline/fluid-s1-run1/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
