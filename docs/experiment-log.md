@@ -292,6 +292,14 @@ budget, bounded sleep, sandbox startup). Known open cost: duplicate programs
 are admitted under new ids, and VOI scores each copy on every step.
 Logs: `bench/evals/2026-10-23-full-v1/`.
 
+Planner ceiling, 2026-10-23 (`scripts/plan_ceiling.py --level-seconds 60
+--max-nodes 200000`, true rules as the world model): 13 of 183 levels, mean
+score 2.91 over the 25 public games. Every search that failed stopped on the
+time limit after expanding 21 to 4,026 nodes, because cloning the real game
+engine is slow, and sc25 exposed no usable action. Blind search over even a
+perfect model doesn't finish levels; goal-directed play is what's missing.
+Results: `bench/ceiling/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
