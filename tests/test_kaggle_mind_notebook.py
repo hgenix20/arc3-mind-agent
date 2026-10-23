@@ -171,8 +171,16 @@ def test_serve_failure_sets_model_ok_false_instead_of_raising(
 def test_run_cell_plays_explorer_when_the_model_server_failed(tmp_path: Path) -> None:
     nb, _ = build(tmp_path, "--config", "FULL")
     run = run_cell(nb)
-    assert "config = 'FULL' if MODEL_OK else \"EXPLORER\"" in run
+    assert "config = 'FULL' if MODEL_OK else 'EXPLORER'" in run
     assert '"--config", config' in run
+
+
+def test_fluid_llm_falls_back_to_fluid_and_serves_two_images(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path, "--config", "FLUID-LLM")
+    run = run_cell(nb)
+    assert "config = 'FLUID-LLM' if MODEL_OK else 'FLUID'" in run
+    source = "".join("".join(c["source"]) for c in nb["cells"])
+    assert """"--limit-mm-per-prompt", '{"image": 2}'""" in source
 
 
 def fallback_ns() -> dict[str, Any]:

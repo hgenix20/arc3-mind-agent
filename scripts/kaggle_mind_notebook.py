@@ -34,8 +34,9 @@ the scheduler's hang grace (120 s) runs past it in the rerun (plus the metrics
 cell in the interactive commit), which stays under 9 h.
 
 Failure modes: a model server that exits or never answers sets ``MODEL_OK = False``
-(the serve step runs inside a ``try``) and the run cell passes ``--config EXPLORER``,
-so the games are still played without the model. submit writes the parquet in a
+(the serve step runs inside a ``try``) and the run cell passes the no-model fallback
+(``--config FLUID`` for a fluid config, else ``EXPLORER``), so the games are still
+played without the model. submit writes the parquet in a
 ``finally``; if its process leaves none anyway, the run cell writes a zero-score
 fallback (one row per game from the gateway's list in the rerun or the public
 metadata offline, else one placeholder row). The run cell raises only when even
@@ -113,7 +114,7 @@ NOTEBOOK_T0 = time.time()  # the agent's budget is what is left of 8.5 h after s
 """
 
 # The shared serve cell raises when vLLM exits or never answers. Here that must not stop
-# the notebook: the run cell then plays the model-free EXPLORER config and still writes a
+# the notebook: the run cell then plays the no-model fallback config and still writes a
 # submission. The serve cell itself is unchanged, so the probe kernel keeps raising.
 SERVE_WRAPPER = """
 MODEL_OK = False
@@ -121,8 +122,14 @@ try:
 %(serve)s
     MODEL_OK = True
 except Exception as exc:  # the serve cell printed vLLM's root cause before raising
-    print("model server failed, the agent plays EXPLORER:", repr(exc))
+    print("model server failed, the agent plays its no-model fallback:", repr(exc))
 """
+
+
+def fallback_config(config: str) -> str:
+    """The config played when the model server fails: ``FLUID`` for a fluid config, else
+    ``EXPLORER``. Both need no model, and a fluid entry keeps its own agent this way."""
+    return "FLUID" if CONFIGS[config].fluid else "EXPLORER"
 
 
 def serve_cell() -> str:
@@ -202,7 +209,7 @@ else:
     %(scaled)s
     total = max(1800, min(left, scaled))
 env = dict(os.environ, PYTHONPATH="/kaggle/working", PYTHONUNBUFFERED="1")
-config = %(config)r if MODEL_OK else "EXPLORER"
+config = %(config)r if MODEL_OK else %(fallback)r
 if config != %(config)r:
     print("model server not ready: playing", config)
 cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
@@ -331,6 +338,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             % {
                 "env_dir": f"{COMP_DIR}/environment_files",
                 "config": a.config,
+                "fallback": fallback_config(a.config),
                 "workers": str(a.workers),
                 "served": SERVED_NAME,
                 "rerun_seconds": RERUN_SECONDS,

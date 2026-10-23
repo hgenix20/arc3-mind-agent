@@ -81,7 +81,8 @@ env = dict(os.environ, PYTHONPATH=str(SITE), VLLM_NO_USAGE_STATS="1", USE_TF="0"
 cmd = [sys.executable, "-m", "vllm.entrypoints.openai.api_server", "--model", str(MODEL),
        "--served-model-name", %(served)r, "--host", "127.0.0.1", "--port", "1234",
        "--max-model-len", "65536", "--enable-prefix-caching", "--reasoning-parser", "qwen3",
-       "--generation-config", "vllm", "--gpu-memory-utilization", "0.92"]
+       "--generation-config", "vllm", "--gpu-memory-utilization", "0.92",
+       "--limit-mm-per-prompt", '{"image": 2}']
 server = subprocess.Popen(cmd, env=env, stdout=LOG.open("w"), stderr=subprocess.STDOUT)
 # Weight loading from the Kaggle input disk varied 2.4x between runs (v4 ready in 535 s,
 # v5 killed at 1500 s with warmup finished and the server seconds from ready).
