@@ -17,7 +17,7 @@ why, programs [{"id", "pred", "matched", "fit"}], vetoes [[id, x, y]],
 voi {"id,x,y": score}, entropy, wake``, plus ``active`` (the active program id
 or null).
 
-Event kinds: ``llm_call, plan, level_up, game_over, program_admitted,
+Event kinds: ``llm_call, plan, plan_skipped, level_up, game_over, program_admitted,
 program_dropped, veto, wisdom_drop, sleep, transfer, game_end``. The
 ``program_dropped`` event carries ``pid, reason, step, first_miss_step``.
 

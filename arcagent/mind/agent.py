@@ -42,6 +42,11 @@ Invariants:
   action, set by the executive. A goal plan needs ``plan_min_trials`` and
   ``plan_threshold``; a lone program below them may only plan to novelty.
 - At most ``max_calls_per_game`` calls; planner bounds come from the drive state.
+- A goal plan that comes back empty (``time_limit``, ``max_nodes``,
+  ``exhausted`` or any other no-plan stop) puts that program in a skip window:
+  no goal search for it until its trials reach ``trials + GOAL_RETRY_TRIALS``
+  or the level changes. One ``plan_skipped`` event (``pid, reason, trials,
+  retry_at_trials``) opens each window.
 - No call starts within the effective cutoff of the game (or run) deadline:
   ``min(cfg.synth_cutoff_s, SYNTH_CUTOFF_FRACTION * budget)``, where ``budget``
   is ``min(game_deadline, run_deadline)`` minus the agent's start time. The
@@ -81,6 +86,9 @@ from arcagent.mind.types import ActionKey, Decision, Program, Step
 MISS_MEMORY = 20  # recent missed step indices kept per program, for the repair prompt
 SYNTH_CUTOFF_FRACTION = 0.25  # share of a game's budget in which no call may start
 MAX_ERROR_CHARS = 300  # per logged error, so one traceback cannot flood the log
+# A goal search that found no plan is not repeated for the same program until it has
+# this many more trials (or the level changes): the same evidence gives the same search.
+GOAL_RETRY_TRIALS = 10
 
 
 class MindAgent:
@@ -154,6 +162,8 @@ class MindAgent:
         self._records: list[PredictionRecord] = []
         self._vetoes: frozenset[ActionKey] = frozenset()
         self._wake: str | None = None
+        # pid -> (retry_at_trials, level) for goal searches that found no plan.
+        self._goal_skip: dict[str, tuple[int, int]] = {}
 
     # -- the step ----------------------------------------------------------
 
@@ -282,6 +292,7 @@ class MindAgent:
         self._carried = bool(carried)
         self._plan, self._active = [], None
         self._visited = set()
+        self._goal_skip.clear()
 
     def _hand_over(self) -> list[tuple[str, ProgramState]]:
         """Empty the belief for transfer; return the programs that left it for good.
@@ -463,6 +474,11 @@ class MindAgent:
             return None  # a lone program passed for novelty has not earned a goal plan
         obs = self._current()
         pid = state.program.id
+        if target == "goal" and pid in self._goal_skip:
+            retry_at, level = self._goal_skip[pid]
+            if state.trials < retry_at and level == self._level:
+                return None
+            del self._goal_skip[pid]
         max_nodes, time_limit_s = planner_bounds(self._drive)
         res = self._sandbox.plan(
             pid,
@@ -485,6 +501,17 @@ class MindAgent:
             length=None if res.actions is None else len(res.actions),
         )
         if res.actions is None:
+            if target == "goal":
+                retry_at = state.trials + GOAL_RETRY_TRIALS
+                self._goal_skip[pid] = (retry_at, self._level)
+                self._log.event(
+                    "plan_skipped",
+                    step=self._action_no,
+                    pid=pid,
+                    reason=res.stopped,
+                    trials=state.trials,
+                    retry_at_trials=retry_at,
+                )
             return None
         return list(res.actions)
 

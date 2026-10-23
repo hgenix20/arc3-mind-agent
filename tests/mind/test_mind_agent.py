@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 import threading
 import time
@@ -613,3 +614,25 @@ def test_voi_drives_learn_actions_with_two_disagreeing_programs(
     assert learn, "no learn action with a non-empty voi map"
     assert all(len(k.split(",")) == 3 for a in learn for k in a["voi"])
     assert any(v > 0 for a in learn for v in a["voi"].values())
+
+
+def test_failed_goal_plan_is_not_retried_until_trials_grow(
+    tmp_path: Path, sandbox: ProgramSandbox
+) -> None:
+    # The true rule with a goal that never holds: every goal search exhausts the corridor.
+    unreachable = TRUE_RULES[: TRUE_RULES.index("def goal")] + "def goal(grid):\n    return False\n"
+    agent, _ = make_agent(tmp_path, sandbox, CONFIGS["FULL"], failing_chat)
+    prog = Program("never", unreachable, True, "llm")
+    assert agent.belief.add(prog, hits=10, trials=10) is None
+    play(agent, Corridor(pit_x=63, pit_visible=False), 30)
+    agent.close()
+    recs = records(tmp_path)
+    goal_plans = [r for r in recs if r["type"] == "plan" and r["target"] == "goal"]
+    skips = [r for r in recs if r["type"] == "plan_skipped"]
+    assert goal_plans and all(p["length"] is None for p in goal_plans)
+    # One skip window per failed search, each logged once with the retry point.
+    assert len(skips) == len(goal_plans) <= 4
+    assert all(s["pid"] == "never" and s["reason"] == goal_plans[0]["stopped"] for s in skips)
+    assert all(s["retry_at_trials"] == s["trials"] + 10 for s in skips)
+    for a, b in itertools.pairwise(skips):
+        assert b["trials"] >= a["retry_at_trials"]
