@@ -5,7 +5,7 @@ execution. Standard library only, with no ``from __future__`` import and no
 ``arcagent`` imports, because ``-I`` leaves the package off the path.
 
 Protocol: one JSON object per line in each direction. Every request carries an
-``id`` that the reply echoes. Ops: ``load``, ``unload``, ``predict``, ``goal``,
+``id`` that the reply echoes. Ops: ``ping``, ``load``, ``unload``, ``predict``, ``goal``,
 ``score``, ``plan`` (see ``_handle``). Grids travel as 64 lists of 64 ints,
 actions as ``[id, x, y]``.
 
@@ -173,6 +173,7 @@ class Worker:
             return {"ok": True}
         if op == "unload":
             self.programs.pop(req["pid"], None)
+        if op in ("ping", "unload"):
             return {"ok": True}
         batch: dict[str, Callable[[dict[str, Any]], Any]] = {
             "predict": self.predict,

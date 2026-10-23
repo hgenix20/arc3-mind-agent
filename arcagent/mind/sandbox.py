@@ -64,6 +64,9 @@ WORKER_PATH = Path(__file__).with_name("_worker.py")
 PLANNER_PATH = Path(_planner.__file__)
 PLAN_LIMIT_FRACTION = 0.8  # leave the hard deadline headroom over the search's own limit
 KILL_WAIT_S = 5.0
+# Interpreter startup plus the planner import, waited out before any program's
+# deadline starts, so a slow start is never blamed on the first program reloaded.
+SPAWN_TIMEOUT_S = 30.0
 SCORE_CHUNK = 200  # steps per score request: ~0.85 ms/step must fit the per-request deadline
 
 Reply = dict[str, Any]
@@ -182,6 +185,7 @@ class ProgramSandbox:
         assert self._proc.stdout is not None  # set by stdout=PIPE
         self._queue = queue.Queue()
         threading.Thread(target=_pump, args=(self._proc.stdout, self._queue), daemon=True).start()
+        self._await_ready()
         for pid, code in list(self._codes.items()):
             reply = self._roundtrip({"op": "load", "pid": pid, "code": code}, self.timeout_s, pid)
             if reply is None:
@@ -189,6 +193,27 @@ class ProgramSandbox:
             if "error" in reply:
                 del self._codes[pid]
                 self.dropped[pid] = "reload_error"
+
+    def _await_ready(self) -> None:
+        """Ping the new worker and wait up to ``SPAWN_TIMEOUT_S`` for its reply.
+
+        A worker that never answers is left for the next request to find dead or
+        late, which keeps the usual restart and blame path; nothing here recurses.
+        """
+        proc = self._proc
+        assert proc is not None and proc.stdin is not None
+        self._next_id += 1
+        rid = self._next_id
+        try:
+            proc.stdin.write(json.dumps({"op": "ping", "id": rid}).encode("utf-8") + b"\n")
+            proc.stdin.flush()
+            deadline = time.monotonic() + SPAWN_TIMEOUT_S
+            while (remaining := deadline - time.monotonic()) > 0:
+                line = self._queue.get(timeout=remaining)
+                if line is None or json.loads(line).get("id") == rid:
+                    return
+        except (OSError, ValueError, queue.Empty):
+            return
 
     def _kill(self) -> None:
         proc, self._proc = self._proc, None

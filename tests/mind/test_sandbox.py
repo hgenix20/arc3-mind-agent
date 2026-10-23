@@ -131,6 +131,17 @@ def test_lone_hang_restarts_once(sb: ProgramSandbox) -> None:
     assert sb.predict(["good"], zeros(), Action(1))["good"] is not None
 
 
+def test_slow_worker_start_is_not_blamed_on_reloaded_programs() -> None:
+    # 0.2 s is shorter than interpreter startup, so the reload after the restart
+    # only survives if startup is waited out before the program's deadline.
+    with ProgramSandbox(timeout_s=0.2) as sb:
+        assert sb.load("good", GOOD) is None
+        assert sb.load("hang", HANG) is None
+        sb.predict(["hang"], zeros(), Action(1))
+        assert sb.dropped == {"hang": "timeout"}
+        assert sb.predict(["good"], zeros(), Action(1))["good"] is not None
+
+
 def test_hanging_load_returns_timeout_and_keeps_others(sb: ProgramSandbox) -> None:
     sb.load("good", GOOD)
     assert sb.load("slow", "while True:\n    pass\n") == "timeout"
