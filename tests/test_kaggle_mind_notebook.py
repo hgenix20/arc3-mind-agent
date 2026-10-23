@@ -106,3 +106,11 @@ def test_notebook_text_has_no_franzen_period_names(tmp_path: Path) -> None:
     for name in ("notebook.ipynb", "kernel-metadata.json"):
         text = (tmp_path / name).read_text(encoding="utf-8")
         assert re.search(r"duck|franzen", text, re.IGNORECASE) is None, name
+
+
+def test_run_cell_streams_submit_output_to_a_log(tmp_path: Path) -> None:
+    nb, _ = build(tmp_path)
+    run = run_cell(nb)
+    assert 'PYTHONUNBUFFERED="1"' in run
+    assert "/kaggle/working/submit.log" in run and "stderr=subprocess.STDOUT" in run
+    assert 'raise RuntimeError("submission.parquet was not written")' in run

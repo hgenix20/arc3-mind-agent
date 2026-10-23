@@ -16,7 +16,8 @@ Intent: one self-contained .ipynb plus kernel-metadata.json under build/kaggle-m
    the public games offline in an interactive commit (only ``--games`` if given)
    and every private game through the gateway in the competition rerun, writing
    ``/kaggle/working/submission.parquet``, logs under ``/kaggle/working/logs`` and
-   model replies under ``/kaggle/working/replies``;
+   model replies under ``/kaggle/working/replies``; its combined stdout and stderr
+   stream into the cell unbuffered and are kept in ``/kaggle/working/submit.log``;
 6. runs ``scripts/mind_metrics.py`` on the logs into ``/kaggle/working/metrics.json``.
 
 Wall clock: Kaggle stops a notebook at 9 h. Setup (wheel installs, model load) took
@@ -82,7 +83,7 @@ RUN_CELL = r"""
 import json, os, subprocess, sys, time
 from pathlib import Path
 total = max(1800, 8.5 * 3600 - (time.time() - NOTEBOOK_T0))
-env = dict(os.environ, PYTHONPATH="/kaggle/working")
+env = dict(os.environ, PYTHONPATH="/kaggle/working", PYTHONUNBUFFERED="1")
 cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
        "--env-dir", %(env_dir)r, "--config", %(config)r, "--workers", %(workers)r,
        "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
@@ -91,8 +92,18 @@ cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--polic
 cmd += %(games_args)r  # empty means every game; a game list applies offline only
 print(f"setup took {time.time() - NOTEBOOK_T0:.0f}s; agent budget {total:.0f}s")
 print(" ".join(cmd))
-r = subprocess.run(cmd, env=env, cwd="/kaggle/working")
-print("exit", r.returncode)
+# Stream the child's output into the cell and keep a copy, so a long run shows progress
+# and its log survives in the kernel output.
+with open("/kaggle/working/submit.log", "w", encoding="utf-8") as log:
+    proc = subprocess.Popen(cmd, env=env, cwd="/kaggle/working", stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, errors="replace", bufsize=1)
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        print(line, end="", flush=True)
+        log.write(line)
+        log.flush()
+    returncode = proc.wait()
+print("exit", returncode)
 if not Path("/kaggle/working/submission.parquet").exists():
     raise RuntimeError("submission.parquet was not written")
 try:
