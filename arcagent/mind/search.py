@@ -61,6 +61,7 @@ class SearchResult:
 
     ``frontier`` holds the unknown ``(label, subject)`` pairs met, by first meeting.
     ``depth`` is the plan length when found, else the deepest level expanded.
+    ``protected`` is the number of protected sigs the search used.
     """
 
     goal: Goal | None
@@ -69,6 +70,7 @@ class SearchResult:
     nodes: int
     depth: int
     stop: Stop
+    protected: int = 0
 
 
 def protected_sigs(mem: FactMemory, goals: Sequence[Goal], scene: Scene) -> frozenset[str]:
@@ -120,7 +122,7 @@ def search(
         goal: Goal | None = None,
         plan: tuple[PlanStep, ...] = (),
     ) -> SearchResult:
-        return SearchResult(goal, plan, tuple(frontier), nodes, depth, stop)
+        return SearchResult(goal, plan, tuple(frontier), nodes, depth, stop, len(protect))
 
     hit = _first_holding(live, scene)
     if hit is not None:

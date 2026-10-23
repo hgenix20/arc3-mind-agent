@@ -27,7 +27,10 @@ Per ``choose(obs)``, in order:
    doesn't hold is a failed attempt; after ``STALL_AFTER`` failed attempts in one level
    the goal is stalled (``GoalBook.stall``, goal event ``stalled``) and search stops
    offering it. A level change reopens stalled goals (goal event ``open``) and clears
-   the counts. Plan steps are predicted with ``assume_still`` set to the
+   the counts. A plan survives goal-list changes (proposals, rule-outs, other goals
+   stalling) and ends only when its own goal leaves the open list or a step breaks it.
+   Each search logs a ``search`` event (``step, stop, nodes, depth, goals, frontier,
+   protected``). Plan steps are predicted with ``assume_still`` set to the
    mover sigs plus the goal's sigs, so the check covers what the plan relies on.
 5. Else ``goals.propose`` and ``search`` over ``goals.open()``; a found plan starts
    (branch ``plan``, why ``goal <id>``). A goal that already holds at the root is
@@ -86,7 +89,7 @@ from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker
 from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
-from arcagent.mind.search import PlanStep, search
+from arcagent.mind.search import PlanStep, SearchResult, search
 from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, choose_test, veto
 from arcagent.mind.types import ActionKey, Branch
 
@@ -129,7 +132,9 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
 
     True when a key in ``keys`` (missed or newly broken facts) is about a protected sig,
     a ``self`` or an ``any`` subject (``SPAWN`` never is), or when a thing whose sig is in
-    ``movers`` is not where ``pred.scene`` put it in ``after`` (same id, bbox top-left
+    ``movers`` and that ``pred`` actually predicted (it has an ``effects`` entry; a thing
+    assumed still has none, and its move fact may postdate the prediction) is not where
+    ``pred.scene`` put it in ``after`` (same id, bbox top-left
     compared, so a sprite that animates in place still matches; a thing present in only
     one of the two counts as elsewhere).
     """
@@ -141,7 +146,7 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
     expect = pred.scene.by_id()
     now = after.by_id()
     for t in before.things:
-        if t.sig not in movers:
+        if t.sig not in movers or t.id not in pred.effects:
             continue
         e, a = expect.get(t.id), now.get(t.id)
         if (e is None) != (a is None) or (
@@ -392,6 +397,8 @@ class FluidAgent:
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
         late = self._clock() >= self._deadline
         choice: _Choice | None = None
+        if self._plan and self._plan_goal not in self.goals.open():
+            self._plan = []  # its goal was ruled out, excluded or stalled
         if self._plan:
             step = self._plan.pop(0)
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
@@ -460,11 +467,11 @@ class FluidAgent:
         if not goals:
             self._frontier = ()
             return None
-        res = search(scene, self._actions, self.mem, goals)
+        res = self._search(scene, goals)
         if res.stop == "found" and not res.plan and res.goal is not None:
             self._log_goals(self.goals.note_reached(scene), "excluded")
             rest = [g for g in self.goals.open() if g != res.goal]
-            res = search(scene, self._actions, self.mem, rest)
+            res = self._search(scene, rest)
         self._frontier = res.frontier
         if res.stop != "found" or not res.plan or res.goal is None:
             return None
@@ -475,6 +482,20 @@ class FluidAgent:
         if choice is None:
             self._plan = []
         return choice
+
+    def _search(self, scene: Scene, goals: list[Goal]) -> SearchResult:
+        res = search(scene, self._actions, self.mem, goals)
+        self._log.event(
+            "search",
+            step=self._action_no,
+            stop=res.stop,
+            nodes=res.nodes,
+            depth=res.depth,
+            goals=len(goals),
+            frontier=len(res.frontier),
+            protected=res.protected,
+        )
+        return res
 
     def _test_choice(self, obs: Observation, scene: Scene) -> _Choice | None:
         test = choose_test(

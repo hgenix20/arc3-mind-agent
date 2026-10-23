@@ -3,12 +3,17 @@
 Noise is judged per object track, never per cell. A track is noise when either
 rule fires:
 
-* its (non-move) change descriptor was identical under two different action ids, or
+* its (non-move) change descriptor was identical under two different action ids, on
+  transitions where nothing moved, or
 * it had a non-move change on each of the last ``WINDOW`` transitions, and those
   transitions span two or more action ids.
 
 Moves never count toward either rule: masking a player that two actions move the same
-way would blind the agent.
+way would blind the agent. The first rule only counts transitions where no track moved:
+when something moved, a change elsewhere may be caused by the mover's contact (stepping
+on a switch changes a display the same way whichever action made the step), and masking
+it would hide the very objects the agent has to reach. Timers that change every step
+are still caught by the second rule.
 
 A reshape with a nonzero shift and an unchanged cell count is motion (a walking sprite
 that animates while it moves) and is treated as a move. A reshape that changes the cell
@@ -67,9 +72,11 @@ class NoiseMask:
         """Record one transition; return the ids newly flagged as noise."""
         old = before.by_id()
         flagged: list[int] = []
+        kinds = {c.id: _kind(c, old.get(c.id)) for c in diff.changes}
+        still = "moved" not in kinds.values()  # nothing moved: no contact could cause it
         for c in diff.changes:
-            kind = _kind(c, old.get(c.id))
-            if kind not in ("same", "moved"):
+            kind = kinds[c.id]
+            if still and kind not in ("same", "moved"):
                 self._by_descriptor.setdefault(c.id, {}).setdefault(_descriptor(c), set()).add(
                     action_id
                 )

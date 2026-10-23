@@ -564,3 +564,20 @@ def test_click_label_names_the_ring_around_the_clicked_thing() -> None:
     bar = thing_at(s, 5, 40).sig
     assert action_label(Action(6, 6, 40), s) == f"A6:{bar}@7"
     assert action_label(Action(6, 60, 60), s) == "A6:none"
+
+
+# --- a push needs a pusher (Task 8e) --------------------------------------------------
+
+
+def test_sprite_whose_parts_all_stayed_put_records_any_not_pushed() -> None:
+    mem = FactMemory()
+    # a two-color sprite pressed against the edge: A3 does nothing before any A3 move fact
+    learn_plain(mem, {(0, 5): 1, (1, 5): 2}, {(0, 5): 1, (1, 5): 2}, Action(3), 0)
+    s0, _, keys = learn_plain(mem, {(5, 5): 1, (6, 5): 2}, {(4, 5): 1, (5, 5): 2}, Action(3), 1)
+    head, tail = thing_at(s0, 5, 5).sig, thing_at(s0, 6, 5).sig
+    assert not [k for k in keys if k[2] == "pushed"]
+    assert fact(mem, ("A3", head, "any")).misses == 1
+    learn_plain(mem, {(5, 5): 1, (6, 5): 2}, {(4, 5): 1, (5, 5): 2}, Action(3), 2)
+    learn_plain(mem, {(5, 5): 1, (6, 5): 2}, {(4, 5): 1, (5, 5): 2}, Action(3), 3)
+    for sig in (head, tail):
+        assert fact(mem, ("A3", sig, "any")).effects == (Effect("move", dx=-1),)

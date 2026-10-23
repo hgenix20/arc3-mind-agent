@@ -217,3 +217,19 @@ def test_change_carries_the_new_size() -> None:
     assert d is not None and [(c.kind, c.size) for c in d.changes] == [("reshaped", 2)]
     _, d2 = t.update(grid_with({(7, 5): 2, (8, 5): 2}), frozenset())
     assert d2 is not None and [(c.kind, c.size) for c in d2.changes] == [("moved", 2)]
+
+
+def test_terrain_split_by_a_thing_stays_terrain() -> None:
+    """A floor cut in two by a thing standing across it doesn't turn into things."""
+    g = np.zeros((64, 64), dtype=np.int8)
+    g[10, 0:60] = 3  # a 3-wide corridor of 180 cells
+    g[11, 0:60] = 3
+    g[12, 0:60] = 3
+    t = Tracker()
+    t.update(g, frozenset())
+    h = g.copy()
+    h[10:13, 50] = 1  # a 1x3 sprite cuts off a 27-cell piece and leaves 150 cells
+    s, d = t.update(h, frozenset())
+    assert [x.color for x in s.things] == [1]
+    assert s.terrain[11, 55] == 3 and s.terrain[11, 50] == 3
+    assert d is not None and [c.kind for c in d.changes] == ["appeared"]

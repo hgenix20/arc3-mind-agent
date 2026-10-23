@@ -615,10 +615,19 @@ def _split_off_pushed(mem: FactMemory, label: str, obs: list[_Obs]) -> None:
     """Group co-movers; a member known to stay put under ``label`` is pushed, not sprite.
 
     The first shove of a never-seen box is ambiguous and stays a rigid group; once the
-    box has been seen standing still under this action, a shove is a push.
+    box has been seen standing still under this action, a shove is a push. A push needs
+    a pusher: the split happens only in a group where at least one member has no
+    stay-put fact for ``label``. When every member stays put by its facts (a sprite
+    that was pressed against a wall before it ever moved under this action), they all
+    record under ``any``, which charges the stale ``none`` facts until they re-seed.
     """
     _group(obs, lambda o: o.shift)
-    split = [o for o in obs if len(o.mates) > 1 and _stays_put(mem, label, o)]
+    put = {o.thing.id for o in obs if len(o.mates) > 1 and _stays_put(mem, label, o)}
+    split = [
+        o
+        for o in obs
+        if o.thing.id in put and any(m not in put for m in o.mates if m != o.thing.id)
+    ]
     if not split:
         return
     for o in obs:
@@ -653,9 +662,11 @@ def _note_walkable(mem: FactMemory, room: _Room, obs: list[_Obs]) -> None:
 
     A destination cell counts when it is new to the thing and no thing that moved in this
     transition (a mate, a pushed box) covered it in ``before``: a pushed box's color is
-    not floor.
+    not floor. A co-moving group shares its floor: every member's sig gains the colors
+    any member moved onto, since the wall rule reads the whole group's destination.
     """
     moved = {o.thing.id for o in obs if o.shift is not None}
+    own: dict[int, set[int]] = {}
     for o in obs:
         if o.shift is None:
             continue
@@ -667,6 +678,11 @@ def _note_walkable(mem: FactMemory, room: _Room, obs: list[_Obs]) -> None:
             color = color_at(room.scene, room.owner, c)
             if color >= 0:
                 colors.add(color)
+        own[o.thing.id] = colors
+    for o in obs:
+        if o.thing.id not in own:
+            continue
+        colors = set[int]().union(*(own.get(m, set()) for m in o.mates))
         if not colors:
             continue
         sig = o.thing.sig
@@ -682,8 +698,9 @@ def _mark_blocked(mem: FactMemory, label: str, room: _Room, obs: list[_Obs]) -> 
     The expected step is the subject's move fact, else its free peers' majority shift.
     Still things expecting the same step and 4-adjacent form one group, so a sprite's
     parts never block each other. The way is shut by the edge, padding, a thing outside
-    the group, or a terrain color that is not walkable for the sig. Every destination
-    color that is not the subject's own, a group-mate's or walkable joins the blockers.
+    the group, or a terrain color that is not walkable for the sig or a mate's sig. Every
+    destination color that is not the subject's own, a group-mate's or walkable for the
+    group joins the blockers.
     """
     peer_shift: dict[str, Counter[tuple[int, int]]] = {}
     for o in obs:
@@ -701,10 +718,12 @@ def _mark_blocked(mem: FactMemory, label: str, room: _Room, obs: list[_Obs]) -> 
     still = [o for o in obs if o.thing.id in expected]
     _group(still, lambda o: expected[o.thing.id])
     color_of = {o.thing.id: o.thing.color for o in obs}
+    sig_of = {o.thing.id: o.thing.sig for o in obs}
     for o in still:
         sig = o.thing.sig
         exempt = {color_of[i] for i in o.mates if i in color_of}
-        exempt |= mem.walkable.get(sig, set())
+        for i in o.mates:  # the group shares its floor: any member's walkable exempts
+            exempt |= mem.walkable.get(sig_of.get(i, sig), set())
         hit, colors = room.wall(o.group_cells, expected[o.thing.id], o.mates, exempt)
         if hit:
             o.context = "blocked"

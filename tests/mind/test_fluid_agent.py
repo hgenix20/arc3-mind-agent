@@ -311,3 +311,49 @@ def test_stalled_goals_reopen_on_level_change(tmp_path: Path) -> None:
     assert agent.goals.status[g] == "open"
     kinds = [(r["id"], r["status"]) for r in records(tmp_path) if r["type"] == "goal"]
     assert (g.id(), "stalled") in kinds and (g.id(), "open") in kinds
+
+
+def test_assumed_still_mover_never_breaks_a_plan() -> None:
+    bar = f"c7:{shape_of([(0, 0), (1, 0)])}"
+    t = Tracker()
+    before, _ = t.update(_grid({(2, 2): 1, (6, 2): 4, (30, 30): 7, (31, 30): 7}), frozenset())
+    mem = FactMemory()
+    mem.record(("A4", PSIG, "any"), (Effect("move", dx=1),), 0)
+    pred = predict(before, Action(4), mem, assume_still=frozenset({PSIG, TSIG}))
+    assert ("A4", bar) in pred.assumed
+    after, _ = t.update(_grid({(3, 2): 1, (6, 2): 4, (31, 30): 7, (32, 30): 7}), frozenset())
+    movers = frozenset({PSIG, bar})  # the bar's move fact was learned after the prediction
+    assert not fluid.plan_breaks(pred, before, after, [], movers, movers | {TSIG})
+
+
+def test_plan_ends_when_its_goal_leaves_the_open_list(tmp_path: Path) -> None:
+    game = FakeGame(player=(2, 2), target=(20, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=40, until=lambda: len(agent._plan) >= 3)  # pyright: ignore[reportPrivateUsage]
+    goal = agent._plan_goal  # pyright: ignore[reportPrivateUsage]
+    assert goal is not None and len(agent._plan) >= 3  # pyright: ignore[reportPrivateUsage]
+    other = fluid.Goal("reach", a=PSIG, b=SIDE)
+    agent.goals.status[other] = "ruled_out"  # a goal-list change that isn't the plan's own
+    obs = game.observe()
+    a = agent.choose(obs)
+    obs = game.step(a)
+    agent.choose(obs)
+    branches = [r["branch"] for r in records(tmp_path) if r["type"] == "action"]
+    assert branches[-1] == "follow"
+    agent.goals.status[goal] = "ruled_out"
+    obs = game.step(agent._last_action or a)  # pyright: ignore[reportPrivateUsage]
+    agent.choose(obs)
+    branches = [r["branch"] for r in records(tmp_path) if r["type"] == "action"]
+    assert branches[-1] != "follow"
+
+
+def test_search_events_are_logged(tmp_path: Path) -> None:
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=30, until=lambda: game.levels >= 1)
+    agent.close()
+    events = [r for r in records(tmp_path) if r["type"] == "search"]
+    assert events
+    keys = {"step", "stop", "nodes", "depth", "goals", "frontier", "protected"}
+    assert all(keys <= e.keys() for e in events)
+    assert any(e["stop"] == "found" for e in events)

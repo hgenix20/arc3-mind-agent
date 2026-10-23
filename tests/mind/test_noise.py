@@ -115,3 +115,16 @@ def test_same_size_reshape_with_shift_stays_motion() -> None:
         diff = _diff(Change(1, "reshaped", dx=1, color=2, sig=f"c2:w{i}", size=1))
         m.observe(_scene(), a, diff)
     assert m.noisy_ids == frozenset()
+
+
+def test_same_change_alongside_a_move_is_not_noise() -> None:
+    m = NoiseMask()
+    for a in (1, 2, 1, 2):
+        diff = _diff(
+            Change(1, "moved", 1, 0, 2, "c2:s", 1),
+            Change(7, "reshaped", color=4, sig="c4:len2"),
+        )
+        m.observe(_scene(), a, diff)
+    assert m.noisy_ids == frozenset()
+    m.observe(_scene(), 3, reshape_diff(7, -1))
+    assert m.observe(_scene(), 4, reshape_diff(7, -1)) == [7]

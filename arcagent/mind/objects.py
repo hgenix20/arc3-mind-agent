@@ -13,8 +13,10 @@ move. ``Scene.terrain`` holds the color of every cell no thing covers (backgroun
 terrain components, padding -1, and background where noise is masked). A cell covered by
 a thing gets the color last seen there with no thing on it (the tracker keeps one memory
 grid per level, cleared by ``reset``), else the most common non-thing color among its 4
-neighbors, else the background. Terrain is not keyed or diffed: ``Scene.key()`` and
-``SceneDiff`` ignore it, and it is excluded from ``Scene`` equality and hashing.
+neighbors, else the background. The same memory keeps a split floor whole: a component
+with a cell remembered as terrain of its color is terrain, whatever its size. Terrain is
+not keyed or diffed: ``Scene.key()`` and ``SceneDiff`` ignore it, and it is excluded from
+``Scene`` equality and hashing.
 ``color_at`` reads a cell's color: the covering thing's, else the terrain's.
 """
 
@@ -142,16 +144,23 @@ def _visible(grid: Grid, mask: frozenset[Cell]) -> tuple[Grid, int]:
     return g, bg
 
 
-def _things(grid: Grid) -> list[Thing]:
-    """Components under ``TERRAIN_MIN_CELLS`` cells; larger ones are terrain."""
+def _things(grid: Grid, memory: Grid | None = None) -> list[Thing]:
+    """Components under ``TERRAIN_MIN_CELLS`` cells; larger ones are terrain.
+
+    With a terrain ``memory`` (the tracker's), a component with any cell remembered as
+    terrain of its own color is terrain too, so a floor cut in two by a thing standing
+    across it stays terrain.
+    """
     out: list[Thing] = []
     if background_color(grid) < 0:
         return out
     for yx in components(grid):
         if len(yx) >= TERRAIN_MIN_CELLS:
             continue
-        cells = frozenset((x, y) for y, x in yx)
         color = int(grid[yx[0]])
+        if memory is not None and any(int(memory[y, x]) == color for y, x in yx):
+            continue
+        cells = frozenset((x, y) for y, x in yx)
         shape = shape_of(cells)
         out.append(
             Thing(
@@ -323,7 +332,10 @@ class Tracker:
 
     def update(self, grid: Grid, mask: frozenset[Cell]) -> tuple[Scene, SceneDiff | None]:
         visible, bg = _visible(grid, mask)
-        fresh = _things(visible)
+        memory = (
+            self._memory if self._memory is not None and self._memory.shape == grid.shape else None
+        )
+        fresh = _things(visible, memory)
         ys, xs = np.nonzero(grid < 0)
         blocked = frozenset(zip(xs.tolist(), ys.tolist(), strict=True))
         prev = self._scene
