@@ -213,3 +213,31 @@ def test_stalled_confirmed_form_is_skipped_until_reopened() -> None:
     assert book.open() == [g]
     assert book.stall(g) and book.open() == []
     assert book.reopen_stalled() == [g] and book.open() == [g]
+
+
+def test_rule_out_checks_only_the_given_goals() -> None:
+    book = GoalBook()
+    added = book.propose(BASE, mover_memory(), source="heuristic")
+    on_t1 = next(g for g in added if g.b == T1SIG)
+    on_t2 = next(g for g in added if g.b == T2SIG)
+    assert book.rule_out([ON_T1], only=[on_t2]) == []
+    assert book.status[on_t1] == "open"  # true on the frame, but not among the checked goals
+    assert book.rule_out([ON_T1], only=[on_t1]) == [on_t1]
+
+
+def test_match_goals_use_the_real_grid_on_every_check() -> None:
+    same = np.zeros((64, 64), dtype=np.int8)
+    differ = same.copy()
+    differ[0, 0] = 3
+    match = Goal("match", region_a=(0, 0, 2, 2), region_b=(10, 10, 12, 12))
+    for check in ("rule_out", "note_reached", "level_up"):
+        book = GoalBook()
+        book.status[match] = "open"
+        if check == "rule_out":
+            assert book.rule_out([BASE, BASE], [differ]) == []  # second frame has no grid
+            assert book.rule_out([BASE, BASE], [differ, same]) == [match]
+        elif check == "note_reached":
+            assert book.note_reached(BASE) == [] and book.note_reached(BASE, differ) == []
+            assert book.note_reached(BASE, same) == [match]
+        else:
+            assert book.level_up(BASE, differ) == [] and book.level_up(BASE, same) == [match]

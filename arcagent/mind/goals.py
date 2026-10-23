@@ -21,7 +21,7 @@ Pure and deterministic; callers strip noise things from the scene before calling
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -224,27 +224,42 @@ class GoalBook:
     def _open_goals(self) -> Iterator[Goal]:
         return (g for g, s in self.status.items() if s == "open")
 
-    def rule_out(self, history: Sequence[Scene]) -> list[Goal]:
+    def rule_out(
+        self,
+        history: Sequence[Scene],
+        grids: Sequence[Grid | None] = (),
+        *,
+        only: Collection[Goal] | None = None,
+    ) -> list[Goal]:
         """Open goals true on any logged frame: no level-up followed, so they are ruled out.
 
-        Call ``level_up(before)`` first on a level-up, so the winning goal is confirmed
-        before a history that includes ``before`` can rule it out.
+        ``grids`` runs parallel to ``history`` (the raw frame of each scene, for ``match``);
+        a missing entry is None. ``only`` limits the check to those goals (the ones just
+        added): goals already open were checked against each frame as it arrived by
+        ``note_reached``, so checking them again would only cost time. Call
+        ``level_up(before)`` first on a level-up, so the winning goal is confirmed before a
+        history that includes ``before`` can rule it out.
         """
-        out = [g for g in self._open_goals() if any(g.holds(s) for s in history)]
+        frames = [(s, grids[i] if i < len(grids) else None) for i, s in enumerate(history)]
+        if only is None:
+            check = list(self._open_goals())
+        else:
+            check = [g for g in only if self.status.get(g) == "open"]
+        out = [g for g in check if any(g.holds(s, grid) for s, grid in frames)]
         for g in out:
             self.status[g] = "ruled_out"
         return out
 
-    def note_reached(self, scene: Scene) -> list[Goal]:
-        """Open goals true in the current frame without a level-up are excluded."""
-        out = [g for g in self._open_goals() if g.holds(scene)]
+    def note_reached(self, scene: Scene, grid: Grid | None = None) -> list[Goal]:
+        """Open goals true in the current frame (``grid`` is its raw frame) are excluded."""
+        out = [g for g in self._open_goals() if g.holds(scene, grid)]
         for g in out:
             self.status[g] = "excluded"
         return out
 
-    def level_up(self, before: Scene) -> list[Goal]:
-        """Open goals true in the frame before a level-up become confirmed forms."""
-        out = [g for g in self._open_goals() if g.holds(before)]
+    def level_up(self, before: Scene, grid: Grid | None = None) -> list[Goal]:
+        """Open goals true in the frame before a level-up (raw ``grid``) become confirmed."""
+        out = [g for g in self._open_goals() if g.holds(before, grid)]
         for g in out:
             self.status[g] = "confirmed"
             if g not in self.confirmed_forms:
