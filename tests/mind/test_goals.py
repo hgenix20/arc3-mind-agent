@@ -6,7 +6,7 @@ import numpy as np
 
 from arcagent.core.types import Grid
 from arcagent.mind.facts import Effect, FactMemory
-from arcagent.mind.goals import Goal, GoalBook
+from arcagent.mind.goals import MAX_OPEN_GOALS, MAX_REACH_TARGETS, Goal, GoalBook
 from arcagent.mind.objects import Scene, Tracker
 
 Cells = dict[tuple[int, int], int]
@@ -145,3 +145,44 @@ def test_ids_are_deterministic_text() -> None:
     assert Goal("match", region_a=(0, 0, 2, 2), region_b=(5, 5, 7, 7)).id() == (
         "match (0, 0, 2, 2)=(5, 5, 7, 7)"
     )
+
+
+def test_reach_needs_target_cells_not_bbox() -> None:
+    ring = {(x, y): 4 for x in range(20, 25) for y in range(20, 25)}
+    for x in range(21, 24):
+        for y in range(21, 24):
+            del ring[(x, y)]
+    scene = scene_of({(22, 22): 1}, ring)
+    assert not Goal("reach", a=sig(scene, 1), b=sig(scene, 4)).holds(scene)
+    outside = scene_of({(19, 22): 1}, ring)
+    assert Goal("reach", a=sig(outside, 1), b=sig(outside, 4)).holds(outside)
+
+
+def test_proposals_are_capped_and_dropped_goals_can_return() -> None:
+    cells: Cells = {}
+    for i in range(100):
+        color, length = i % 15 + 1, i // 15 + 1
+        x, y = (i % 16) * 4, (i // 16) * 9
+        cells |= {(x, y + k): color for k in range(length)}
+    scene = scene_of(cells)
+    assert len(scene.things) == 100
+    mem = FactMemory()
+    for t in scene.things:
+        mem.record(("A3", t.sig, "any"), (Effect("move", dx=1),), 1)
+    book = GoalBook()
+    first = book.propose(scene, mem, source="heuristic")
+    assert len(first) == MAX_OPEN_GOALS == len(book.open())
+    movers = {g.a for g in first}
+    assert all(sum(1 for g in first if g.a == a) <= MAX_REACH_TARGETS for a in movers)
+    assert book.propose(scene, mem, source="heuristic") == []
+    for g in first[:10]:
+        book.status[g] = "excluded"
+    again = book.propose(scene, mem, source="heuristic")
+    assert len(again) == 10 and not set(again) & set(first)
+
+
+def test_negative_recolor_and_non_ascii_sigs_are_ignored() -> None:
+    mem = FactMemory()
+    mem.record(("A6:c4:ab", "self", "any"), (Effect("recolor", color=-1),), 1)
+    mem.record(("A3", "c\u0663:ab", "any"), (Effect("disappear"),), 1)
+    assert GoalBook().propose(BASE, mem, source="heuristic") == []

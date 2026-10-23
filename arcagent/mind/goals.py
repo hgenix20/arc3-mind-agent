@@ -29,6 +29,8 @@ GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
+MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
+MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
 _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
 _CLICK_PREFIX = "A6:"
 
@@ -81,18 +83,14 @@ def _bbox(t: Thing) -> tuple[int, int, int, int]:
 
 
 def _reaches(scene: Scene, a: str, b: str) -> bool:
-    """Some ``a`` cell is in a ``b`` bbox or 4-adjacent to it (bbox grown by 1, corners off)."""
+    """Some ``a`` cell overlaps a ``b`` cell or is 4-adjacent to one (a ring is not its hole)."""
     mine = [t for t in scene.things if t.sig == a]
     for target in (t for t in scene.things if t.sig == b):
-        x0, y0, x1, y1 = _bbox(target)
-        for thing in mine:
-            if thing is target:
-                continue
-            for x, y in thing.cells:
-                if not (x0 - 1 <= x <= x1 + 1 and y0 - 1 <= y <= y1 + 1):
-                    continue
-                if not (x in (x0 - 1, x1 + 1) and y in (y0 - 1, y1 + 1)):
-                    return True
+        reach = set(target.cells)
+        for x, y in target.cells:
+            reach.update(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+        if any(t is not target and not t.cells.isdisjoint(reach) for t in mine):
+            return True
     return False
 
 
@@ -110,7 +108,8 @@ def _regions_equal(grid: Grid, ra: Region, rb: Region) -> bool:
 def _sig_color(sig: str) -> int | None:
     """Color in ``c{color}:{shape}``; None for anything else."""
     head, sep, _ = sig.partition(":")
-    if not sep or not head.startswith("c") or not head[1:].isdigit():
+    digits = head[1:]
+    if not sep or not head.startswith("c") or not digits.isascii() or not digits.isdigit():
         return None
     return int(head[1:])
 
@@ -142,7 +141,7 @@ def _clear_colors(mem: FactMemory) -> list[int]:
         if old is None:
             continue
         for e in fact.effects:
-            if e.kind == "recolor":
+            if e.kind == "recolor" and e.color >= 0:
                 colors.update((old, e.color))
             elif e.kind == "disappear":
                 colors.add(old)
@@ -169,20 +168,28 @@ class GoalBook:
         every other sig ``b`` present, skipping targets whose bbox covers over a quarter of
         the board. ``clear(color)`` for the old and new color of every recolor fact and the
         color of every disappear fact. Reach goals come first, sorted by ``(a, b)``, then
-        clear goals by color. ``source`` is kept in ``sources`` for logging.
+        clear goals by color. Each mover gets at most ``MAX_REACH_TARGETS`` targets, fewest
+        cells first (ties by sig), and at most ``MAX_OPEN_GOALS`` goals are open at once.
+        ``source`` is kept in ``sources`` for logging.
         """
         present = {t.sig for t in scene.things}
-        targets = sorted({t.sig for t in scene.things if _is_target(t)})
+        size: dict[str, int] = {}
+        for t in scene.things:
+            if _is_target(t):
+                size[t.sig] = min(size.get(t.sig, len(t.cells)), len(t.cells))
+        ranked = sorted(size, key=lambda g: (size[g], g))
         guesses = [
             Goal("reach", a=a, b=b)
             for a in _mover_sigs(mem)
             if a in present
-            for b in targets
-            if b != a
+            for b in [g for g in ranked if g != a][:MAX_REACH_TARGETS]
         ]
         guesses += [Goal("clear", color=c) for c in _clear_colors(mem)]
         added: list[Goal] = []
+        room = MAX_OPEN_GOALS - sum(1 for _ in self._open_goals())
         for goal in guesses:
+            if len(added) >= room:
+                break  # dropped goals stay out of status so a later call can add them
             if goal not in self.status:
                 self.status[goal] = "open"
                 self.sources[goal] = source
@@ -193,7 +200,11 @@ class GoalBook:
         return (g for g, s in self.status.items() if s == "open")
 
     def rule_out(self, history: Sequence[Scene]) -> list[Goal]:
-        """Open goals true on any logged frame: no level-up followed, so they are ruled out."""
+        """Open goals true on any logged frame: no level-up followed, so they are ruled out.
+
+        Call ``level_up(before)`` first on a level-up, so the winning goal is confirmed
+        before a history that includes ``before`` can rule it out.
+        """
         out = [g for g in self._open_goals() if any(g.holds(s) for s in history)]
         for g in out:
             self.status[g] = "ruled_out"
