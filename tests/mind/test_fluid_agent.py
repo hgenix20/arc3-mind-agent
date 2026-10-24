@@ -896,3 +896,81 @@ def test_novelty_without_movers_falls_to_b0(tmp_path: Path, monkeypatch: Any) ->
     assert acts[0]["branch"] == "fallback" and acts[0]["why"] == "b0"
     assert all(a["why"] != fluid.NOVEL_WHY for a in acts)
     assert not [r for r in recs if r["type"] == "search" and r.get("novel")]
+
+
+def test_novelty_ignores_a_mover_the_player_does_not_control(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    enemy = f"c7:{DOT}"
+    for i in (1, 2, 3, 4):
+        agent.mem.record((f"A{i}", enemy, "any"), (Effect("move", dx=1),), 0)
+    scene = Tracker().update(_grid({(10, 10): 7}), frozenset())[0]
+    agent._simple = [Action(i) for i in (1, 2, 3, 4)]  # pyright: ignore[reportPrivateUsage]
+    assert agent._novel_choice(scene) is None  # pyright: ignore[reportPrivateUsage]
+    agent.mem.record(("A1", PSIG, "any"), (Effect("move", dy=-1),), 0)
+    agent.mem.record(("A2", PSIG, "any"), (Effect("move", dy=1),), 0)
+    both = Tracker().update(_grid({(10, 10): 7, (20, 20): 1}), frozenset())[0]
+    agent._keep(both, both, _grid({(10, 10): 7, (20, 20): 1}))  # pyright: ignore[reportPrivateUsage]
+    choice = agent._novel_choice(both)  # pyright: ignore[reportPrivateUsage]
+    assert choice is not None and choice.why == fluid.NOVEL_WHY
+
+
+def test_novelty_search_uses_half_the_caps(tmp_path: Path, monkeypatch: Any) -> None:
+    seen: list[tuple[int, float, bool]] = []
+    real = fluid.search
+
+    def spy(*args: Any, **kw: Any) -> Any:
+        seen.append((kw["max_nodes"], kw["time_s"], kw.get("goal_test") is not None))
+        return real(*args, **kw)
+
+    monkeypatch.setattr(fluid, "search", spy)
+    ring = [(x, y) for x in range(1, 8) for y in (1, 7)]
+    ring += [(x, y) for y in range(2, 7) for x in (1, 7)]
+    game = FakeGame(player=(4, 4), target=(40, 40), walls=ring, lava=[], win_levels=1)
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=30)
+    agent.close()
+    novel = [s for s in seen if s[2]]
+    assert novel and all(s[:2] == (1500, 0.5) for s in novel)
+    assert all(s[:2] == (3000, 1.0) for s in seen if not s[2])
+
+
+def test_a_sleep_error_at_level_up_still_resets_the_level(tmp_path: Path, monkeypatch: Any) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("sleep broke")
+
+    monkeypatch.setattr(fluid, "fluid_sleep", boom)
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=40, until=lambda: game.levels >= 1)
+    play(game, agent, max_steps=1)
+    assert agent.mem.missed == set() and not agent.mem.landed  # new_level ran
+    assert len(agent._history) == 1  # pyright: ignore[reportPrivateUsage]
+    play(game, agent, max_steps=40)
+    agent.close()
+    assert game.levels == 2
+    errors = [r for r in records(tmp_path) if r["type"] == "agent_error"]
+    up = next(r for r in records(tmp_path) if r["type"] == "level_up")
+    assert any(e["step"] == up["step"] and "sleep broke" in e["error"] for e in errors)
+
+
+def test_test_moves_stop_after_the_attempt_cap(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setattr(fluid, "MAX_TESTS_PER_ATTEMPT", 2)
+    # Lava right under the start: a game over comes early and restarts the count.
+    game = FakeGame(player=(4, 4), target=(9, 4), walls=[], lava=[(4, 5)])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    after_over: list[int] = []
+    for _ in range(80):
+        if obs.won:
+            break
+        over = obs.phase == Phase.GAME_OVER
+        obs = game.step(agent.choose(obs))
+        if over:
+            after_over.append(agent._tests_attempt)  # pyright: ignore[reportPrivateUsage]
+        assert agent._tests_attempt <= 2  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+    recs = records(tmp_path)
+    first_end = min(r["step"] for r in recs if r["type"] in ("level_up", "game_over"))
+    assert len([r for r in recs if r["type"] == "test" and r["step"] <= first_end]) <= 2
+    assert game.game_overs >= 1 and after_over and all(n == 0 for n in after_over)
+    assert len([r for r in recs if r["type"] == "test"]) > 2  # later attempts test again

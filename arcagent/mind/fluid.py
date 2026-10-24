@@ -44,14 +44,18 @@ Per ``choose(obs)``, in order:
    search runs once more without it. A first step that a veto refuses counts as a
    failed attempt at that goal (see step 4).
 6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
-   frontier (branch ``learn``, why the test's question).
+   frontier (branch ``learn``, why the test's question), unless this level attempt
+   already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
+   change and on game over); then Voi is skipped.
 7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
-   mover thing sits at a top-left its sig hasn't held on this level" (every
-   ``(sig, x, y)`` of every scene seen this level counts as held), under the same caps.
+   controlled mover thing sits at a top-left its sig hasn't held on this level" (every
+   ``(sig, x, y)`` of every scene seen this level counts as held; controlled per
+   ``goals.controlled_sigs``, so an enemy that moves whatever the action doesn't
+   count), under half the goal search's caps (``NOVEL_NODES``, ``NOVEL_TIME_S``).
    Its first step is taken (branch ``plan``, why ``explore novel``) unless a plan veto
    refuses it; no plan is kept, so the next move searches again. It notes ``no plan
    and no test`` for waking, and unlike a held plan it doesn't block a wake. It is
-   skipped when no mover is on screen.
+   skipped when no controlled mover is on screen.
 8. Else B0 with every vetoed candidate excluded (branch ``fallback``).
 9. The Inhibition module's ``veto`` (``tester.veto`` when real) runs on each option
    before it is taken; a refused option is logged as a
@@ -166,13 +170,20 @@ from arcagent.mind.facts import (
 )
 from arcagent.mind.fluid_modules import build_fluid_modules
 from arcagent.mind.fluid_sleep import FluidSleepReport, fluid_sleep
-from arcagent.mind.goals import Goal, GoalBook, GoalStatus, goal_sigs, mover_sigs
+from arcagent.mind.goals import (
+    Goal,
+    GoalBook,
+    GoalStatus,
+    controlled_sigs,
+    goal_sigs,
+    mover_sigs,
+)
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
-from arcagent.mind.search import PlanStep, SearchResult, search
+from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
 from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, question
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
@@ -182,6 +193,9 @@ STALL_AFTER = 2  # failed attempts at one goal in one level before it is set asi
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 _PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT})  # the veto reasons a plan step honors
+MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skipped
+NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
+NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
@@ -430,6 +444,7 @@ class FluidAgent:
         self._simple: list[Action] = []
         self._can_click = False
         self._tests = 0
+        self._tests_attempt = 0  # test moves since the level or attempt started
         self._vetoes_total = 0
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
         self._seen_at: set[tuple[str, int, int]] = set()  # (sig, x, y) seen this level
@@ -585,6 +600,7 @@ class FluidAgent:
         return self.goals.rule_out([f[0] for f in frames], [f[1] for f in frames], only=only)
 
     def _game_over(self, obs: Observation, move: int) -> None:
+        self._tests_attempt = 0  # a new attempt gets its own test budget
         prev_full, action = self._last_full, self._last_action
         if not self._fresh and prev_full is not None and action is not None:
             full, diff = self._tracker.update(obs.grid, self._noise.cells)
@@ -626,7 +642,15 @@ class FluidAgent:
         self._level_start = True
         self.reopen_goals()
         self._restart()
-        self._sleep(move)
+        try:
+            self._sleep(move)
+        except Exception as exc:  # a sleep failure must not skip the level reset
+            self._log.event(
+                "agent_error",
+                step=move,
+                error=f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS],
+            )
+        self._tests_attempt = 0
         self.mem.new_level()
         self.modules.transfer.carry(self.mem, self.goals)
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
@@ -710,7 +734,7 @@ class FluidAgent:
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
         if choice is None and not late:
             choice = self._plan_choice(scene)
-        if choice is None and not late:
+        if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
             choice = self._test_choice(obs, scene)
         if choice is None and not late:
             choice = self._novel_choice(scene)
@@ -725,6 +749,7 @@ class FluidAgent:
         self._tried.add((scene.key(), choice.action.key()))
         if choice.test is not None:
             self._tests += 1
+            self._tests_attempt += 1
             a = choice.action
             self._log.event(
                 "test", step=self._action_no, action=[a.id, a.x, a.y], question=choice.test
@@ -822,9 +847,23 @@ class FluidAgent:
         return res
 
     def _search(
-        self, scene: Scene, goals: list[Goal], goal_test: Callable[[Scene], bool] | None = None
+        self,
+        scene: Scene,
+        goals: list[Goal],
+        goal_test: Callable[[Scene], bool] | None = None,
+        *,
+        max_nodes: int = SEARCH_MAX_NODES,
+        time_s: float = SEARCH_TIME_S,
     ) -> SearchResult:
-        res = search(scene, self._actions, self.mem, goals, goal_test=goal_test)
+        res = search(
+            scene,
+            self._actions,
+            self.mem,
+            goals,
+            goal_test=goal_test,
+            max_nodes=max_nodes,
+            time_s=time_s,
+        )
         self._log.event(
             "search",
             step=self._action_no,
@@ -845,7 +884,7 @@ class FluidAgent:
         step is refused (plan vetoes only). Logs a ``search`` event with ``novel`` set.
         Only the first step is taken; the next move searches again with the new cell seen.
         """
-        movers = mover_sigs(self.mem)
+        movers = mover_sigs(self.mem) & controlled_sigs(self.mem)
         if not any(t.sig in movers for t in scene.things):
             return None
         seen = self._seen_at
@@ -853,7 +892,7 @@ class FluidAgent:
         def novel(s: Scene) -> bool:
             return any(t.sig in movers and (t.sig, t.x, t.y) not in seen for t in s.things)
 
-        res = self._search(scene, [], goal_test=novel)
+        res = self._search(scene, [], goal_test=novel, max_nodes=NOVEL_NODES, time_s=NOVEL_TIME_S)
         if res.stop != "found" or not res.plan:
             return None
         self._notes.add("no plan and no test")

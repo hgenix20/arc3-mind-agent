@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from arcagent.core.types import GRID_SIZE, Grid
-from arcagent.mind.facts import FactMemory, clicked_sig
+from arcagent.mind.facts import Effect, FactMemory, clicked_sig
 from arcagent.mind.objects import Scene, Thing
 
 GoalKind = Literal["reach", "clear", "match", "count"]
@@ -129,6 +129,32 @@ def _subject_sig(subject: str, label: str) -> str | None:
 def mover_sigs(mem: FactMemory) -> frozenset[str]:
     """Every sig with a non-broken move, slide or teleport fact (``self`` facts included)."""
     return frozenset(_mover_sigs(mem))
+
+
+def controlled_sigs(mem: FactMemory) -> frozenset[str]:
+    """Sigs the player controls: their non-broken facts give different effects under at
+    least two action labels (moves under A1 and none under A2, or up versus left).
+
+    A thing that moves the same way whatever the action (a patrolling enemy) is not
+    controlled. ``self`` facts count for the clicked sig; ``event`` and the action-wide
+    ``any`` label don't.
+    """
+    seen: dict[str, dict[str, set[tuple[Effect, ...]]]] = {}
+    for fact in mem.facts.values():
+        label = fact.key[0]
+        if fact.status == "broken" or label in ("event", "any"):
+            continue
+        sig = _subject_sig(fact.key[1], label)
+        if sig is not None:
+            seen.setdefault(sig, {}).setdefault(label, set()).add(fact.effects)
+    out: set[str] = set()
+    for sig, by_label in seen.items():
+        if len(by_label) < 2:
+            continue
+        distinct = {effects for options in by_label.values() for effects in options}
+        if len(distinct) >= 2:
+            out.add(sig)
+    return frozenset(out)
 
 
 def goal_sigs(goal: Goal, scene: Scene, *, targets: bool = True) -> frozenset[str]:

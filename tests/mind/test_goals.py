@@ -6,7 +6,13 @@ import numpy as np
 
 from arcagent.core.types import Grid
 from arcagent.mind.facts import Effect, FactMemory
-from arcagent.mind.goals import MAX_OPEN_GOALS, MAX_REACH_TARGETS, Goal, GoalBook
+from arcagent.mind.goals import (
+    MAX_OPEN_GOALS,
+    MAX_REACH_TARGETS,
+    Goal,
+    GoalBook,
+    controlled_sigs,
+)
 from arcagent.mind.objects import Scene, Tracker
 
 Cells = dict[tuple[int, int], int]
@@ -241,3 +247,16 @@ def test_match_goals_use_the_real_grid_on_every_check() -> None:
             assert book.note_reached(BASE, same) == [match]
         else:
             assert book.level_up(BASE, differ) == [] and book.level_up(BASE, same) == [match]
+
+
+def test_controlled_sigs_need_different_effects_under_two_labels() -> None:
+    mem = FactMemory()
+    player, enemy, still = "c1:p", "c7:e", "c3:s"
+    mem.record(("A1", player, "any"), (Effect("move", dy=-1),), 0)
+    mem.record(("A2", player, "any"), (Effect("move", dy=1),), 0)
+    for i in (1, 2, 3, 4):
+        mem.record((f"A{i}", enemy, "any"), (Effect("move", dx=1),), 0)
+        mem.record((f"A{i}", still, "any"), (Effect("none"),), 0)
+    assert controlled_sigs(mem) == frozenset({player})
+    mem.record(("A6:c7:e@0", "self", "any"), (Effect("recolor", color=2),), 0)
+    assert enemy in controlled_sigs(mem)  # a click changes it differently

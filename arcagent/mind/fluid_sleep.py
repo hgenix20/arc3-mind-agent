@@ -9,22 +9,21 @@ each pass changed. Callers run it before ``FactMemory.new_level`` (which clears
    (``key in mem.missed``) and is solid drops to thin: ``hits = min(hits, THIN_BELOW -
    1)``. Only facts whose ``hits`` actually fell are reported as ``demoted``; a thin
    fact can't drop further. Facts with no misses keep their counts.
-2. Consolidation. Facts that share a label and context, have identical effects, and
-   whose subjects are sibling sigs (same shape, any color) merge into the one with the
-   most hits (ties to the lowest key). It keeps its own counts; the others are deleted
-   and reported as ``merged``. A deleted subject then predicts by borrowing the kept
-   fact through ``FactMemory.lookup``, so only facts whose lookup borrows are eligible:
-   a simple action's label (clicks count borrowed predictions as open questions in
-   ``tester``), context ``any`` (blocked, pushed and touch facts are read by exact key),
-   not broken (broken facts are never lent), and no move, slide or teleport effect
-   (``goals.mover_sigs`` reads subjects from facts, so deleting one would drop a mover).
+2. Consolidation, log only. Facts that share a label and context, have identical
+   effects, and whose subjects are sibling sigs (same shape, any color) are merge
+   candidates: every one but the fact with the most hits (ties to the lowest key) is
+   reported as ``merged``, and no fact changes. Deleting them changed predictions:
+   ``FactMemory._borrow`` lends the sibling with the most hits in the whole
+   ``(label, context, shape)`` group, which can have different effects (slice 3 review
+   A1). Eligible facts: a simple action's label, context ``any``, not broken, and no
+   move, slide or teleport effect.
 3. Drop. A thin fact with zero hits, created on ``level`` and not in ``used``, is
    deleted and reported as ``dropped``. ``record`` seeds facts with one hit, so this
    only removes facts whose hits were cleared by other code.
 
 Bounded by ``time_s`` of ``clock``, checked before every fact (and every merge group):
 once it has passed, the remaining work is skipped and ``truncated`` is True. Pure apart
-from mutating ``mem`` and reading the clock.
+from mutating ``mem`` (demotions and drops) and reading the clock.
 """
 
 from __future__ import annotations
@@ -108,10 +107,7 @@ def fluid_sleep(
             if len(keys) < 2:
                 continue
             keep = min(keys, key=lambda k: (-mem.facts[k].hits, k))
-            for k in sorted(keys):
-                if k != keep:
-                    mem.delete(k)
-                    merged.append(k)
+            merged.extend(k for k in sorted(keys) if k != keep)  # logged, not applied
         for key, fact in list(mem.facts.items()):
             tick()
             stale = fact.hits == 0 and fact.status == "thin" and fact.level == level

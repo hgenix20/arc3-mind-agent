@@ -53,18 +53,19 @@ def test_miss_from_an_earlier_level_does_not_demote() -> None:
     assert fluid_sleep(mem, [key], 1).demoted == ()
 
 
-def test_sibling_facts_with_identical_effects_merge() -> None:
+def test_sibling_merge_is_logged_and_changes_nothing() -> None:
     a, b = ("A1", "c3:sq", "any"), ("A1", "c5:sq", "any")
-    mem = seeded(a, NONE, 6)
+    other = ("A1", "c4:sq", "any")
+    mem = seeded(a, NONE, 3)
     for i in range(2):
         mem.record(b, NONE, i)
+    for i in range(6):
+        mem.record(other, (Effect("recolor", color=9),), i)  # the sibling _borrow would lend
     report = fluid_sleep(mem, [], 0)
     assert report.merged == (b,)
-    assert set(mem.facts) == {a}
-    assert mem.facts[a].hits == 6
+    assert set(mem.facts) == {a, b, other}
     found = mem.lookup("A1", "c5:sq", "any")
-    assert found is not None and found[0].key == a and found[1]  # borrowed now
-    assert all(b not in keys for keys in mem.toc.values())
+    assert found is not None and found[0].key == b and not found[1]  # still its own fact
 
 
 def test_mover_and_click_facts_never_merge() -> None:
