@@ -11,7 +11,8 @@ Per ``choose(obs)``, in order:
    returns RESET too and learns nothing. The frame after a RESET learns nothing: the
    start frame is not a consequence of any rule.
 2. ``levels_completed`` rose: record the ``level_up`` event fact, ``goals.level_up``
-   on the frame before, log ``level_up``, then reset the tracker and the noise tracks,
+   on the frame before and the winning move's prediction, log ``level_up``, then reset
+   the tracker and the noise tracks,
    run ``fluid_sleep`` over the fact keys the executed moves of the level relied on
    (each move's prediction ``used``, collected per level), reset ``FactMemory``
    positions, run the Transfer module's ``carry`` (the null clears every fact), and
@@ -645,7 +646,8 @@ class FluidAgent:
             self.mem, before, action, _EMPTY_DIFF, move=move, level_up=True, game_over=False
         )
         self._log_facts(keys, snap, move)
-        self._log_goals(self.goals.level_up(before, self._last_grid), "confirmed")
+        after = self._pred.scene if self._pred is not None else None
+        self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
         self._log.event("level_up", step=move, level=obs.levels_completed)
         self._moves.append(f"{move} {_action_name(action, before)} -> level up")
         self._new_epoch()

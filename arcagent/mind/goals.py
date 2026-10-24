@@ -4,13 +4,14 @@ A ``Goal`` is a pure predicate over a ``Scene`` (``match`` also reads the raw gr
 ``GoalBook`` tracks each goal's status through a game: ``open`` goals are guesses still in
 play; a goal that holds on a logged frame (``rule_out``) or on the current frame
 (``note_reached``) while the level did not complete cannot be the win condition, so it is
-``ruled_out`` or ``excluded``; a goal true in the frame before a level-up is ``confirmed``
-and its form is carried to the next level as the first hypothesis. Only open goals change
-status, and ``propose`` skips every goal already in ``status``, so a refuted guess is not
-re-proposed within a game and a confirmed form is never excluded. A goal whose plans keep
-failing is ``stalled`` (``stall``, called by the agent after repeated failed attempts in
-one level) and ``open`` leaves it out; ``reopen_stalled`` puts it back in play on a
-level change. A confirmed form can stall too, for the rest of its level.
+``ruled_out`` or ``excluded``; a goal true in the frame before a level-up, or in the
+predicted outcome of the winning move, is ``confirmed`` and its form is carried to the
+next level as the first hypothesis. Only open goals change status, and ``propose`` skips
+every goal already in ``status``, so a refuted guess is not re-proposed within a game and
+a confirmed form is never excluded. A goal whose plans keep failing is ``stalled``
+(``stall``, called by the agent after repeated failed attempts in one level) and ``open``
+leaves it out; ``reopen_stalled`` puts it back in play on a level change. A confirmed form
+can stall too, for the rest of its level.
 
 Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``match`` and
 ``count`` are evaluated but never proposed. ``mover_sigs`` and ``goal_sigs`` name the sigs
@@ -283,9 +284,20 @@ class GoalBook:
             self.status[g] = "excluded"
         return out
 
-    def level_up(self, before: Scene, grid: Grid | None = None) -> list[Goal]:
-        """Open goals true in the frame before a level-up (raw ``grid``) become confirmed."""
-        out = [g for g in self._open_goals() if g.holds(before, grid)]
+    def level_up(
+        self, before: Scene, grid: Grid | None = None, *, after: Scene | None = None
+    ) -> list[Goal]:
+        """Open goals true in the frame before a level-up (raw ``grid``) become confirmed.
+
+        The frame a winning move returns already shows the next level, so the winning
+        state is never seen. ``after``, the predicted outcome of that move, stands in for
+        it: open goals true there are confirmed too.
+        """
+        out = [
+            g
+            for g in self._open_goals()
+            if g.holds(before, grid) or (after is not None and g.holds(after))
+        ]
         for g in out:
             self.status[g] = "confirmed"
             if g not in self.confirmed_forms:

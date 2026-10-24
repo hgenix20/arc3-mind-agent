@@ -260,3 +260,13 @@ def test_controlled_sigs_need_different_effects_under_two_labels() -> None:
     assert controlled_sigs(mem) == frozenset({player})
     mem.record(("A6:c7:e@0", "self", "any"), (Effect("recolor", color=2),), 0)
     assert enemy in controlled_sigs(mem)  # a click changes it differently
+
+
+def test_level_up_confirms_a_goal_that_holds_only_in_the_predicted_winning_scene() -> None:
+    # the frame after a winning move is already the next level, so the goal state is
+    # never observed; the agent's prediction of that move's outcome stands in for it
+    book = GoalBook()
+    book.propose(BASE, mover_memory(), source="heuristic")
+    assert book.level_up(BASE) == []
+    out = book.level_up(BASE, after=ON_T2)
+    assert [g.b for g in out] == [T2SIG] and book.confirmed_forms[0].b == T2SIG
