@@ -54,6 +54,7 @@ Owner = Mapping[Cell, tuple[int, int]]  # cell -> (thing id, color)
 THIN_BELOW = 5  # a fact is solid once this many observations agreed with it
 BROKEN_MISSES = 2  # a fact is broken after this many misses in a row
 EVIDENCE_KEEP = 20  # a fact keeps the move ids of its last this-many observations
+KIN_KEEP = 8  # sigs kept per tracked thing (FactMemory.kin)
 
 _DIRS: dict[tuple[int, int], str] = {
     (-1, 0): "left",
@@ -233,6 +234,9 @@ class FactMemory:
         self.safe_near: dict[str, set[int]] = {}
         # (label, context, shape) -> keys; built alongside the toc for borrowing
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
+        # track id -> the sigs that thing has carried since the tracker last reset, oldest
+        # first; the agent keeps it (note_kin, kin_reset). Not a fact: forget leaves it.
+        self.kin: dict[int, list[str]] = {}
 
     @property
     def broken_after(self) -> int:
@@ -297,6 +301,22 @@ class FactMemory:
 
     def get(self, key: FactKey) -> Fact | None:
         return self.facts.get(key)
+
+    def note_kin(self, things: Iterable[Thing]) -> None:
+        """Append each thing's sig to its track's history when it differs from the last."""
+        for t in things:
+            sigs = self.kin.setdefault(t.id, [])
+            if not sigs or sigs[-1] != t.sig:
+                sigs.append(t.sig)
+                del sigs[:-KIN_KEEP]
+
+    def kin_reset(self) -> None:
+        """Track ids restart with the tracker; their histories go with them."""
+        self.kin.clear()
+
+    def earlier_sigs(self, t: Thing) -> tuple[str, ...]:
+        """Sigs the same tracked thing carried before, newest first, without its own."""
+        return tuple(s for s in reversed(self.kin.get(t.id, ())) if s != t.sig)
 
     def lookup(self, label: str, subject: str, context: str) -> tuple[Fact, bool] | None:
         """Most specific fact for a subject and whether it was borrowed from a sibling.

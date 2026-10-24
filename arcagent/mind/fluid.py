@@ -528,6 +528,7 @@ class FluidAgent:
     def _restart(self) -> None:
         """Forget the tracked frame and noise tracks: the next frame is a fresh start."""
         self._tracker.reset()
+        self.mem.kin_reset()
         self._noise.reset_tracks()
         self._fresh = True
         self._pred = None
@@ -563,6 +564,7 @@ class FluidAgent:
     def _start(self, obs: Observation) -> Scene:
         """First frame of a level or after a RESET: no diff, nothing learned."""
         self._tracker.reset()
+        self.mem.kin_reset()
         full, _ = self._tracker.update(obs.grid, self._noise.cells)
         scene = _strip(full, self._noise.noisy_ids)
         self._keep(full, scene, obs.grid)
@@ -584,6 +586,7 @@ class FluidAgent:
 
     def _keep(self, full: Scene, scene: Scene, grid: Grid) -> None:
         self._last_full, self._last_scene = full, scene
+        self.mem.note_kin(scene.things)
         self._seen_at.update((t.sig, t.x, t.y) for t in scene.things)
         self._history.setdefault(scene.key(), (scene, grid))
         self._scene_ok = True

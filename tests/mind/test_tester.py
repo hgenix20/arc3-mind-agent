@@ -185,3 +185,48 @@ def test_borrowed_click_prediction_counts_as_unknown_for_the_tester() -> None:
     assert "c5:" in t.question
     know(mem, label, f"c5:{DOT}", Effect("none"))
     assert choose_test(s, [Action(6, 5, 5)], mem, [], set(), None) is None
+
+
+# --- reshaped things keep their facts for the tester (test flood, 2026-10-24) ---------
+
+
+BAR = shape_of([(0, 0), (1, 0)])
+
+
+def test_reshaped_thing_with_a_fact_under_its_earlier_shape_is_not_open() -> None:
+    s = scene_of({(10, 10): 1, (20, 20): 2, (21, 20): 2})
+    bar = next(t for t in s.things if t.color == 2)
+    assert bar.sig == f"c2:{BAR}"
+    mem = mem_moves((1,))
+    know(mem, "A1", SIG_A, Effect("none"))  # the same thing, one cell wide, before
+    assert choose_test(s, [Action(1)], mem, [], set(), None) is not None
+    mem.note_kin([bar])
+    mem.kin[bar.id].insert(0, SIG_A)
+    assert mem.earlier_sigs(bar) == (SIG_A,)
+    assert choose_test(s, [Action(1)], mem, [], set(), None) is None
+
+
+def test_broken_fact_under_the_earlier_shape_keeps_the_pair_open() -> None:
+    s = scene_of({(10, 10): 1, (20, 20): 2, (21, 20): 2})
+    bar = next(t for t in s.things if t.color == 2)
+    mem = mem_moves((1,))
+    for i in range(5):
+        mem.record(("A1", SIG_A, "any"), (Effect("none"),), i)
+    for i in range(5, 7):  # two misses in a row break it; a third would re-seed it
+        mem.record(("A1", SIG_A, "any"), (Effect("move", dx=1),), i)
+    fact = mem.get(("A1", SIG_A, "any"))
+    assert fact is not None and fact.status == "broken"
+    mem.kin[bar.id] = [SIG_A, bar.sig]
+    assert choose_test(s, [Action(1)], mem, [], set(), None) is not None
+
+
+def test_note_kin_keeps_each_tracks_sigs_in_order_without_repeats() -> None:
+    s1 = scene_of({(20, 20): 2})
+    mem = FactMemory()
+    mem.note_kin(s1.things)
+    mem.note_kin(s1.things)
+    (t,) = s1.things
+    assert mem.kin[t.id] == [t.sig]
+    assert mem.earlier_sigs(t) == ()
+    mem.kin_reset()
+    assert mem.kin == {}
