@@ -8,10 +8,12 @@ of the best partial plan), then the lowest ``Action.key()``. An action whose
 ``(scene.key(), action.key())`` is in ``tried`` is never chosen, and neither is one
 predicted to end the game. ``None`` means nothing is open.
 
-Countable pairs (slice 3): with ``protected`` given, a pair counts only when its
-subject is in ``protected`` or is ``self``, its label is a click label, or the pair was
-never observed (no fact has that label and subject, so a fresh side object still gets
-one look). A broken side-object fact keeps its pair unknown forever; without this rule
+Countable pairs (slice 3): with ``protected`` given, a simple action's pair counts only
+when its subject is in ``protected`` or is ``self``, or the pair was never observed (no
+fact has that label and subject, so a fresh side object still gets one look). A click
+is one question, keyed ``(click label, "self")``: it counts once (``settles`` 1) when the
+click has any open pair, and pairs on its side objects add nothing. A broken
+side-object fact keeps its pair unknown forever; without this rule
 every new scene made the same question look fresh (``tried`` is keyed by scene). A pair
 in ``exhausted`` (the caller's per-level cap) never counts. An action with no countable
 pair is not a test. ``protected=None`` counts every pair (the slice 1 rule).
@@ -119,17 +121,21 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
             return False
         if protected is None:
             return True
-        label, subject = pair
-        return (
-            subject in protected or subject == "self" or label.startswith("A6") or pair not in seen
-        )
+        subject = pair[1]
+        return subject in protected or subject == "self" or pair not in seen
 
     best: tuple[tuple[int, int, int, int, tuple[int, int, int]], Test] | None = None
     for action in actions:
         if (skey, action.key()) in tried:
             continue
         pred = predict(scene, action, mem)
-        pairs = [p for p in open_pairs(scene, action, pred) if counts(p)]
+        found = open_pairs(scene, action, pred)
+        if protected is not None and action.id == COORD_ACTION_ID:
+            # One click label is one question, whatever side objects it touches.
+            click = (action_label(action, scene), "self")
+            pairs = [click] if found and click not in exhausted else []
+        else:
+            pairs = [p for p in found if counts(p)]
         if not pairs or pred.game_over:
             continue
         rank = (

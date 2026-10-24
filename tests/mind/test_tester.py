@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 
 import numpy as np
 
@@ -255,3 +256,21 @@ def test_clicks_on_five_distinct_sigs_are_each_tested() -> None:
             if (t.action.x, t.action.y) not in o.cells:
                 know(mem, label, o.sig, Effect("none"))
     assert len(labels) == 5 and len(set(labels)) == 5
+
+
+def test_a_click_label_is_one_question_capped_per_level() -> None:
+    s = scene_of({(5, 5): 2, (20, 20): 3, (30, 30): 4, (40, 40): 6})
+    click = Action(6, 5, 5)
+    label = action_label(click, s)
+    counter: Counter[tuple[str, str]] = Counter()
+    mem = FactMemory()
+    for _ in range(10):
+        exhausted = {p for p, n in counter.items() if n >= 3}
+        t = choose_test(
+            s, [click], mem, [], set(), None, protected=frozenset(), exhausted=exhausted
+        )
+        if t is None:
+            break
+        assert t.pairs == ((label, "self"),) and t.settles == 1  # side objects add nothing
+        counter.update(t.pairs)
+    assert counter == Counter({(label, "self"): 3})
