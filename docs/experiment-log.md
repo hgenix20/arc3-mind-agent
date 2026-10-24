@@ -322,6 +322,16 @@ which slice 1's heuristics don't propose. That is slice 2's job: the LLM reads
 the screen and proposes goals and staged plans. Only one run so far, so no
 paired comparison. Logs: `bench/offline/fluid-s1-run1/`.
 
+| date | commit | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-23 | 375426b | Kaggle eval v2 of `arc3-mind-agent`, FLUID-LLM, 25 games, scaled budget | 8 | 0.05 | images accepted by vLLM 0.19 (`limit_mm_per_prompt` image 2); 200 turns, mean 7.6 s, max 16.9 s; 4 exec_failed, 45 stale; first levels on ft09, m0r0, r11l, vc33, sp80, tn36 that slice 1 never reached |
+
+v2 predates the final-review fix wave (turns applied to a moved-on state, lost
+level-start wakes, inert match goals). Levels came at 413 to 3,426 actions
+each (lf52 892, against 12 offline without the LLM), so the squared action
+ratio wiped out the score. Kernel version 3 carries the fixes.
+Logs: `bench/evals/2026-10-23-fluid-llm-v2/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
