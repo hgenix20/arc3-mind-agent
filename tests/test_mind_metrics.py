@@ -206,3 +206,102 @@ def test_load_keeps_a_game_already_on_the_record(tmp_path: Path) -> None:
     records, bad = mm.load([path])
     assert bad == 0
     assert [r["game"] for r in records] == [GAME, "zz99", GAME]
+
+
+def entry(pid: str, matched: bool, level: int | None = None) -> Rec:
+    out: Rec = {"id": pid, "pred": "p", "matched": matched, "fit": 1.0}
+    if level is not None:
+        out["level"] = level
+    return out
+
+
+def slice3_log() -> list[Rec]:
+    """Level 0: 4 actions; level 1: 2 actions. Every answer is worked out in the tests."""
+    return [
+        act(0, 0, "a0", programs=[entry("x", False, 0), entry("y", True, 0)]),
+        act(1, 0, "a1", programs=[entry("x", False, 0)]),
+        act(2, 0, "a2", programs=[entry("x", True, 0)]),
+        act(3, 0, "a3", programs=[entry("x", True, 0), entry("y", True, 0)]),
+        ev("level_up", 3, level=1),
+        act(4, 1, "b0", programs=[entry("x", True, 0), entry("z", True, 1), entry("w", False, 0)]),
+        act(5, 1, "b1", programs=[entry("x", True, 0)]),
+        ev("search", 0, stop="goal", nodes=5, depth=4, goals=1, frontier=2, protected=0),
+        ev("search", 4, stop="cap", nodes=9, depth=2, goals=1, frontier=0, protected=0),
+        ev("wake", 1, reason="no plan and no test"),
+        ev("wake", 2, reason="new fact"),
+        ev("test", 0, action=[1, 0, 0], question="q"),
+        ev("test", 4, action=[2, 0, 0], question="q"),
+        ev("test", 5, action=[3, 0, 0], question="q"),
+        ev("goal", 0, id="g1", status="candidate", source="s"),
+        ev("goal", 1, id="g1", status="confirmed", source="s"),
+        ev("goal", 1, id="g2", status="refuted", source="s"),
+    ]
+
+
+def test_hit_rate_and_halves() -> None:
+    out = per_game(slice3_log())
+    # 10 entries, 7 matched.
+    assert out["hit_rate"] == pytest.approx(7 / 10)
+    # level 0 first half = records 0,1 (1 of 3), second = records 2,3 (3 of 3);
+    # level 1 first half = record 0 (2 of 3), second = record 1 (1 of 1).
+    assert out["hit_rate_halves"]["first"] == pytest.approx(3 / 6)
+    assert out["hit_rate_halves"]["second"] == pytest.approx(4 / 4)
+
+
+def test_rule_reuse_counts_matched_entries_from_earlier_levels() -> None:
+    # matched entries with a level: 4 on level 0 (none reused); level 1 has
+    # x(0) reused, z(1) not, x(0) reused. 7 total, 2 reused.
+    assert per_game(slice3_log())["rule_reuse"] == pytest.approx(2 / 7)
+
+
+def test_tests_impasses_depth_goals() -> None:
+    out = per_game(slice3_log())
+    assert out["tests_per_level"] == pytest.approx(3 / 2)
+    assert out["impasses"] == 1
+    assert out["search_depth_mean"] == pytest.approx(3.0)
+    assert out["goals"] == {
+        "final": {"confirmed": 1, "refuted": 1},
+        "transitions": {"candidate": 1, "confirmed": 1, "refuted": 1},
+    }
+
+
+def test_actions_vs_human_per_completed_level() -> None:
+    out = mm.compute(slice3_log(), human={"zz99": [2, 5]})["games"][GAME]
+    assert out["actions_vs_human"] == [pytest.approx(2.0)]  # level 0 only: 4 / 2
+    assert per_game(slice3_log())["actions_vs_human"] is None
+
+
+def test_overall_pools_new_metrics_across_games() -> None:
+    other = "yy88-00000000"
+    records = slice3_log() + [{**r, "game": other} for r in slice3_log() if r["type"] != "level_up"]
+    overall = mm.compute(records, human={})["overall"]
+    assert overall["hit_rate"] == pytest.approx(14 / 20)
+    assert overall["rule_reuse"] == pytest.approx(4 / 14)
+    assert overall["tests_per_level"] == pytest.approx(6 / 4)
+    assert overall["impasses"] == 2
+    assert overall["search_depth_mean"] == pytest.approx(3.0)
+    assert overall["goals"] is not None
+    assert overall["goals"]["transitions"] == {"candidate": 2, "confirmed": 2, "refuted": 2}
+    assert overall["hit_rate_halves"]["first"] == pytest.approx(3 / 6)
+
+
+def test_old_logs_have_none_for_event_based_metrics() -> None:
+    """Pre-slice-3: no level in entries, no search/wake/test/goal events."""
+    records = [
+        act(0, 0, "a0", programs=[{"id": "x", "pred": "p", "matched": True, "fit": 1.0}]),
+        act(1, 0, "a1", programs=[{"id": "x", "pred": "p", "matched": False, "fit": 1.0}]),
+        ev("level_up", 1, level=1),
+    ]
+    result = mm.compute(records, human={})
+    for out in (result["games"][GAME], result["overall"]):
+        for key in (
+            "rule_reuse",
+            "tests_per_level",
+            "impasses",
+            "search_depth_mean",
+            "goals",
+            "actions_vs_human",
+        ):
+            assert out[key] is None, key
+    mm.format_table(result)
+    assert mm.compute([], human={})["overall"]["hit_rate"] is None

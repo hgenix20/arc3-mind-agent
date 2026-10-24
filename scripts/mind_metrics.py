@@ -59,9 +59,36 @@ Per game:
     first level and ``levels_2_plus`` for the rest.
   * ``outcomes``: counts of the three bad outcomes.
 
+Fluid-agent metrics (slice 3). Each is ``None`` when the log lacks the events
+it needs (old logs, other agents), so an absent signal never reads as zero:
+  * ``hit_rate``: ``matched`` over every ``programs`` entry whose ``matched``
+    is a bool (the same count as ``prediction_accuracy``).
+  * ``hit_rate_halves``: ``{"first", "second"}``. Within each level the action
+    records are split at ``n // 2`` (levels with fewer than 2 records are
+    skipped); each half's rate pools the entries of its records across levels.
+    ``None`` with no entries in either half.
+  * ``rule_reuse``: among matched entries that carry a numeric ``level`` (the
+    level the fact was created on), the share whose ``level`` is lower than the
+    ``level`` of the action record holding the entry. ``None`` with no such
+    entry.
+  * ``tests_per_level``: ``test`` events divided by the distinct levels that
+    have action records. ``None`` with no ``test`` event.
+  * ``impasses``: ``wake`` events with reason ``"no plan and no test"``.
+    ``None`` with no ``wake`` event.
+  * ``search_depth_mean``: mean ``depth`` over ``search`` events with a numeric
+    depth. ``None`` with none.
+  * ``goals``: ``{"final", "transitions"}``, counts by status. ``final`` counts
+    the last status logged for each goal id; ``transitions`` counts every
+    ``goal`` event. ``None`` with no ``goal`` event.
+  * ``actions_vs_human``: for each completed level, agent actions divided by
+    the human count for that level, in ``level_up`` order. A level beyond the
+    human list or with zero human actions is skipped. ``None`` for games absent
+    from the human file or with no usable level.
+
 ``overall`` pools the raw counts of all games (not a mean of per-game means),
 except ``score_estimate``, the mean over games that have one, and
-``levels_completed``, the sum.
+``levels_completed``, the sum. Pooled ``actions_vs_human`` concatenates the
+per-game lists; pooled ``goals`` sums the per-game counts.
 
 Failure modes: ``load`` skips lines that are not JSON objects and returns their
 count; ``compute`` ignores records that are not dicts or lack a string ``type``.
@@ -83,6 +110,7 @@ RESET_ID = 0
 LATENCY_REASONS = frozenset({"low_fit", "misses_in_row"})
 UNKNOWN_GAME = "?"
 BAD_OUTCOMES = ("noop", "game_over", "disconfirmed")
+IMPASSE_REASON = "no plan and no test"
 
 Rec = dict[str, Any]
 
@@ -145,6 +173,28 @@ def _is_reset(rec: Rec) -> bool:
     return isinstance(action, list) and bool(action) and action[0] == RESET_ID
 
 
+def _entries(rec: Rec) -> list[Rec]:
+    return [p for p in rec.get("programs") or () if isinstance(p, dict)]
+
+
+def _matched_flags(rec: Rec) -> list[bool]:
+    return [p["matched"] for p in _entries(rec) if isinstance(p.get("matched"), bool)]
+
+
+def _rate(hit: int, total: int) -> float | None:
+    return hit / total if total else None
+
+
+def _vs_human(raw: dict[str, Any], human: list[int] | None) -> list[float]:
+    if not human:
+        return []
+    return [
+        actions / human[level]
+        for level, actions in zip(raw["level_indices"], raw["per_level_actions"], strict=True)
+        if 0 <= level < len(human) and human[level] > 0
+    ]
+
+
 def _disconfirmed(rec: Rec, nxt: Rec) -> bool:
     active = rec.get("active")
     if active is None:
@@ -164,6 +214,10 @@ class _Game:
         self.game_over_idx: set[int] = set()
         self.level_up_idx: list[int] = []
         self.drops: list[Rec] = []
+        self.tests: list[Rec] = []
+        self.wakes: list[Rec] = []
+        self.searches: list[Rec] = []
+        self.goal_events: list[Rec] = []
 
     def add(self, rec: Rec) -> None:
         kind = rec["type"]
@@ -174,6 +228,14 @@ class _Game:
                 self.by_step[step] = len(self.actions) - 1
         elif kind == "program_dropped":
             self.drops.append(rec)
+        elif kind == "test":
+            self.tests.append(rec)
+        elif kind == "wake":
+            self.wakes.append(rec)
+        elif kind == "search":
+            self.searches.append(rec)
+        elif kind == "goal":
+            self.goal_events.append(rec)
         elif kind in ("game_over", "level_up"):
             idx = self.by_step.get(rec.get("step", -1))
             if idx is None:
@@ -200,6 +262,47 @@ class _Game:
             else:
                 out.append(None)
         return out
+
+    def fluid(self) -> dict[str, Any]:
+        """Raw counts behind the slice-3 metrics (see the module docstring)."""
+        by_level: dict[Any, list[Rec]] = {}
+        for r in self.actions:
+            by_level.setdefault(r.get("level"), []).append(r)
+        halves = [0, 0, 0, 0]  # first matched/total, second matched/total
+        for recs in by_level.values():
+            if len(recs) < 2:
+                continue
+            for half, chunk in enumerate((recs[: len(recs) // 2], recs[len(recs) // 2 :])):
+                for r in chunk:
+                    for m in _matched_flags(r):
+                        halves[2 * half] += m
+                        halves[2 * half + 1] += 1
+        reused = reuse_total = 0
+        for r in self.actions:
+            lvl = r.get("level")
+            if not _is_num(lvl):
+                continue
+            for p in _entries(r):
+                if p.get("matched") is True and _is_num(p.get("level")):
+                    reuse_total += 1
+                    reused += p["level"] < lvl
+        final: dict[str, str] = {}
+        for g in self.goal_events:
+            final[str(g.get("id"))] = str(g.get("status"))
+        depths = [s["depth"] for s in self.searches if _is_num(s.get("depth"))]
+        return {
+            "halves": halves,
+            "reused": reused,
+            "reuse_total": reuse_total,
+            "tests": len(self.tests),
+            "level_count": len(by_level),
+            "wakes": len(self.wakes),
+            "impasses": sum(w.get("reason") == IMPASSE_REASON for w in self.wakes),
+            "depths": depths,
+            "goal_events": len(self.goal_events),
+            "goal_final": Counter(final.values()),
+            "goal_transitions": Counter(str(g.get("status")) for g in self.goal_events),
+        }
 
     def raw(self) -> dict[str, Any]:
         outcomes = self.outcomes()
@@ -248,6 +351,7 @@ class _Game:
             "repeat_total": total,
             "entropy_deltas": deltas,
             "outcomes": Counter({k: counted[k] for k in BAD_OUTCOMES}),
+            **self.fluid(),
         }
 
 
@@ -282,6 +386,24 @@ def _summary(raw: dict[str, Any], score: float | None) -> dict[str, Any]:
         },
         "outcomes": dict(raw["outcomes"]),
         "actions": total,
+        **_fluid_summary(raw),
+    }
+
+
+def _fluid_summary(raw: dict[str, Any]) -> dict[str, Any]:
+    h = raw["halves"]
+    first, second = _rate(h[0], h[1]), _rate(h[2], h[3])
+    return {
+        "hit_rate": _rate(sum(raw["matched"]), len(raw["matched"])),
+        "hit_rate_halves": None if h[1] + h[3] == 0 else {"first": first, "second": second},
+        "rule_reuse": _rate(raw["reused"], raw["reuse_total"]),
+        "tests_per_level": _rate(raw["tests"], raw["level_count"]) if raw["tests"] else None,
+        "impasses": raw["impasses"] if raw["wakes"] else None,
+        "search_depth_mean": _mean(raw["depths"]),
+        "goals": {"final": dict(raw["goal_final"]), "transitions": dict(raw["goal_transitions"])}
+        if raw["goal_events"]
+        else None,
+        "actions_vs_human": raw["vs_human"] or None,
     }
 
 
@@ -298,6 +420,8 @@ def compute(records: Iterable[Rec], human: dict[str, list[int]] | None = None) -
         if isinstance(rec, dict) and isinstance(rec.get("type"), str):  # pyright: ignore[reportUnnecessaryIsInstance]  # input is untrusted JSON
             games.setdefault(str(rec.get("game", UNKNOWN_GAME)), _Game()).add(rec)
     raws = {g: state.raw() for g, state in games.items()}
+    for g, raw in raws.items():
+        raw["vs_human"] = _vs_human(raw, human.get(g[:4]))
     scores = {g: _score(raw, human.get(g[:4])) for g, raw in raws.items()}
     pooled: dict[str, Any] = {
         "levels_completed": 0,
@@ -310,10 +434,24 @@ def compute(records: Iterable[Rec], human: dict[str, list[int]] | None = None) -
         "repeat_total": 0,
         "entropy_deltas": [],
         "outcomes": Counter(),
+        "halves": [0, 0, 0, 0],
+        "reused": 0,
+        "reuse_total": 0,
+        "tests": 0,
+        "level_count": 0,
+        "wakes": 0,
+        "impasses": 0,
+        "depths": [],
+        "goal_events": 0,
+        "goal_final": Counter(),
+        "goal_transitions": Counter(),
+        "vs_human": [],
     }
     for raw in raws.values():
         for key, value in raw.items():
-            if isinstance(pooled[key], list):
+            if key == "halves":
+                pooled[key] = [a + b for a, b in zip(pooled[key], value, strict=True)]
+            elif isinstance(pooled[key], list):
                 pooled[key].extend(value)
             else:
                 pooled[key] += value
@@ -337,6 +475,11 @@ def format_table(result: dict[str, Any]) -> str:
         ("latency", "abandonment_latency"),
         ("repeat", "disconfirmed_repeat_rate"),
         ("dH/act", "entropy_change_per_action"),
+        ("hit", "hit_rate"),
+        ("reuse", "rule_reuse"),
+        ("tests/lv", "tests_per_level"),
+        ("impasse", "impasses"),
+        ("depth", "search_depth_mean"),
     ]
     rows = [["game", *[c[0] for c in cols]]]
     for name, m in [*result["games"].items(), ("OVERALL", result["overall"])]:
