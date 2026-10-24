@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from arcagent.core.types import Action, Grid
-from arcagent.mind.facts import Effect, FactMemory, action_label
+from arcagent.mind.facts import MAX_ASKS, Effect, FactMemory, action_label
 from arcagent.mind.objects import Scene, Thing, Tracker, shape_of
 from arcagent.mind.tester import choose_test, veto
 
@@ -281,3 +281,17 @@ def test_a_click_on_a_reshaped_thing_uses_its_label_under_the_earlier_shape() ->
     assert choose_test(s, [click], mem, [], set(), None) is not None
     mem.kin[bar.id] = [SIG_A, bar.sig]
     assert choose_test(s, [click], mem, [], set(), None) is None
+
+
+def test_a_question_asked_max_asks_times_in_a_level_is_no_longer_open() -> None:
+    mem = mem_moves((1, 2))
+    pair = ("A3", PSIG)
+    for _ in range(MAX_ASKS - 1):
+        mem.note_asked([pair])
+    assert choose_test(PLAYER, ACTS, mem, [], set(), None) is not None
+    mem.note_asked([pair, ("A4", PSIG)])
+    assert choose_test(PLAYER, ACTS, mem, [], set(), None) is not None  # A4 asked once
+    mem.note_asked([("A4", PSIG)] * (MAX_ASKS - 1))
+    assert choose_test(PLAYER, ACTS, mem, [], set(), None) is None
+    mem.new_level()
+    assert choose_test(PLAYER, ACTS, mem, [], set(), None) is not None

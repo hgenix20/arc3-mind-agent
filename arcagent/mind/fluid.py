@@ -193,7 +193,7 @@ from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
-from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, question
+from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, open_pairs, question
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
@@ -763,6 +763,8 @@ class FluidAgent:
         if choice.test is not None:
             self._tests += 1
             self._tests_attempt += 1
+            asked = predict(scene, choice.action, self.mem)
+            self.mem.note_asked(open_pairs(scene, choice.action, asked, self.mem))
             a = choice.action
             self._log.event(
                 "test", step=self._action_no, action=[a.id, a.x, a.y], question=choice.test
