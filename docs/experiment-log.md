@@ -332,6 +332,17 @@ each (lf52 892, against 12 offline without the LLM), so the squared action
 ratio wiped out the score. Kernel version 3 carries the fixes.
 Logs: `bench/evals/2026-10-23-fluid-llm-v2/`.
 
+| date | commit | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-24 | 3f2b086 | Kaggle eval v3 of `arc3-mind-agent`, FLUID-LLM after the fix wave, no slice 3, 25 games, scaled budget | 4 | 0.41 | scorecard 0.4065, 6,246 s, 0 errors; levels on lf52 (1.82), r11l (4.76), tn36 (3.57), lp85 (0.01); prediction hit rate 0.92; 593 tests per level overall (cd82 1,958, dc22 1,988) |
+
+v3 finished half of v2's levels and scored eight times as much, because the
+levels it did finish cost close to the human count. It's the first version
+above v1's 0.32. The test flood is still there: on games with no level,
+almost every move is a test. Kernel version 4 is main at a3c123b (slice 3:
+sleep, the four modules, novelty search, and the 200-test cap per attempt).
+Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
