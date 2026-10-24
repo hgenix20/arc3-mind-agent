@@ -204,8 +204,7 @@ def broken_side() -> tuple[Scene, FactMemory]:
 
 def test_broken_side_pair_stops_being_tested_after_three_tests() -> None:
     s, mem = broken_side()
-    side = f"c7:{DOT}"
-    pair = ("A1", side)
+    pair = ("A1", "self")  # the agent counts tests per action label
     t = choose_test(s, ACTS, mem, [], set(), None)  # slice 1 rule: always a test
     assert t is not None and t.action.id == 1
     # The agent's protected rule: a broken side pair never counts.
@@ -232,9 +231,9 @@ def test_mover_pair_is_still_tested() -> None:
     for i in range(2):
         mem.record(("A2", PSIG, "any"), (Effect("none"),), 20 + i)  # broken mover fact
     t = choose_test(s, ACTS, mem, [], set(), None, protected=frozenset({PSIG}))
-    assert t is not None and t.action.id == 2 and t.pairs == (("A2", PSIG),)
+    assert t is not None and t.action.id == 2 and t.pairs == (("A2", "self"),)
     none = choose_test(
-        s, ACTS, mem, [], set(), None, protected=frozenset({PSIG}), exhausted={("A2", PSIG)}
+        s, ACTS, mem, [], set(), None, protected=frozenset({PSIG}), exhausted={("A2", "self")}
     )
     assert none is None
 
@@ -274,3 +273,16 @@ def test_a_click_label_is_one_question_capped_per_level() -> None:
         assert t.pairs == ((label, "self"),) and t.settles == 1  # side objects add nothing
         counter.update(t.pairs)
     assert counter == Counter({(label, "self"): 3})
+
+
+def test_a_click_and_a_simple_action_tie_on_settles() -> None:
+    s = scene_of({(5, 5): 2, (20, 20): 3, (30, 30): 4})
+    mem = FactMemory()
+    simple = choose_test(s, [Action(1)], mem, [], set(), None, protected=frozenset())
+    click = choose_test(s, [Action(6, 5, 5)], mem, [], set(), None, protected=frozenset())
+    assert simple is not None and click is not None
+    assert simple.settles == click.settles == 1
+    assert simple.pairs == (("A1", "self"),)
+    # With the tie, the existing order decides: here the lowest Action.key().
+    both = choose_test(s, [Action(6, 5, 5), Action(1)], mem, [], set(), None, protected=frozenset())
+    assert both is not None and both.action == Action(1)

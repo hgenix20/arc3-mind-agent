@@ -8,15 +8,15 @@ of the best partial plan), then the lowest ``Action.key()``. An action whose
 ``(scene.key(), action.key())`` is in ``tried`` is never chosen, and neither is one
 predicted to end the game. ``None`` means nothing is open.
 
-Countable pairs (slice 3): with ``protected`` given, a simple action's pair counts only
-when its subject is in ``protected`` or is ``self``, or the pair was never observed (no
-fact has that label and subject, so a fresh side object still gets one look). A click
-is one question, keyed ``(click label, "self")``: it counts once (``settles`` 1) when the
-click has any open pair, and pairs on its side objects add nothing. A broken
-side-object fact keeps its pair unknown forever; without this rule
-every new scene made the same question look fresh (``tried`` is keyed by scene). A pair
-in ``exhausted`` (the caller's per-level cap) never counts. An action with no countable
-pair is not a test. ``protected=None`` counts every pair (the slice 1 rule).
+Countable pairs (slice 3): with ``protected`` given, every action is one question,
+keyed ``(action label, "self")``, with ``settles`` 1. A click asks it when it has any
+open pair. A simple action asks it only when it has a countable pair: one whose subject
+is in ``protected`` or is ``self``, or that was never observed (no fact has that label
+and subject, so a fresh side object still gets one look). A broken side-object fact
+keeps its pair unknown forever; without this rule every new scene made the same
+question look fresh (``tried`` is keyed by scene). A key in ``exhausted`` (the caller's
+per-level cap) never counts. Ties then go by fragility, frontier, ``toward`` and key, as
+above. ``protected=None`` keeps the slice 1 rule: every open pair counts, one each.
 
 For a click, the things whose prediction was borrowed from a same-shape sibling
 (``Prediction.lent``) count as open pairs too: each click label (clicked sig and ring)
@@ -117,10 +117,8 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     seen = {(k[0], k[1]) for k in mem.facts} if protected is not None else set[tuple[str, str]]()
 
     def counts(pair: tuple[str, str]) -> bool:
-        if pair in exhausted:
-            return False
         if protected is None:
-            return True
+            return pair not in exhausted
         subject = pair[1]
         return subject in protected or subject == "self" or pair not in seen
 
@@ -130,23 +128,25 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
             continue
         pred = predict(scene, action, mem)
         found = open_pairs(scene, action, pred)
-        if protected is not None and action.id == COORD_ACTION_ID:
-            # One click label is one question, whatever side objects it touches.
-            click = (action_label(action, scene), "self")
-            pairs = [click] if found and click not in exhausted else []
+        # A click counts any open pair; a simple action only its countable pairs.
+        live = found if action.id == COORD_ACTION_ID else [p for p in found if counts(p)]
+        if protected is None:
+            pairs = live  # slice 1: every open pair is its own question
         else:
-            pairs = [p for p in found if counts(p)]
+            # Every action is one question, keyed (action label, "self").
+            key = (action_label(action, scene), "self")
+            pairs = [key] if live and key not in exhausted else []
         if not pairs or pred.game_over:
             continue
         rank = (
             -len(pairs),
             -_fragility(pred, mem),
-            min(order.get(p, len(order)) for p in pairs),
+            min(order.get(p, len(order)) for p in live),
             0 if toward is not None and action.key() == toward.key() else 1,
             action.key(),
         )
         if best is None or rank < best[0]:
-            label, subject = pairs[0]
+            label, subject = live[0]
             best = (rank, Test(action, question(label, subject), len(pairs), tuple(pairs)))
     return None if best is None else best[1]
 

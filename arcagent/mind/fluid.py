@@ -45,11 +45,11 @@ Per ``choose(obs)``, in order:
    failed attempt at that goal (see step 4).
 6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question). Only countable pairs make a
-   test: for a simple action, the subject is protected (mover sigs, the plan goal's
-   sigs, sigs of open goals the executive named, or ``self``) or the pair was never
-   observed; a click is one pair ``(click label, "self")`` whatever it touches. A pair
-   tested ``MAX_TESTS_PER_PAIR`` times on this level (``tests_per_pair``, reset on
-   level change) no longer counts. An action with none is no test.
+   test, and every action is one question keyed ``(action label, "self")``: a click
+   asks it when anything is open, a simple action when a pair's subject is protected
+   (mover sigs, the plan goal's sigs, sigs of open goals the executive named, or
+   ``self``) or was never observed. A key tested ``MAX_TESTS_PER_PAIR`` times on this
+   level (``tests_per_pair``, reset on level change) no longer counts.
 7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held), under the same caps.
