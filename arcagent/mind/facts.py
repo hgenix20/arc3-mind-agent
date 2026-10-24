@@ -8,7 +8,8 @@ like a known one is predicted from a same-shape sibling's fact at once.
 ``learn`` turns one observed transition into one ``record`` call per fact key. Context
 rules pick the key before recording, which is how a wall turns a predicted move into a
 ``blocked`` fact without charging the move fact a miss. A miss never rewrites a fact's
-effects; a fact breaks after ``BROKEN_MISSES`` misses in a row and the next observation
+effects; a fact breaks after ``FactMemory.broken_after`` misses in a row (default
+``BROKEN_MISSES``; the fluid agent's metacognition module sets it) and the next observation
 re-seeds it. ``slide`` and ``teleport`` rewrites happen only through the explicit rules
 in ``learn``. Things that move together as one rigid sprite (same shift, 4-adjacent
 before the move) are a co-moving group: none of them is pushed by, blocked by, or a
@@ -132,7 +133,8 @@ class Fact:
     ``misses`` is the lifetime miss total, shown in ``line``; ``streak`` is the misses in a
     row, which a hit resets and which decides ``broken``. ``level`` is the level the fact
     was created on (``FactMemory.level`` at its first ``record``), so rule reuse across
-    levels can be measured.
+    levels can be measured. ``broken_after`` is the misses-in-a-row threshold, copied from
+    ``FactMemory.broken_after`` when the fact is made and kept in step by its setter.
     """
 
     key: FactKey
@@ -143,10 +145,11 @@ class Fact:
     tags: frozenset[str] = frozenset()
     streak: int = 0
     level: int = 0
+    broken_after: int = BROKEN_MISSES
 
     @property
     def status(self) -> Status:
-        if self.streak >= BROKEN_MISSES:
+        if self.streak >= self.broken_after:
             return "broken"
         return "solid" if self.hits >= THIN_BELOW else "thin"
 
@@ -212,9 +215,12 @@ class FactMemory:
     ``level`` is the current level, set by the agent; a new fact is stamped with it.
     ``missed`` holds the keys that took a miss since the last ``new_level`` (the fluid
     sleep's winning-facts check reads it before the agent calls ``new_level``).
+    ``broken_after`` is the misses-in-a-row threshold for ``Fact.status``; setting it
+    updates every stored fact.
     """
 
     def __init__(self) -> None:
+        self._broken_after = BROKEN_MISSES
         self.level = 0
         self.missed: set[FactKey] = set()
         self.facts: dict[FactKey, Fact] = {}
@@ -228,6 +234,18 @@ class FactMemory:
         # (label, context, shape) -> keys; built alongside the toc for borrowing
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
 
+    @property
+    def broken_after(self) -> int:
+        return self._broken_after
+
+    @broken_after.setter
+    def broken_after(self, n: int) -> None:
+        if n < 1:
+            raise ValueError(f"broken_after must be at least 1, got {n}")
+        self._broken_after = n
+        for fact in self.facts.values():
+            fact.broken_after = n
+
     def new_level(self) -> None:
         """Forget absolute positions and this level's misses; called on a level change.
 
@@ -235,6 +253,24 @@ class FactMemory:
         """
         self.landed.clear()
         self.last_move.clear()
+        self.missed.clear()
+
+    def forget(self) -> None:
+        """Clear every fact and everything learned with them (toc, blockers, walkable,
+        safe sets, positions, misses). ``level`` and ``broken_after`` stay.
+        """
+        for table in (
+            self.facts,
+            self.toc,
+            self.blockers,
+            self.walkable,
+            self.landed,
+            self.last_move,
+            self.safe_touch,
+            self.safe_near,
+            self._siblings,
+        ):
+            table.clear()
         self.missed.clear()
 
     def delete(self, key: FactKey) -> None:
@@ -312,7 +348,9 @@ class FactMemory:
         """
         fact = self.facts.get(key)
         if fact is None:
-            fact = Fact(key, effects, [move], hits=1, level=self.level)
+            fact = Fact(
+                key, effects, [move], hits=1, level=self.level, broken_after=self._broken_after
+            )
             self.facts[key] = fact
             self._index(fact, _tags(key, effects) | tags)
             shape = _shape_of_subject(key[1])

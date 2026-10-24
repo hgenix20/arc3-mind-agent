@@ -7,11 +7,14 @@ Contract:
   ``FULL-x`` isolate one module each. ``EXPLORER`` has no LLM at all: the
   model-free 0.36 baseline, kept for reference only. ``FLUID`` is the fluid
   agent (``arcagent.mind.fluid``): facts, goal guesses and short search, with
-  no LLM, no program sandbox and none of the four modules. ``FLUID-LLM`` is the
-  same agent with the executive turn on (``llm=True``): a vision model proposes
-  goal guesses, a plan or a test, and slice 1 logic checks and executes them.
-- ``build_modules`` is the only code that maps a flag to a module class. Transfer
-  selects ``CarryTransfer`` or its null.
+  no LLM and no program sandbox, all four of its own modules on
+  (``arcagent.mind.fluid_modules``). ``FLUID-LLM`` is the same agent with the
+  executive turn on (``llm=True``): a vision model proposes goal guesses, a plan
+  or a test, and slice 1 logic checks and executes them. ``FLUID-LLM-<module>``
+  is ``FLUID-LLM`` with that one module null, the fluid ablations.
+- ``build_modules`` is the only code that maps a flag to a MindAgent module class
+  (Transfer selects ``CarryTransfer`` or its null); ``fluid_modules.build_fluid_modules``
+  does the same for the fluid agent.
 """
 
 from __future__ import annotations
@@ -97,14 +100,17 @@ def _all_configs() -> dict[str, MindConfig]:
     out["EXPLORER"] = _config("EXPLORER", set(), llm=False)
     out["FLUID"] = MindConfig(
         "FLUID",
-        metacognition=False,
-        inhibition=False,
-        voi=False,
-        transfer=False,
+        metacognition=True,
+        inhibition=True,
+        voi=True,
+        transfer=True,
         llm=False,
         fluid=True,
     )
     out["FLUID-LLM"] = replace(out["FLUID"], name="FLUID-LLM", llm=True)
+    for m in MODULE_NAMES:
+        name = f"FLUID-LLM-{m}"
+        out[name] = replace(out["FLUID-LLM"], name=name, **{m: False})
     return out
 
 

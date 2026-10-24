@@ -15,7 +15,7 @@ from typing import Any, ParamSpec, TypeVar, cast
 import numpy as np
 
 from arcagent.core.types import Action, Grid, Observation, Phase
-from arcagent.mind import fluid
+from arcagent.mind import fluid, fluid_modules
 from arcagent.mind.config import CONFIGS
 from arcagent.mind.facts import SPAWN, Effect, FactMemory
 from arcagent.mind.objects import Scene, Tracker, shape_of
@@ -55,7 +55,7 @@ def test_fluid_config_exists_and_skips_llm() -> None:
     cfg = CONFIGS["FLUID"]
     assert cfg.fluid and not cfg.llm
     assert cfg.name == "FLUID"
-    assert not (cfg.metacognition or cfg.inhibition or cfg.voi or cfg.transfer)
+    assert cfg.metacognition and cfg.inhibition and cfg.voi and cfg.transfer
     assert not CONFIGS["FULL"].fluid
 
 
@@ -475,7 +475,7 @@ CLEAR7 = json.dumps({"goals": [{"kind": "clear", "color": 7}]})
 def test_fluid_llm_config_exists() -> None:
     cfg = CONFIGS["FLUID-LLM"]
     assert cfg.fluid and cfg.llm and cfg.name == "FLUID-LLM"
-    assert not (cfg.metacognition or cfg.inhibition or cfg.voi or cfg.transfer)
+    assert cfg.metacognition and cfg.inhibition and cfg.voi and cfg.transfer
 
 
 def test_llm_reach_goal_and_plan_finish_the_level_faster(tmp_path: Path) -> None:
@@ -622,7 +622,7 @@ def test_rule_out_checks_only_the_added_goals(tmp_path: Path, monkeypatch: Any) 
 
 
 def test_a_vetoed_first_plan_step_is_a_failed_attempt(tmp_path: Path, monkeypatch: Any) -> None:
-    real = fluid.veto
+    real = fluid_modules.veto
 
     def refuse_plans(scene: Scene, action: Action, mem: FactMemory, tried: Any) -> str | None:
         # Every move toward the target is a "predicted game over" once moves are known.
@@ -630,7 +630,7 @@ def test_a_vetoed_first_plan_step_is_a_failed_attempt(tmp_path: Path, monkeypatc
             return fluid.GAME_OVER
         return real(scene, action, mem, tried)
 
-    monkeypatch.setattr(fluid, "veto", refuse_plans)
+    monkeypatch.setattr(fluid_modules, "veto", refuse_plans)
     game = FakeGame(player=(2, 2), target=(12, 2), walls=[], lava=[])
     agent = make_agent(tmp_path)
     play(game, agent, max_steps=40)

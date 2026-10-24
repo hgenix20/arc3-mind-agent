@@ -14,8 +14,9 @@ Per ``choose(obs)``, in order:
    on the frame before, log ``level_up``, then reset the tracker and the noise tracks,
    run ``fluid_sleep`` over the fact keys the executed moves of the level relied on
    (each move's prediction ``used``, collected per level), reset ``FactMemory``
-   positions, and clear the plan, the level's scene history, ``tried`` and the
-   frontier. Facts and goal statuses stay. The new screen teaches nothing. ``close``
+   positions, run the Transfer module's ``carry`` (the null clears every fact), and
+   clear the plan, the level's scene history, ``tried`` and the frontier. Facts (with
+   the real Transfer) and goal statuses stay. The new screen teaches nothing. ``close``
    sleeps once more over the current level's keys (game end). ``FactMemory.level``
    follows ``levels_completed`` so each new fact records the level it was made on.
 3. Otherwise update tracker and noise, strip noisy things from both scenes and the
@@ -42,10 +43,11 @@ Per ``choose(obs)``, in order:
    that already holds at the root is treated as reached (``note_reached``) and the
    search runs once more without it. A first step that a veto refuses counts as a
    failed attempt at that goal (see step 4).
-6. Else ``choose_test`` with the search's frontier (branch ``learn``, why the test's
-   question).
+6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
+   frontier (branch ``learn``, why the test's question).
 7. Else B0 with every vetoed candidate excluded (branch ``fallback``).
-8. ``veto`` runs on each option before it is taken; a refused option is logged as a
+8. The Inhibition module's ``veto`` (``tester.veto`` when real) runs on each option
+   before it is taken; a refused option is logged as a
    ``veto`` event and the next option in the same order is tried. B0 is last and is
    never vetoed. The chosen action's prediction is kept for step 3 of the next call.
 
@@ -154,6 +156,7 @@ from arcagent.mind.facts import (
     clicked_sig,
     learn,
 )
+from arcagent.mind.fluid_modules import build_fluid_modules
 from arcagent.mind.fluid_sleep import FluidSleepReport, fluid_sleep
 from arcagent.mind.goals import Goal, GoalBook, GoalStatus, goal_sigs, mover_sigs
 from arcagent.mind.noise import NoiseMask
@@ -162,7 +165,7 @@ from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import PlanStep, SearchResult, search
-from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, choose_test, question, veto
+from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, question
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
@@ -360,7 +363,8 @@ class _Clicks:
 class FluidAgent:
     """One game's fluid agent. Implements ``arcagent.agent.play.Policy`` and ``close``.
 
-    ``clock`` is injectable for tests. ``mem`` and ``goals`` are public for inspection.
+    ``clock`` is injectable for tests. ``mem``, ``goals`` and ``modules`` (built from
+    ``cfg`` by ``build_fluid_modules``) are public for inspection.
     ``chat`` turns the executive on; its turns run on ``pool`` (a private one-thread pool,
     shut down by ``close``, when none is given) while the move that asked waits.
     """
@@ -391,7 +395,9 @@ class FluidAgent:
             self._own_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="turn")
             pool = self._own_pool
         self._pool = pool
+        self.modules = build_fluid_modules(cfg)
         self.mem = FactMemory()
+        self.mem.broken_after = self.modules.metacognition.broken_after()
         self.goals = GoalBook()
         self._tracker = Tracker()
         self._noise = NoiseMask()
@@ -611,6 +617,7 @@ class FluidAgent:
         self._restart()
         self._sleep(move)
         self.mem.new_level()
+        self.modules.transfer.carry(self.mem, self.goals)
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
@@ -745,7 +752,7 @@ class FluidAgent:
     ) -> _Choice | None:
         """The option as a choice, or None (and a ``veto`` event) when it is refused."""
         if not late:
-            reason = veto(scene, action, self.mem, self._tried)
+            reason = self.modules.inhibition.veto(scene, action, self.mem, self._tried)
             if reason is not None and (not plan or reason in _PLAN_VETOES):
                 self._refuse(action, reason)
                 if plan:
@@ -815,7 +822,7 @@ class FluidAgent:
         return res
 
     def _test_choice(self, obs: Observation, scene: Scene) -> _Choice | None:
-        test = choose_test(
+        test = self.modules.voi.choose(
             scene, candidate_actions(obs), self.mem, self._frontier, self._tried, None
         )
         if test is None:
@@ -1028,7 +1035,7 @@ class FluidAgent:
     def _exclude_vetoed(self, obs: Observation, scene: Scene) -> None:
         """Add every candidate ``veto`` refuses to this move's vetoes (no events)."""
         for action in candidate_actions(obs):
-            if veto(scene, action, self.mem, self._tried) is not None:
+            if self.modules.inhibition.veto(scene, action, self.mem, self._tried) is not None:
                 self._vetoes.add(action.key())
 
     def _actions(self, scene: Scene) -> list[Action]:
