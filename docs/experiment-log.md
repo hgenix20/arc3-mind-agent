@@ -343,6 +343,17 @@ almost every move is a test. Kernel version 4 is main at a3c123b (slice 3:
 sleep, the four modules, novelty search, and the 200-test cap per attempt).
 Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
 
+| date | commit | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-24 | a3c123b | Kaggle eval v4 of `arc3-mind-agent`, FLUID-LLM full build (slices 1 to 3), 25 games, scaled budget | 5 | 0.38 | scorecard 0.3774, 6,247 s, 0 errors; levels on r11l (4.76), lp85 (2.78), lf52 (1.82), tn36 (0.07), ft09 (0.005); 30 sleeps; hit rate 0.89; rule reuse 0.02; 593 tests per level |
+
+v4 and v3 are one run each, and 0.38 against 0.41 is inside run to run
+variation. The cap of 200 tests per attempt didn't change the test count,
+because the count resets with each attempt. v4 was submitted on 2026-10-24
+(submission 57588171). v1 (submission 57565016) scored 0.08 on the
+leaderboard, a quarter of its 0.32 public eval estimate.
+Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
+
 ## Open items
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3

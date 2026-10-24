@@ -76,7 +76,9 @@ Eval v1 of `hgenix20/arc3-mind-agent` was pushed on 2026-10-23, before the
 interactive budget was scaled, so it ran with the full 8.5 h budget. Later
 versions use the scaled budget.
 
-v1 was submitted on 2026-10-23 at Kameron's request (submission 57565016).
+v1 was submitted on 2026-10-23 at Kameron's request (submission 57565016)
+and scored 0.08 on the leaderboard. The fluid agent (kernel version 4) was
+submitted on 2026-10-24 (submission 57588171).
 
 ## Earlier baselines
 
