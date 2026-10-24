@@ -18,7 +18,7 @@ from arcagent.core.types import Action, Grid, Observation, Phase
 from arcagent.mind import fluid, fluid_modules
 from arcagent.mind.config import CONFIGS
 from arcagent.mind.facts import SPAWN, Effect, FactMemory
-from arcagent.mind.objects import Scene, Tracker, shape_of
+from arcagent.mind.objects import Scene, Thing, Tracker, shape_of
 from arcagent.mind.predictor import Prediction, predict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.vchat import ImagesRejected, VisionChat, VMessage, scripted
@@ -974,3 +974,13 @@ def test_test_moves_stop_after_the_attempt_cap(tmp_path: Path, monkeypatch: Any)
     assert len([r for r in recs if r["type"] == "test" and r["step"] <= first_end]) <= 2
     assert game.game_overs >= 1 and after_over and all(n == 0 for n in after_over)
     assert len([r for r in recs if r["type"] == "test"]) > 2  # later attempts test again
+
+
+def test_search_actions_skip_things_predicted_off_the_board(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    agent._can_click = True
+    on = Thing(1, 2, DOT, f"c2:{DOT}", 5, 5, frozenset({(5, 5)}))
+    off = Thing(2, 3, DOT, f"c3:{DOT}", 0, 64, frozenset({(0, 64)}))  # pushed past the edge
+    scene = Scene((on, off), 0, frozenset(), np.zeros((64, 64), dtype=np.int8))
+    clicks = [a for a in agent._actions(scene) if a.id == 6]
+    assert [(a.x, a.y) for a in clicks] == [(5, 5)]

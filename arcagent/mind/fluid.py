@@ -154,7 +154,15 @@ from collections.abc import Callable, Collection, Iterable
 from concurrent.futures import Executor, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
-from arcagent.core.types import COORD_ACTION_ID, RESET_ID, Action, Grid, Observation, Phase
+from arcagent.core.types import (
+    COORD_ACTION_ID,
+    GRID_SIZE,
+    RESET_ID,
+    Action,
+    Grid,
+    Observation,
+    Phase,
+)
 from arcagent.mind.agent import MAX_ERROR_CHARS, SYNTH_CUTOFF_FRACTION
 from arcagent.mind.baseline import Baseline
 from arcagent.mind.config import MindConfig
@@ -1126,10 +1134,18 @@ class FluidAgent:
                 self._vetoes.add(action.key())
 
     def _actions(self, scene: Scene) -> list[Action]:
-        """Search's actions: the simple actions, then one click per thing when clicks exist."""
+        """Search's actions: the simple actions, then one click per thing when clicks exist.
+
+        A predicted scene can carry a thing past the board's edge; it gets no click.
+        """
         out = list(self._simple)
         if self._can_click:
-            out.extend(Action(COORD_ACTION_ID, *self._clicks.cell(t)) for t in scene.things)
+            cells = (self._clicks.cell(t) for t in scene.things)
+            out.extend(
+                Action(COORD_ACTION_ID, x, y)
+                for x, y in cells
+                if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE
+            )
         return out
 
     # -- logging -------------------------------------------------------------
