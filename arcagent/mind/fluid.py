@@ -35,7 +35,7 @@ Per ``choose(obs)``, in order:
    the counts. A plan survives goal-list changes (proposals, rule-outs, other goals
    stalling) and ends only when its own goal leaves the open list or a step breaks it.
    Each search logs a ``search`` event (``step, stop, nodes, depth, goals, frontier,
-   protected``). Plan steps are predicted with ``assume_still`` set to the
+   protected, novel``). Plan steps are predicted with ``assume_still`` set to the
    mover sigs plus the goal's sigs, so the check covers what the plan relies on.
 5. Else ``goals.propose`` and ``search``: first over the open goals the executive named
    (source ``llm``) alone, then, only if that finds no plan, over all of
@@ -45,8 +45,15 @@ Per ``choose(obs)``, in order:
    failed attempt at that goal (see step 4).
 6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question).
-7. Else B0 with every vetoed candidate excluded (branch ``fallback``).
-8. The Inhibition module's ``veto`` (``tester.veto`` when real) runs on each option
+7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
+   mover thing sits at a top-left its sig hasn't held on this level" (every
+   ``(sig, x, y)`` of every scene seen this level counts as held), under the same caps.
+   Its first step is taken (branch ``plan``, why ``explore novel``) unless a plan veto
+   refuses it; no plan is kept, so the next move searches again. It notes ``no plan
+   and no test`` for waking, and unlike a held plan it doesn't block a wake. It is
+   skipped when no mover is on screen.
+8. Else B0 with every vetoed candidate excluded (branch ``fallback``).
+9. The Inhibition module's ``veto`` (``tester.veto`` when real) runs on each option
    before it is taken; a refused option is logged as a
    ``veto`` event and the next option in the same order is tried. B0 is last and is
    never vetoed. The chosen action's prediction is kept for step 3 of the next call.
@@ -75,15 +82,16 @@ Executive turn (slice 2, only with a ``chat``; without one the agent is slice 1 
   prompt's wake text adds ``last attempt ended in game over after N moves``); a miss
   that matters (``plan_breaks`` stopped a plan); plan finished or blocked (a vetoed step
   or a click whose thing is gone); a goal excluded, ruled out or stalled; a fact turning
-  broken; no plan and no test (the move fell back to B0); long stretch
+  broken; no plan and no test (the move fell back to novelty or B0); long stretch
   (``LONG_STRETCH_MOVES`` moves since the last turn started on this level, or since the
   level started). Noted reasons stay pending until a turn consumes them (all of them,
   whatever its outcome) or the level epoch changes (level change, game over,
   NOT_PLAYED); a new level or attempt then notes its own start. After the move's slice 1
   choice, the first pending reason in ``WAKE_ORDER`` wakes the executive, except while a
-  plan holds (the choice's branch is ``plan`` or ``follow``) or once turns are off for
-  the game. Spacing: the next wake needs ``MIN_MOVES_BETWEEN_TURNS`` moves after the
-  last turn, except level start and game over; a wake held back this way logs nothing.
+  plan holds (the choice's branch is ``plan`` or ``follow``, a novelty move excepted) or
+  once turns are off for the game. Spacing: the next wake needs
+  ``MIN_MOVES_BETWEEN_TURNS`` moves after the last turn, except level start and game
+  over; a wake held back this way logs nothing.
 - Budgets: ``MAX_TURNS_PER_LEVEL`` and ``MAX_TURNS_PER_GAME`` turns, and no turn
   starts past ``1 - SYNTH_CUTOFF_FRACTION`` (75%) of the game's budget (agent start to
   the game or run deadline). The turn's seed is ``seed * 1000 + call``.
@@ -174,6 +182,7 @@ STALL_AFTER = 2  # failed attempts at one goal in one level before it is set asi
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 _PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT})  # the veto reasons a plan step honors
+NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
 TURN_DEADLINE_S = 30.0  # the longest a move waits for its turn
@@ -423,6 +432,7 @@ class FluidAgent:
         self._tests = 0
         self._vetoes_total = 0
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
+        self._seen_at: set[tuple[str, int, int]] = set()  # (sig, x, y) seen this level
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -559,6 +569,7 @@ class FluidAgent:
 
     def _keep(self, full: Scene, scene: Scene, grid: Grid) -> None:
         self._last_full, self._last_scene = full, scene
+        self._seen_at.update((t.sig, t.x, t.y) for t in scene.things)
         self._history.setdefault(scene.key(), (scene, grid))
         self._scene_ok = True
 
@@ -619,6 +630,7 @@ class FluidAgent:
         self.mem.new_level()
         self.modules.transfer.carry(self.mem, self.goals)
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
+        self._seen_at = set()
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
         prev_full = self._last_full
@@ -700,6 +712,8 @@ class FluidAgent:
             choice = self._plan_choice(scene)
         if choice is None and not late:
             choice = self._test_choice(obs, scene)
+        if choice is None and not late:
+            choice = self._novel_choice(scene)
         if choice is None:
             if not late:
                 self._exclude_vetoed(obs, scene)
@@ -807,8 +821,10 @@ class FluidAgent:
             res = self._search(scene, rest)
         return res
 
-    def _search(self, scene: Scene, goals: list[Goal]) -> SearchResult:
-        res = search(scene, self._actions, self.mem, goals)
+    def _search(
+        self, scene: Scene, goals: list[Goal], goal_test: Callable[[Scene], bool] | None = None
+    ) -> SearchResult:
+        res = search(scene, self._actions, self.mem, goals, goal_test=goal_test)
         self._log.event(
             "search",
             step=self._action_no,
@@ -818,8 +834,36 @@ class FluidAgent:
             goals=len(goals),
             frontier=len(res.frontier),
             protected=res.protected,
+            novel=goal_test is not None,
         )
         return res
+
+    def _novel_choice(self, scene: Scene) -> _Choice | None:
+        """The first step toward a mover at a top-left it hasn't held on this level.
+
+        None when no mover is on screen, the search finds no such scene, or the first
+        step is refused (plan vetoes only). Logs a ``search`` event with ``novel`` set.
+        Only the first step is taken; the next move searches again with the new cell seen.
+        """
+        movers = mover_sigs(self.mem)
+        if not any(t.sig in movers for t in scene.things):
+            return None
+        seen = self._seen_at
+
+        def novel(s: Scene) -> bool:
+            return any(t.sig in movers and (t.sig, t.x, t.y) not in seen for t in s.things)
+
+        res = self._search(scene, [], goal_test=novel)
+        if res.stop != "found" or not res.plan:
+            return None
+        self._notes.add("no plan and no test")
+        self._plan, self._plan_goal = [], None
+        action = res.plan[0].action
+        reason = self.modules.inhibition.veto(scene, action, self.mem, self._tried)
+        if reason is not None and reason in _PLAN_VETOES:
+            self._refuse(action, reason)
+            return None
+        return _Choice(action, "plan", NOVEL_WHY)
 
     def _test_choice(self, obs: Observation, scene: Scene) -> _Choice | None:
         test = self.modules.voi.choose(
@@ -931,7 +975,8 @@ class FluidAgent:
 
     def _wake_reason(self, choice: _Choice) -> str | None:
         """The pending reason that wakes a turn now, after the plan, spacing and count rules."""
-        if self._turns_off or choice.branch in ("plan", "follow"):
+        held = choice.branch in ("plan", "follow") and choice.why != NOVEL_WHY
+        if self._turns_off or held:
             return None
         if self._calls >= MAX_TURNS_PER_GAME or self._turns_level >= MAX_TURNS_PER_LEVEL:
             return None

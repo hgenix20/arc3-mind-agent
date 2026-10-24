@@ -855,3 +855,44 @@ def test_click_steps_follow_the_clicked_thing_by_sig() -> None:
     gone, _ = Tracker().update(_grid({(20, 6): 5}), frozenset())
     assert fluid.remap_click(Action(6, *cell), asked, gone, corner) is None
     assert fluid.remap_click(Action(3), asked, gone, corner) == Action(3)
+
+
+def test_novelty_explores_a_closed_room_before_b0(tmp_path: Path) -> None:
+    # A 5x5 room walled in on every side; the target sits outside, out of reach.
+    ring = [(x, y) for x in range(1, 8) for y in (1, 7)]
+    ring += [(x, y) for y in range(2, 7) for x in (1, 7)]
+    inside = {(x, y) for x in range(2, 7) for y in range(2, 7)}
+    game = FakeGame(player=(4, 4), target=(40, 40), walls=ring, lava=[], win_levels=1)
+    agent = make_agent(tmp_path)
+    visited: set[tuple[int, int]] = set()
+    before: list[set[tuple[int, int]]] = []
+    obs = game.observe()
+    for _ in range(80):
+        visited.add(game.player)
+        before.append(set(visited))
+        obs = game.step(agent.choose(obs))
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    novel = [i for i, a in enumerate(acts) if a["why"] == fluid.NOVEL_WHY]
+    assert novel and all(acts[i]["branch"] == "plan" for i in novel)
+    assert visited == inside
+    for i, a in enumerate(acts):
+        if a["why"] == "b0":
+            assert before[i] == inside  # B0 only once every cell was reached
+
+
+def test_novelty_without_movers_falls_to_b0(tmp_path: Path, monkeypatch: Any) -> None:
+    game = FakeClickGame(objects=2)
+    agent = make_agent(tmp_path)
+
+    def no_test(*_a: object) -> None:
+        return None
+
+    monkeypatch.setattr(agent, "_test_choice", no_test)
+    play(game, agent, max_steps=3)
+    agent.close()
+    recs = records(tmp_path)
+    acts = [r for r in recs if r["type"] == "action"]
+    assert acts[0]["branch"] == "fallback" and acts[0]["why"] == "b0"
+    assert all(a["why"] != fluid.NOVEL_WHY for a in acts)
+    assert not [r for r in recs if r["type"] == "search" and r.get("novel")]

@@ -200,3 +200,24 @@ def test_search_never_predicts_spawns() -> None:
     r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
     assert r.stop == "found" and len(r.plan) == 3
     assert all(("A4", SPAWN, "any") not in step.expect.used for step in r.plan)
+
+
+def test_goal_test_finds_the_nearest_novel_cell() -> None:
+    s = scene_of({(2, 2): 1, (40, 40): 4})
+    seen = {(2, 2), (2, 1), (2, 3), (1, 2), (3, 2)}
+
+    def novel(scene: Scene) -> bool:
+        return any(t.sig == PSIG and (t.x, t.y) not in seen for t in scene.things)
+
+    r = search(s, simple_actions, moves((1, 2, 3, 4)), [], goal_test=novel)
+    assert r.stop == "found" and r.goal is None
+    assert [x.action.id for x in r.plan] == [1, 1]  # breadth first, actions in order
+    assert r.plan[-1].expect.scene is not None
+    end = next(t for t in r.plan[-1].expect.scene.things if t.sig == PSIG)
+    assert (end.x, end.y) == (2, 0)
+
+
+def test_goal_test_at_the_root_returns_an_empty_plan() -> None:
+    s = scene_of({(2, 2): 1})
+    r = search(s, simple_actions, moves((1,)), [], goal_test=lambda _s: True)
+    assert r.stop == "found" and r.plan == () and r.goal is None

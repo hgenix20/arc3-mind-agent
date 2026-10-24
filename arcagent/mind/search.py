@@ -22,6 +22,9 @@ Branch rules:
   protected, the full ``Scene.key()`` is used.
 - A prediction whose key equals its parent's changes nothing that matters and is dropped.
 - ``match`` goals need a grid, so slice 1 search skips them.
+- ``goal_test`` is an extra predicate goal (the fluid agent's novelty pseudo-goal): a
+  scene where it holds wins like a goal does, with ``SearchResult.goal`` None. Goals in
+  ``goals`` are checked first on each scene.
 
 Bounded two ways. ``max_nodes`` expansions (``predict`` calls) is the main bound: every
 game runs as a thread of one process, so a wall-clock budget would buy less search the
@@ -59,7 +62,8 @@ class PlanStep:
 
 @dataclass(frozen=True, slots=True)
 class SearchResult:
-    """Outcome of one search. ``goal`` is None unless ``stop == "found"``.
+    """Outcome of one search. ``goal`` is None unless ``stop == "found"`` by a goal (a
+    find by ``goal_test`` leaves it None).
 
     ``frontier`` holds the unknown ``(label, subject)`` pairs met, by first meeting.
     ``depth`` is the plan length when found, else the deepest level expanded.
@@ -97,11 +101,13 @@ def search(
     max_nodes: int = SEARCH_MAX_NODES,
     clock: Callable[[], float] = time.monotonic,
     assume_still: frozenset[str] | None = None,
+    goal_test: Callable[[Scene], bool] | None = None,
 ) -> SearchResult:
     """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
 
     ``assume_still`` is the protected sig set passed to ``predict``; None computes it with
-    ``protected_sigs``.
+    ``protected_sigs``. ``goal_test``, when given, is one more goal: the first scene where
+    it holds (after no goal in ``goals`` did) ends the search as ``found``, goal None.
     """
     start = clock()
     live = [g for g in goals if g.kind != "match"]
@@ -127,7 +133,7 @@ def search(
         return SearchResult(goal, plan, tuple(frontier), nodes, depth, stop, len(protect))
 
     hit = _first_holding(live, scene)
-    if hit is not None:
+    if hit is not None or (goal_test is not None and goal_test(scene)):
         return done("found", 0, 0, hit)
 
     seen = {key_of(scene)}
@@ -157,7 +163,7 @@ def search(
             seen.add(key)
             child = (*plan, PlanStep(action, pred))
             goal = _first_holding(live, pred.scene)
-            if goal is not None:
+            if goal is not None or (goal_test is not None and goal_test(pred.scene)):
                 return done("found", nodes, len(child), goal, child)
             queue.append((pred.scene, child))
     return done("exhausted", nodes, deepest)
