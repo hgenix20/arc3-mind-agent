@@ -8,7 +8,7 @@ import numpy as np
 
 from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import Effect, FactMemory, action_label
-from arcagent.mind.objects import Scene, Tracker, shape_of
+from arcagent.mind.objects import Scene, Thing, Tracker, shape_of
 from arcagent.mind.tester import choose_test, veto
 
 Cells = dict[tuple[int, int], int]
@@ -230,3 +230,42 @@ def test_note_kin_keeps_each_tracks_sigs_in_order_without_repeats() -> None:
     assert mem.earlier_sigs(t) == ()
     mem.kin_reset()
     assert mem.kin == {}
+
+
+def _thing(tid: int, color: int, cells: list[tuple[int, int]]) -> Thing:
+    xs, ys = [c[0] for c in cells], [c[1] for c in cells]
+    x, y = min(xs), min(ys)
+    shape = shape_of([(cx - x, cy - y) for cx, cy in cells])
+    return Thing(tid, color, shape, f"c{color}:{shape}", x, y, frozenset(cells))
+
+
+def test_a_piece_split_off_under_a_new_id_inherits_the_old_things_sigs() -> None:
+    mem = FactMemory()
+    whole = _thing(1, 3, [(0, 0), (1, 0), (2, 0), (3, 0)])
+    mem.note_kin([whole])
+    left, right = _thing(1, 3, [(0, 0), (1, 0)]), _thing(2, 3, [(3, 0)])
+    mem.note_kin([left, right])
+    assert mem.earlier_sigs(right) == (whole.sig,)
+    assert mem.earlier_sigs(left) == (whole.sig,)
+
+
+def test_a_merged_thing_inherits_the_sigs_of_the_thing_it_absorbed() -> None:
+    mem = FactMemory()
+    a, b = _thing(1, 3, [(0, 0)]), _thing(2, 3, [(2, 0), (2, 1)])
+    mem.note_kin([a, b])
+    merged = _thing(1, 3, [(0, 0), (1, 0), (2, 0), (2, 1)])
+    mem.note_kin([merged])
+    assert set(mem.earlier_sigs(merged)) == {a.sig, b.sig}
+
+
+def test_kin_is_not_inherited_across_colors_or_across_a_reset() -> None:
+    mem = FactMemory()
+    old = _thing(1, 3, [(0, 0), (1, 0)])
+    mem.note_kin([old])
+    other = _thing(2, 4, [(1, 0)])
+    mem.note_kin([other])
+    assert mem.earlier_sigs(other) == ()
+    mem.kin_reset()
+    fresh = _thing(1, 3, [(0, 0)])
+    mem.note_kin([fresh])
+    assert mem.earlier_sigs(fresh) == ()

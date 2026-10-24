@@ -237,6 +237,7 @@ class FactMemory:
         # track id -> the sigs that thing has carried since the tracker last reset, oldest
         # first; the agent keeps it (note_kin, kin_reset). Not a fact: forget leaves it.
         self.kin: dict[int, list[str]] = {}
+        self._kin_last: tuple[Thing, ...] = ()
 
     @property
     def broken_after(self) -> int:
@@ -303,16 +304,42 @@ class FactMemory:
         return self.facts.get(key)
 
     def note_kin(self, things: Iterable[Thing]) -> None:
-        """Append each thing's sig to its track's history when it differs from the last."""
-        for t in things:
+        """Append each thing's sig to its track's history when it differs from the last.
+
+        A split or merge gives a piece a new track id or ends one, so a thing also takes
+        the sigs of same-color things from the last call whose cells it covers, when it is
+        new or they're gone (largest overlap first, ahead of its own history).
+        """
+        now = tuple(things)
+        alive = {t.id for t in now}
+        owner = {c: p for p in self._kin_last for c in p.cells}
+        before = {p.id: tuple(self.kin.get(p.id, ())) for p in self._kin_last}
+        for t in now:
+            new = t.id not in self.kin
             sigs = self.kin.setdefault(t.id, [])
+            overlap: dict[int, int] = {}
+            for c in t.cells:
+                p = owner.get(c)
+                if p is None or p.id == t.id or p.color != t.color:
+                    continue
+                if new or p.id not in alive:
+                    overlap[p.id] = overlap.get(p.id, 0) + 1
+            donated = [
+                s
+                for pid in sorted(overlap, key=lambda i: (-overlap[i], i))
+                for s in before.get(pid, ())
+            ]
+            if donated:
+                sigs[:0] = [s for s in dict.fromkeys(donated) if s not in sigs]
             if not sigs or sigs[-1] != t.sig:
                 sigs.append(t.sig)
-                del sigs[:-KIN_KEEP]
+            del sigs[:-KIN_KEEP]
+        self._kin_last = now
 
     def kin_reset(self) -> None:
         """Track ids restart with the tracker; their histories go with them."""
         self.kin.clear()
+        self._kin_last = ()
 
     def earlier_sigs(self, t: Thing) -> tuple[str, ...]:
         """Sigs the same tracked thing carried before, newest first, without its own."""
