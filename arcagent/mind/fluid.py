@@ -11,9 +11,13 @@ Per ``choose(obs)``, in order:
    returns RESET too and learns nothing. The frame after a RESET learns nothing: the
    start frame is not a consequence of any rule.
 2. ``levels_completed`` rose: record the ``level_up`` event fact, ``goals.level_up``
-   on the frame before, log ``level_up``, then reset the tracker, the noise tracks and
-   ``FactMemory`` positions, and clear the plan, the level's scene history, ``tried``
-   and the frontier. Facts and goal statuses stay. The new screen teaches nothing.
+   on the frame before, log ``level_up``, then reset the tracker and the noise tracks,
+   run ``fluid_sleep`` over the fact keys the executed moves of the level relied on
+   (each move's prediction ``used``, collected per level), reset ``FactMemory``
+   positions, and clear the plan, the level's scene history, ``tried`` and the
+   frontier. Facts and goal statuses stay. The new screen teaches nothing. ``close``
+   sleeps once more over the current level's keys (game end). ``FactMemory.level``
+   follows ``levels_completed`` so each new fact records the level it was made on.
 3. Otherwise update tracker and noise, strip noisy things from both scenes and the
    diff, ``learn`` from the transition and ``check`` the previous prediction (its
    misses feed only the log and the plan stop; ``learn`` charges facts itself). Then
@@ -114,12 +118,15 @@ tracker restarts so the next frame learns nothing. B0's bookkeeping and the log 
 run outside the guard.
 
 Log: action records keep the v1 fields (``programs`` scores the previous move's
-prediction, one entry per used fact; ``entropy`` is the frontier size; ``active`` and
+prediction, one entry per used fact, with ``level`` the fact's creation level or null
+when the fact is gone; ``entropy`` is the frontier size; ``active`` and
 ``wake`` are null, ``voi`` is empty). Events: ``fact`` (``step, key, status, line``)
 when a fact is new or changes status, ``goal`` (``step, id, status, source``),
 ``test`` (``step, action, question``), ``noise`` (``step, ids, cells``), ``veto``
 (``step, action, reason``), ``level_up`` and ``game_over`` (``step, level``) with
-``step`` the index of the move that caused them, ``agent_error`` and ``game_end``.
+``step`` the index of the move that caused them, ``sleep`` (``step, demoted, merged,
+dropped, seconds, truncated``, counts) with one ``demoted`` and one ``merged``
+(``step, key``) per fact key, ``agent_error`` and ``game_end``.
 With a chat: ``wake`` (``step, reason``; the action record's ``wake`` holds the same
 reason), ``exec_turn`` (``step, call, seconds, goals, plan_len, test, dropped``),
 and ``exec_failed`` (``step, call, reason``); ``game_end`` adds ``turns``.
@@ -147,6 +154,7 @@ from arcagent.mind.facts import (
     clicked_sig,
     learn,
 )
+from arcagent.mind.fluid_sleep import FluidSleepReport, fluid_sleep
 from arcagent.mind.goals import Goal, GoalBook, GoalStatus, goal_sigs, mover_sigs
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
@@ -408,6 +416,7 @@ class FluidAgent:
         self._can_click = False
         self._tests = 0
         self._vetoes_total = 0
+        self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -517,6 +526,7 @@ class FluidAgent:
             scene = self._transition(obs, move, self._last_scene, self._last_action)
         self._last_grid = obs.grid
         self._level = obs.levels_completed
+        self.mem.level = self._level
         return self._decide(obs, scene)
 
     def _start(self, obs: Observation) -> Scene:
@@ -599,6 +609,7 @@ class FluidAgent:
         self._level_start = True
         self.reopen_goals()
         self._restart()
+        self._sleep(move)
         self.mem.new_level()
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
 
@@ -708,6 +719,7 @@ class FluidAgent:
         else:
             self._plan_goal = None
             self._pred = predict(scene, choice.action, self.mem)
+        self._used_level.update(self._pred.used)
         return choice
 
     def note_failed(self, goal: Goal) -> None:
@@ -1069,19 +1081,48 @@ class FluidAgent:
                     "pred": " ".join(key) if fact is None else fact.line(),
                     "matched": key not in missed,
                     "fit": None if fact is None or not total else fact.hits / total,
+                    "level": None if fact is None else fact.level,
                 }
             )
         self._programs = out
 
-    def close(self) -> None:
-        """Log ``game_end`` with fact and goal counts by status. Safe to call twice.
+    def _sleep(self, step: int) -> FluidSleepReport:
+        """``fluid_sleep`` over this level's used keys; log ``sleep``, ``demoted``, ``merged``."""
+        report = fluid_sleep(self.mem, self._used_level, self._level)
+        self._used_level = set()
+        self._log.event(
+            "sleep",
+            step=step,
+            demoted=len(report.demoted),
+            merged=len(report.merged),
+            dropped=len(report.dropped),
+            seconds=round(report.seconds, 4),
+            truncated=report.truncated,
+        )
+        for key in report.demoted:
+            self._log.event("demoted", step=step, key=list(key))
+        for key in report.merged:
+            self._log.event("merged", step=step, key=list(key))
+        return report
 
-        A private pool is shut down without waiting; a turn call still running after its
-        move timed out finishes on its pool thread and its result is never read.
+    def close(self) -> None:
+        """Sleep once more (game end), then log ``game_end`` with fact and goal counts.
+
+        Safe to call twice. A failing sleep is logged as ``agent_error`` and the game still
+        ends. A private pool is shut down without waiting; a turn call still running after
+        its move timed out finishes on its pool thread and its result is never read.
         """
         if self._closed:
             return
         self._closed = True
+        try:
+            self._sleep(self._action_no - 1)
+        except Exception as exc:  # a sleep failure costs the bookkeeping, not the game end
+            self._log.event(
+                "agent_error",
+                step=self._action_no,
+                error=f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS],
+            )
         if self._own_pool is not None:
             self._own_pool.shutdown(wait=False, cancel_futures=True)
         facts = Counter(f.status for f in self.mem.facts.values())

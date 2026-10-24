@@ -130,7 +130,9 @@ class Fact:
 
     ``hits`` counts agreeing observations since the fact was seeded (the seed included).
     ``misses`` is the lifetime miss total, shown in ``line``; ``streak`` is the misses in a
-    row, which a hit resets and which decides ``broken``.
+    row, which a hit resets and which decides ``broken``. ``level`` is the level the fact
+    was created on (``FactMemory.level`` at its first ``record``), so rule reuse across
+    levels can be measured.
     """
 
     key: FactKey
@@ -140,6 +142,7 @@ class Fact:
     misses: int = 0
     tags: frozenset[str] = frozenset()
     streak: int = 0
+    level: int = 0
 
     @property
     def status(self) -> Status:
@@ -205,9 +208,15 @@ class FactMemory:
     for another subject. ``blockers`` maps a sig to the cell colors (thing or terrain) that
     stopped it; ``walkable`` maps a sig to the colors its things moved onto, and a color in
     ``walkable`` is never in ``blockers`` for the same sig.
+
+    ``level`` is the current level, set by the agent; a new fact is stamped with it.
+    ``missed`` holds the keys that took a miss since the last ``new_level`` (the fluid
+    sleep's winning-facts check reads it before the agent calls ``new_level``).
     """
 
     def __init__(self) -> None:
+        self.level = 0
+        self.missed: set[FactKey] = set()
         self.facts: dict[FactKey, Fact] = {}
         self.toc: dict[str, set[FactKey]] = {}
         self.blockers: dict[str, set[int]] = {}
@@ -220,9 +229,35 @@ class FactMemory:
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
 
     def new_level(self) -> None:
-        """Forget absolute positions; called on a level change. Facts stay."""
+        """Forget absolute positions and this level's misses; called on a level change.
+
+        Facts stay.
+        """
         self.landed.clear()
         self.last_move.clear()
+        self.missed.clear()
+
+    def delete(self, key: FactKey) -> None:
+        """Remove one fact with its toc, sibling and position entries; no-op when absent."""
+        fact = self.facts.pop(key, None)
+        if fact is None:
+            return
+        for tag in fact.tags:
+            node = self.toc.get(tag)
+            if node is not None:
+                node.discard(key)
+                if not node:
+                    del self.toc[tag]
+        shape = _shape_of_subject(key[1])
+        if shape is not None:
+            sib = self._siblings.get((key[0], key[2], shape))
+            if sib is not None:
+                sib.discard(key)
+                if not sib:
+                    del self._siblings[(key[0], key[2], shape)]
+        self.landed.pop(key, None)
+        self.last_move.pop(key, None)
+        self.missed.discard(key)
 
     def get(self, key: FactKey) -> Fact | None:
         return self.facts.get(key)
@@ -277,7 +312,7 @@ class FactMemory:
         """
         fact = self.facts.get(key)
         if fact is None:
-            fact = Fact(key, effects, [move], hits=1)
+            fact = Fact(key, effects, [move], hits=1, level=self.level)
             self.facts[key] = fact
             self._index(fact, _tags(key, effects) | tags)
             shape = _shape_of_subject(key[1])
@@ -297,6 +332,7 @@ class FactMemory:
             return "hit"
         fact.misses += 1
         fact.streak += 1
+        self.missed.add(key)
         return "miss"
 
     def revise(self, key: FactKey, effects: tuple[Effect, ...], move: int) -> RecordResult:
