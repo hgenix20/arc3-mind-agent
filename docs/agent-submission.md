@@ -9,9 +9,27 @@ on 2026-10-20: 110 private games (55 public leaderboard, 55 private), 9 hours
 of runtime, no internet, per-level score `min(human_actions / agent_actions,
 1)^2`, per-game score the level-index-weighted mean, total the mean over games.
 
-## The mind-agent entry
+## The fluid agent (the entry from 2026-10-24)
 
-The entry is one agent: the mind's loops driving a model-written world model,
+The submitted config is `FLUID-LLM` (`arcagent/mind/fluid.py`, spec
+`docs/superpowers/specs/2026-10-23-fluid-agent-design.md`). Per move:
+- objects and terrain are read from the frame, with noise masked;
+- short facts about how actions change objects are learned and looked up through a table of contents by behavior;
+- each move is predicted before it's taken, and a short search runs inside those predictions toward goal guesses;
+- a test is taken only when prediction can't decide, and moves predicted to lose are vetoed.
+
+When salience wakes it, the vision LLM sees the screen and a diff image and
+proposes goals and a plan or a test, which run through the same predictor
+gate. Sleep at level-up checks the facts behind each win and carries facts and
+goal forms forward. The paper's four modules are swappable protocols
+(`arcagent/mind/fluid_modules.py`, ablations `FLUID-LLM-<module>`). If the
+model server fails, the notebook plays `FLUID` with no model. Build the
+kernel with `python scripts/kaggle_mind_notebook.py --games all --config
+FLUID-LLM`; the builder's default is still `FULL`.
+
+## The mind-agent entry (v1, submitted 2026-10-23)
+
+v1 is one agent: the mind's loops driving a model-written world model,
 a planner over that model, and a Qwen3.6-27B-FP8 server inside the notebook.
 Its pieces:
 
