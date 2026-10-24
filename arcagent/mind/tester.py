@@ -8,6 +8,14 @@ of the best partial plan), then the lowest ``Action.key()``. An action whose
 ``(scene.key(), action.key())`` is in ``tried`` is never chosen, and neither is one
 predicted to end the game. ``None`` means nothing is open.
 
+Countable pairs (slice 3): with ``protected`` given, a pair counts only when its
+subject is in ``protected`` or is ``self``, its label is a click label, or the pair was
+never observed (no fact has that label and subject, so a fresh side object still gets
+one look). A broken side-object fact keeps its pair unknown forever; without this rule
+every new scene made the same question look fresh (``tried`` is keyed by scene). A pair
+in ``exhausted`` (the caller's per-level cap) never counts. An action with no countable
+pair is not a test. ``protected=None`` counts every pair (the slice 1 rule).
+
 For a click, the things whose prediction was borrowed from a same-shape sibling
 (``Prediction.lent``) count as open pairs too: each click label (clicked sig and ring)
 gets its own test. Search doesn't do this; borrowing is fine for planning.
@@ -22,7 +30,7 @@ Pure; one ``predict`` per action.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
@@ -39,11 +47,12 @@ GAME_OVER = "predicted game_over"
 
 @dataclass(frozen=True, slots=True)
 class Test:
-    """A chosen action, the question it asks, and how many open pairs it answers."""
+    """A chosen action, the question it asks, and the countable open pairs it answers."""
 
     action: Action
     question: str
     settles: int
+    pairs: tuple[tuple[str, str], ...] = ()
 
 
 def _short(subject: str) -> str:
@@ -96,16 +105,31 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     frontier: Sequence[tuple[str, str]],
     tried: Tried,
     toward: Action | None,
+    *,
+    protected: frozenset[str] | None = None,
+    exhausted: Collection[tuple[str, str]] = (),
 ) -> Test | None:
-    """The one action that answers the most open questions, or None."""
+    """The one action that answers the most countable open questions, or None."""
     order = {pair: i for i, pair in reversed(list(enumerate(frontier)))}
     skey = scene.key()
+    seen = {(k[0], k[1]) for k in mem.facts} if protected is not None else set[tuple[str, str]]()
+
+    def counts(pair: tuple[str, str]) -> bool:
+        if pair in exhausted:
+            return False
+        if protected is None:
+            return True
+        label, subject = pair
+        return (
+            subject in protected or subject == "self" or label.startswith("A6") or pair not in seen
+        )
+
     best: tuple[tuple[int, int, int, int, tuple[int, int, int]], Test] | None = None
     for action in actions:
         if (skey, action.key()) in tried:
             continue
         pred = predict(scene, action, mem)
-        pairs = open_pairs(scene, action, pred)
+        pairs = [p for p in open_pairs(scene, action, pred) if counts(p)]
         if not pairs or pred.game_over:
             continue
         rank = (
@@ -117,7 +141,7 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
         )
         if best is None or rank < best[0]:
             label, subject = pairs[0]
-            best = (rank, Test(action, question(label, subject), len(pairs)))
+            best = (rank, Test(action, question(label, subject), len(pairs), tuple(pairs)))
     return None if best is None else best[1]
 
 

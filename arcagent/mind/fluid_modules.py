@@ -5,9 +5,10 @@ result and logs it. ``build_fluid_modules`` is the only code that maps a config 
 to a class, so an ablation (``FLUID-LLM-<module>``) switches one module to its null
 without touching the agent.
 
-- Voi picks the next targeted test. Real: ``tester.choose_test``. Null: the first
-  untried action in ``Action.key()`` order whose prediction has an unknown pair (no
-  ranking by how much it answers).
+- Voi picks the next targeted test. Real: ``tester.choose_test`` with the agent's
+  protected sigs and per-level exhausted pairs, so only countable pairs make a test.
+  Null: the first untried action in ``Action.key()`` order whose prediction has an
+  unknown pair (no ranking by how much it answers, no countable-pair rule).
 - Inhibition refuses an action. Real: ``tester.veto``. Null: never refuses.
 - Metacognition sets the misses-in-a-row threshold at which a fact is broken
   (``FactMemory.broken_after``, read once when the agent is built). Real:
@@ -20,7 +21,7 @@ without touching the agent.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -62,8 +63,15 @@ class FluidVoi(Protocol):
         frontier: Sequence[tuple[str, str]],
         tried: Tried,
         toward: Action | None,
+        *,
+        protected: frozenset[str] | None = None,
+        exhausted: Collection[tuple[str, str]] = (),
     ) -> Test | None:
-        """The next targeted test, or None when nothing is open."""
+        """The next targeted test, or None when nothing is open.
+
+        ``protected`` and ``exhausted`` restrict which open pairs count (see
+        ``tester.choose_test``); a null may ignore them.
+        """
         ...
 
 
@@ -94,8 +102,13 @@ class TesterVoi:
         frontier: Sequence[tuple[str, str]],
         tried: Tried,
         toward: Action | None,
+        *,
+        protected: frozenset[str] | None = None,
+        exhausted: Collection[tuple[str, str]] = (),
     ) -> Test | None:
-        return choose_test(scene, actions, mem, frontier, tried, toward)
+        return choose_test(
+            scene, actions, mem, frontier, tried, toward, protected=protected, exhausted=exhausted
+        )
 
 
 class NullFluidVoi:
@@ -107,6 +120,9 @@ class NullFluidVoi:
         frontier: Sequence[tuple[str, str]],
         tried: Tried,
         toward: Action | None,
+        *,
+        protected: frozenset[str] | None = None,
+        exhausted: Collection[tuple[str, str]] = (),
     ) -> Test | None:
         skey = scene.key()
         for action in sorted(actions, key=Action.key):

@@ -185,3 +185,73 @@ def test_borrowed_click_prediction_counts_as_unknown_for_the_tester() -> None:
     assert "c5:" in t.question
     know(mem, label, f"c5:{DOT}", Effect("none"))
     assert choose_test(s, [Action(6, 5, 5)], mem, [], set(), None) is None
+
+
+def broken_side() -> tuple[Scene, FactMemory]:
+    """A mover with every move known and a side object whose A1 fact is broken."""
+    s = scene_of({(10, 10): 1, (30, 30): 7})
+    side = f"c7:{DOT}"
+    mem = mem_moves((1, 2, 3, 4))
+    for i in (2, 3, 4):
+        know(mem, f"A{i}", side, Effect("none"))
+    know(mem, "A1", side, Effect("none"))
+    for i in range(2):
+        mem.record(("A1", side, "any"), (Effect("recolor", color=i + 2),), 10 + i)
+    assert mem.facts[("A1", side, "any")].status == "broken"
+    return s, mem
+
+
+def test_broken_side_pair_stops_being_tested_after_three_tests() -> None:
+    s, mem = broken_side()
+    side = f"c7:{DOT}"
+    pair = ("A1", side)
+    t = choose_test(s, ACTS, mem, [], set(), None)  # slice 1 rule: always a test
+    assert t is not None and t.action.id == 1
+    # The agent's protected rule: a broken side pair never counts.
+    assert choose_test(s, ACTS, mem, [], set(), None, protected=frozenset({PSIG})) is None
+    # A side object with no fact yet still gets looked at, until its cap is reached.
+    fresh, alone = FactMemory(), scene_of({(30, 30): 7})
+    tests = 0
+    for _ in range(10):
+        exhausted = {pair} if tests >= 3 else set[tuple[str, str]]()
+        t = choose_test(
+            alone, [Action(1)], fresh, [], set(), None, protected=frozenset(), exhausted=exhausted
+        )
+        if t is None:
+            break
+        assert pair in t.pairs
+        tests += 1
+    assert tests == 3
+
+
+def test_mover_pair_is_still_tested() -> None:
+    s, mem = broken_side()
+    mem.delete(("A2", PSIG, "any"))
+    mem.record(("A2", PSIG, "any"), (Effect("move", dy=1),), 0)
+    for i in range(2):
+        mem.record(("A2", PSIG, "any"), (Effect("none"),), 20 + i)  # broken mover fact
+    t = choose_test(s, ACTS, mem, [], set(), None, protected=frozenset({PSIG}))
+    assert t is not None and t.action.id == 2 and t.pairs == (("A2", PSIG),)
+    none = choose_test(
+        s, ACTS, mem, [], set(), None, protected=frozenset({PSIG}), exhausted={("A2", PSIG)}
+    )
+    assert none is None
+
+
+def test_clicks_on_five_distinct_sigs_are_each_tested() -> None:
+    cells = {(5 + 8 * i, 5): 2 + i for i in range(5)}
+    s = scene_of(cells)
+    clicks = [Action(6, x, y) for x, y in cells]
+    mem = FactMemory()
+    labels: list[str] = []
+    for _ in range(10):
+        t = choose_test(s, clicks, mem, [], set(), None, protected=frozenset())
+        if t is None:
+            break
+        label = action_label(t.action, s)
+        labels.append(label)
+        know(mem, label, "self", Effect("none"))
+        for o in s.things:  # the other dots are seen staying still
+            if (t.action.x, t.action.y) not in o.cells:
+                know(mem, label, o.sig, Effect("none"))
+    assert len(labels) == 5 and len(set(labels)) == 5

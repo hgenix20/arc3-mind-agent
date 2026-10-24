@@ -896,3 +896,20 @@ def test_novelty_without_movers_falls_to_b0(tmp_path: Path, monkeypatch: Any) ->
     assert acts[0]["branch"] == "fallback" and acts[0]["why"] == "b0"
     assert all(a["why"] != fluid.NOVEL_WHY for a in acts)
     assert not [r for r in recs if r["type"] == "search" and r.get("novel")]
+
+
+def test_tests_per_pair_are_capped_and_reset_each_level(tmp_path: Path) -> None:
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    caps: list[int] = []
+    obs = game.observe()
+    for _ in range(60):
+        if obs.won:
+            break
+        obs = game.step(agent.choose(obs))
+        caps.append(max(agent.tests_per_pair.values(), default=0))
+    agent.close()
+    assert game.levels == 2
+    assert max(caps) <= fluid.MAX_TESTS_PER_PAIR
+    tests = [r for r in records(tmp_path) if r["type"] == "test"]
+    assert tests
