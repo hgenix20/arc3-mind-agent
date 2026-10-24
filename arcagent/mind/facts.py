@@ -55,7 +55,6 @@ THIN_BELOW = 5  # a fact is solid once this many observations agreed with it
 BROKEN_MISSES = 2  # a fact is broken after this many misses in a row
 EVIDENCE_KEEP = 20  # a fact keeps the move ids of its last this-many observations
 KIN_KEEP = 8  # sigs kept per tracked thing (FactMemory.kin)
-MAX_ASKS = 3  # tests of one (label, subject) pair per level before it stops being open
 
 _DIRS: dict[tuple[int, int], str] = {
     (-1, 0): "left",
@@ -239,8 +238,6 @@ class FactMemory:
         # first; the agent keeps it (note_kin, kin_reset). Not a fact: forget leaves it.
         self.kin: dict[int, list[str]] = {}
         self._kin_last: tuple[Thing, ...] = ()
-        # (label, subject) -> tests that asked it this level (note_asked); new_level clears
-        self.asked: dict[tuple[str, str], int] = {}
 
     @property
     def broken_after(self) -> int:
@@ -262,7 +259,6 @@ class FactMemory:
         self.landed.clear()
         self.last_move.clear()
         self.missed.clear()
-        self.asked.clear()
 
     def forget(self) -> None:
         """Clear every fact and everything learned with them (toc, blockers, walkable,
@@ -339,12 +335,6 @@ class FactMemory:
                 sigs.append(t.sig)
             del sigs[:-KIN_KEEP]
         self._kin_last = now
-
-    def note_asked(self, pairs: Iterable[tuple[str, str]]) -> None:
-        """Count one test of each pair. A pair the learner can't settle (its observations
-        land under another context) would otherwise be asked again on every new scene."""
-        for p in pairs:
-            self.asked[p] = self.asked.get(p, 0) + 1
 
     def kin_reset(self) -> None:
         """Track ids restart with the tracker; their histories go with them."""

@@ -16,9 +16,7 @@ A pair is not open when it has a usable fact once reshapes are undone
 (``FactMemory.kin``): the subject under a sig its own track carried before, or, for a
 click, the clicked thing's label under an earlier sig. Without this, an action that
 reshapes a thing opens a new question about it every time it's taken, and the tests
-never run out (the test flood of eval v4). A pair tested ``MAX_ASKS`` times in a level
-(``FactMemory.asked``) is not open either: some answers land under a context the
-prediction doesn't read, and the pair would stay open forever.
+never run out (the test flood of eval v4).
 
 ``veto`` returns the reason to refuse an action, or None: ``"predicted game_over"``,
 ``"known no effect here"`` (no unknown pairs, the scene is unchanged, every used fact
@@ -34,7 +32,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
-from arcagent.mind.facts import MAX_ASKS, FactMemory, action_label, clicked_sig
+from arcagent.mind.facts import FactMemory, action_label, clicked_sig
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
 
@@ -109,14 +107,9 @@ def open_pairs(
     scene: Scene, action: Action, pred: Prediction, mem: FactMemory | None = None
 ) -> list[tuple[str, str]]:
     """The prediction's unknown pairs, plus for a click the pairs of borrowed predictions,
-    less (given ``mem``) the pairs asked ``MAX_ASKS`` times this level and the pairs that
-    have a usable fact once reshapes are undone."""
+    less (given ``mem``) the pairs that have a usable fact once reshapes are undone."""
     pairs = _open_pairs(scene, action, pred)
-    if mem is None or not pairs:
-        return pairs
-    if mem.asked:
-        pairs = [p for p in pairs if mem.asked.get(p, 0) < MAX_ASKS]
-    if not mem.kin or not pairs:
+    if mem is None or not mem.kin or not pairs:
         return pairs
     labels = {lab: _kin_labels(scene, action, mem, lab) for lab in {p[0] for p in pairs}}
     return [p for p in pairs if not _kin_known(scene, mem, labels[p[0]], p[1])]
