@@ -286,3 +286,29 @@ def test_a_click_and_a_simple_action_tie_on_settles() -> None:
     # With the tie, the existing order decides: here the lowest Action.key().
     both = choose_test(s, [Action(6, 5, 5), Action(1)], mem, [], set(), None, protected=frozenset())
     assert both is not None and both.action == Action(1)
+
+
+def test_first_six_tests_are_six_different_labels() -> None:
+    s = scene_of({(10, 10): 1, (30, 5): 2, (40, 5): 3})
+    acts = [*ACTS, Action(6, 30, 5), Action(6, 40, 5)]
+    mem = FactMemory()
+    tested: Counter[tuple[str, str]] = Counter()
+    labels: list[str] = []
+    for _ in range(6):
+        t = choose_test(s, acts, mem, [], set(), None, protected=frozenset({PSIG}), tested=tested)
+        assert t is not None
+        labels.append(t.pairs[0][0])
+        tested.update(t.pairs)
+    assert len(set(labels)) == 6
+
+
+def test_a_tested_label_is_not_repeated_for_a_new_side_sig() -> None:
+    s = scene_of({(10, 10): 1, (30, 30): 7})
+    mem = mem_moves((1,))
+    know(mem, "A1", f"c7:{DOT}", Effect("none"))
+    tested = Counter({("A1", "self"): 1})
+    fresh_side = scene_of({(10, 10): 1, (30, 30): 7, (50, 50): 8, (51, 50): 8})  # new shape
+    args = ([Action(1)], mem, [], set(), None)
+    assert choose_test(fresh_side, *args, protected=frozenset({PSIG})) is not None
+    assert choose_test(fresh_side, *args, protected=frozenset({PSIG}), tested=tested) is None
+    assert choose_test(s, *args, protected=frozenset({PSIG})) is None

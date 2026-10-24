@@ -48,8 +48,10 @@ Per ``choose(obs)``, in order:
    test, and every action is one question keyed ``(action label, "self")``: a click
    asks it when anything is open, a simple action when a pair's subject is protected
    (mover sigs, the plan goal's sigs, sigs of open goals the executive named, or
-   ``self``) or was never observed. A key tested ``MAX_TESTS_PER_PAIR`` times on this
-   level (``tests_per_pair``, reset on level change) no longer counts.
+   ``self``) or was never observed; once a label was tested, only protected and
+   ``self`` pairs count. Fewer tests of the label this level rank first. A key tested
+   ``MAX_TESTS_PER_PAIR`` times on this level (``tests_per_pair``, reset on level
+   change) no longer counts.
 7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held), under the same caps.
@@ -887,6 +889,7 @@ class FluidAgent:
             None,
             protected=protected,
             exhausted=exhausted,
+            tested=self.tests_per_pair,
         )
         if test is None:
             return None

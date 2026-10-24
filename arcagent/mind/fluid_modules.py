@@ -21,7 +21,7 @@ without touching the agent.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -66,10 +66,11 @@ class FluidVoi(Protocol):
         *,
         protected: frozenset[str] | None = None,
         exhausted: Collection[tuple[str, str]] = (),
+        tested: Mapping[tuple[str, str], int] | None = None,
     ) -> Test | None:
         """The next targeted test, or None when nothing is open.
 
-        ``protected`` and ``exhausted`` restrict which open pairs count (see
+        ``protected``, ``exhausted`` and ``tested`` restrict and order the pairs (see
         ``tester.choose_test``); a null may ignore them.
         """
         ...
@@ -105,9 +106,18 @@ class TesterVoi:
         *,
         protected: frozenset[str] | None = None,
         exhausted: Collection[tuple[str, str]] = (),
+        tested: Mapping[tuple[str, str], int] | None = None,
     ) -> Test | None:
         return choose_test(
-            scene, actions, mem, frontier, tried, toward, protected=protected, exhausted=exhausted
+            scene,
+            actions,
+            mem,
+            frontier,
+            tried,
+            toward,
+            protected=protected,
+            exhausted=exhausted,
+            tested=tested,
         )
 
 
@@ -123,6 +133,7 @@ class NullFluidVoi:
         *,
         protected: frozenset[str] | None = None,
         exhausted: Collection[tuple[str, str]] = (),
+        tested: Mapping[tuple[str, str], int] | None = None,
     ) -> Test | None:
         skey = scene.key()
         for action in sorted(actions, key=Action.key):

@@ -14,9 +14,13 @@ open pair. A simple action asks it only when it has a countable pair: one whose 
 is in ``protected`` or is ``self``, or that was never observed (no fact has that label
 and subject, so a fresh side object still gets one look). A broken side-object fact
 keeps its pair unknown forever; without this rule every new scene made the same
-question look fresh (``tried`` is keyed by scene). A key in ``exhausted`` (the caller's
-per-level cap) never counts. Ties then go by fragility, frontier, ``toward`` and key, as
-above. ``protected=None`` keeps the slice 1 rule: every open pair counts, one each.
+question look fresh (``tried`` is keyed by scene). Once a label has been tested
+(``tested``, the caller's per-level counts by key), only its protected and ``self``
+pairs count, for clicks too: a new side sig is no reason to repeat it. A key in
+``exhausted`` (the caller's per-level cap) never counts. Ties go first by fewest tests
+of the label this level (every action is tried once before any repeats), then by
+fragility, frontier, ``toward`` and key, as above. ``protected=None`` keeps the slice 1
+rule: every open pair counts, one each.
 
 For a click, the things whose prediction was borrowed from a same-shape sibling
 (``Prediction.lent``) count as open pairs too: each click label (clicked sig and ring)
@@ -32,7 +36,7 @@ Pure; one ``predict`` per action.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
@@ -110,36 +114,44 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     *,
     protected: frozenset[str] | None = None,
     exhausted: Collection[tuple[str, str]] = (),
+    tested: Mapping[tuple[str, str], int] | None = None,
 ) -> Test | None:
     """The one action that answers the most countable open questions, or None."""
     order = {pair: i for i, pair in reversed(list(enumerate(frontier)))}
     skey = scene.key()
     seen = {(k[0], k[1]) for k in mem.facts} if protected is not None else set[tuple[str, str]]()
 
-    def counts(pair: tuple[str, str]) -> bool:
+    done = tested if tested is not None else {}
+
+    def counts(pair: tuple[str, str], fresh: bool) -> bool:
         if protected is None:
             return pair not in exhausted
         subject = pair[1]
-        return subject in protected or subject == "self" or pair not in seen
+        return subject in protected or subject == "self" or (fresh and pair not in seen)
 
-    best: tuple[tuple[int, int, int, int, tuple[int, int, int]], Test] | None = None
+    best: tuple[tuple[int, int, int, int, int, tuple[int, int, int]], Test] | None = None
     for action in actions:
         if (skey, action.key()) in tried:
             continue
         pred = predict(scene, action, mem)
         found = open_pairs(scene, action, pred)
-        # A click counts any open pair; a simple action only its countable pairs.
-        live = found if action.id == COORD_ACTION_ID else [p for p in found if counts(p)]
-        if protected is None:
-            pairs = live  # slice 1: every open pair is its own question
+        key = (action_label(action, scene), "self") if protected is not None else ("", "")
+        times = done.get(key, 0)
+        # Untested: a click counts any open pair, a simple action its countable pairs.
+        # Tested: only protected or self pairs count, so a new side sig is no repeat.
+        if action.id == COORD_ACTION_ID and protected is not None and not times:
+            live = found
         else:
-            # Every action is one question, keyed (action label, "self").
-            key = (action_label(action, scene), "self")
-            pairs = [key] if live and key not in exhausted else []
+            live = [p for p in found if counts(p, fresh=not times)]
+        # slice 1: every open pair is its own question; slice 3: the action is one,
+        # keyed (action label, "self").
+        one = [key] if live and key not in exhausted else []
+        pairs = live if protected is None else one
         if not pairs or pred.game_over:
             continue
         rank = (
             -len(pairs),
+            times,
             -_fragility(pred, mem),
             min(order.get(p, len(order)) for p in live),
             0 if toward is not None and action.key() == toward.key() else 1,
