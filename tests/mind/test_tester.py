@@ -269,3 +269,15 @@ def test_kin_is_not_inherited_across_colors_or_across_a_reset() -> None:
     fresh = _thing(1, 3, [(0, 0)])
     mem.note_kin([fresh])
     assert mem.earlier_sigs(fresh) == ()
+
+
+def test_a_click_on_a_reshaped_thing_uses_its_label_under_the_earlier_shape() -> None:
+    s = scene_of({(5, 5): 2, (6, 5): 2})
+    (bar,) = s.things
+    click = Action(6, 5, 5)
+    mem = FactMemory()
+    know(mem, f"A6:{SIG_A}@0", "self", Effect("none"))  # clicked while still one cell wide
+    assert action_label(click, s) == f"A6:{bar.sig}@0"
+    assert choose_test(s, [click], mem, [], set(), None) is not None
+    mem.kin[bar.id] = [SIG_A, bar.sig]
+    assert choose_test(s, [click], mem, [], set(), None) is None

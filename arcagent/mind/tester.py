@@ -12,10 +12,11 @@ For a click, the things whose prediction was borrowed from a same-shape sibling
 (``Prediction.lent``) count as open pairs too: each click label (clicked sig and ring)
 gets its own test. Search doesn't do this; borrowing is fine for planning.
 
-A pair whose subject is a reshaped thing is not open when the same tracked thing has
-its own usable fact for that label under an earlier sig (``FactMemory.kin``). Without
-this, an action that reshapes a thing opens a new question about it every time it's
-taken, and the tests never run out (the test flood of eval v4).
+A pair is not open when it has a usable fact once reshapes are undone
+(``FactMemory.kin``): the subject under a sig its own track carried before, or, for a
+click, the clicked thing's label under an earlier sig. Without this, an action that
+reshapes a thing opens a new question about it every time it's taken, and the tests
+never run out (the test flood of eval v4).
 
 ``veto`` returns the reason to refuse an action, or None: ``"predicted game_over"``,
 ``"known no effect here"`` (no unknown pairs, the scene is unchanged, every used fact
@@ -31,7 +32,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
-from arcagent.mind.facts import FactMemory, action_label
+from arcagent.mind.facts import FactMemory, action_label, clicked_sig
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
 
@@ -63,22 +64,41 @@ def question(label: str, subject: str) -> str:
     return f"what does {label} do to {_short(subject)}?"
 
 
-def _kin_known(scene: Scene, mem: FactMemory, label: str, subject: str) -> bool:
-    """Whether every thing carrying ``subject`` has a usable fact for ``label`` under a sig
-    its own track carried before (a reshaped thing, already tested in its old shape)."""
-    if subject in ("any", "self"):
+def _usable(mem: FactMemory, label: str, subject: str) -> bool:
+    found = mem.lookup(label, subject, "any")
+    return found is not None and not found[1] and found[0].status != "broken"
+
+
+def _kin_labels(scene: Scene, action: Action, mem: FactMemory, label: str) -> list[str]:
+    """``label`` plus, for a click on a reshaped thing, its label under each earlier sig."""
+    clicked = clicked_sig(label)
+    if clicked is None:
+        return [label]
+    point = (action.x, action.y)
+    thing = next((t for t in scene.things if point in t.cells), None)
+    if thing is None:
+        return [label]
+    ring = label.rpartition("@")[2]
+    return [label, *(f"A6:{old}@{ring}" for old in mem.earlier_sigs(thing))]
+
+
+def _kin_known(scene: Scene, mem: FactMemory, labels: list[str], subject: str) -> bool:
+    """Whether the pair ``(labels[0], subject)`` has a usable fact once reshapes are undone:
+    the clicked thing under an earlier sig (``labels[1:]``), or every thing carrying
+    ``subject`` under a sig its own track carried before."""
+    label, alts = labels[0], labels[1:]
+    if subject == "any":
         return False
+    if subject == "self":
+        return any(_usable(mem, alt, "self") for alt in alts)
     carriers = [t for t in scene.things if t.sig == subject]
     if not carriers:
         return False
     for t in carriers:
-        found = None
-        for old in mem.earlier_sigs(t):
-            found = mem.lookup(label, old, "any")
-            if found is not None and not found[1] and found[0].status != "broken":
-                break
-            found = None
-        if found is None:
+        sigs = (t.sig, *mem.earlier_sigs(t))
+        if not any(
+            _usable(mem, lab, sig) for lab in labels for sig in sigs if (lab, sig) != (label, t.sig)
+        ):
             return False
     return True
 
@@ -87,11 +107,12 @@ def open_pairs(
     scene: Scene, action: Action, pred: Prediction, mem: FactMemory | None = None
 ) -> list[tuple[str, str]]:
     """The prediction's unknown pairs, plus for a click the pairs of borrowed predictions,
-    less (given ``mem``) the pairs of reshaped things whose earlier shape has the fact."""
+    less (given ``mem``) the pairs that have a usable fact once reshapes are undone."""
     pairs = _open_pairs(scene, action, pred)
-    if mem is None or not mem.kin:
+    if mem is None or not mem.kin or not pairs:
         return pairs
-    return [p for p in pairs if not _kin_known(scene, mem, p[0], p[1])]
+    labels = {lab: _kin_labels(scene, action, mem, lab) for lab in {p[0] for p in pairs}}
+    return [p for p in pairs if not _kin_known(scene, mem, labels[p[0]], p[1])]
 
 
 def _open_pairs(scene: Scene, action: Action, pred: Prediction) -> list[tuple[str, str]]:
