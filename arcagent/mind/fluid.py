@@ -44,14 +44,7 @@ Per ``choose(obs)``, in order:
    search runs once more without it. A first step that a veto refuses counts as a
    failed attempt at that goal (see step 4).
 6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
-   frontier (branch ``learn``, why the test's question). Only countable pairs make a
-   test, and every action is one question keyed ``(action label, "self")``: a click
-   asks it when anything is open, a simple action when a pair's subject is protected
-   (mover sigs, the plan goal's sigs, sigs of open goals the executive named, or
-   ``self``) or was never observed; once a label was tested, only protected and
-   ``self`` pairs count. Fewer tests of the label this level rank first. A key tested
-   ``MAX_TESTS_PER_PAIR`` times on this level (``tests_per_pair``, reset on level
-   change) no longer counts.
+   frontier (branch ``learn``, why the test's question).
 7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held), under the same caps.
@@ -189,7 +182,6 @@ STALL_AFTER = 2  # failed attempts at one goal in one level before it is set asi
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 _PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT})  # the veto reasons a plan step honors
-MAX_TESTS_PER_PAIR = 3  # tests of one (label, subject) pair per level before it stops counting
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
@@ -245,7 +237,6 @@ class _Choice:
     branch: Branch
     why: str
     test: str | None = None
-    pairs: tuple[tuple[str, str], ...] = ()  # the countable pairs a Voi test answers
 
 
 def _strip(scene: Scene, ids: frozenset[int]) -> Scene:
@@ -442,7 +433,6 @@ class FluidAgent:
         self._vetoes_total = 0
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
         self._seen_at: set[tuple[str, int, int]] = set()  # (sig, x, y) seen this level
-        self.tests_per_pair: Counter[tuple[str, str]] = Counter()  # this level's tests
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -641,7 +631,6 @@ class FluidAgent:
         self.modules.transfer.carry(self.mem, self.goals)
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
         self._seen_at = set()
-        self.tests_per_pair = Counter()
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
         prev_full = self._last_full
@@ -736,7 +725,6 @@ class FluidAgent:
         self._tried.add((scene.key(), choice.action.key()))
         if choice.test is not None:
             self._tests += 1
-            self.tests_per_pair.update(choice.pairs)
             a = choice.action
             self._log.event(
                 "test", step=self._action_no, action=[a.id, a.x, a.y], question=choice.test
@@ -878,31 +866,13 @@ class FluidAgent:
         return _Choice(action, "plan", NOVEL_WHY)
 
     def _test_choice(self, obs: Observation, scene: Scene) -> _Choice | None:
-        protected = self._protected(scene)[1] | self._llm_goal_sigs(scene)
-        exhausted = {p for p, n in self.tests_per_pair.items() if n >= MAX_TESTS_PER_PAIR}
         test = self.modules.voi.choose(
-            scene,
-            candidate_actions(obs),
-            self.mem,
-            self._frontier,
-            self._tried,
-            None,
-            protected=protected,
-            exhausted=exhausted,
-            tested=self.tests_per_pair,
+            scene, candidate_actions(obs), self.mem, self._frontier, self._tried, None
         )
         if test is None:
             return None
         choice = self._offer(scene, test.action, "learn", test.question, False, plan=False)
-        return None if choice is None else replace(choice, test=test.question, pairs=test.pairs)
-
-    def _llm_goal_sigs(self, scene: Scene) -> frozenset[str]:
-        """The sigs of every open goal the executive named."""
-        out: set[str] = set()
-        for g in self.goals.open():
-            if self.goals.sources.get(g) == LLM_SOURCE:
-                out |= goal_sigs(g, scene)
-        return frozenset(out)
+        return None if choice is None else replace(choice, test=test.question)
 
     def _remap(self, item: PlanItem, scene: Scene) -> Action | None:
         """The reply step's action on ``scene``; None (and a veto event) when its thing is gone."""
