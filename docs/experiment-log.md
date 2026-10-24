@@ -375,10 +375,20 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 |---|---|---|---|---|---|
 | 2026-10-24 | fb765b7 | offline FLUID, 25 games, seed 0, 240 s per game, 4 workers | 5 | 0.13 | lf52, lp85 x2, r11l, tn36; 268 tests per level |
 | 2026-10-24 | 5daf0c6 | same, with the reshaped-thing fix | 5 | 0.14 | ar25, g50t, lf52, lp85, r11l; 201 tests per level |
+| 2026-10-24 | cd9007e | same, with kin for split, merged and clicked things | 10 | 0.37 | the five above plus bp35, cd82, ft09, m0r0, tn36 |
 
-One run each under wall-clock caps, so the levels and the score are within
-noise; the drop in tests is the effect the fix was for. Merged to main.
-Logs: scratchpad `ab-base/` and `ab-kin/` (not kept in the repo).
+One run each under wall-clock caps. The first two rows are within noise; the
+drop in tests is the effect that fix was for.
+The split and merge half of cd9007e changed nothing on the dc22 probe (303
+tests either way). The leak that remained was in the click label: it carries
+the clicked thing's sig, so a click on a region that keeps changing shape
+(the color-0 area on dc22) was a new label each time, and one subject was
+tested under 34 of them. cd9007e also tries the clicked thing's label under
+its earlier sigs: 303 tests to 210 on the probe, 86 distinct click labels to
+42. Offline it doubled the levels and kept every level main had, which is
+past what one noisy run explains, so it's merged. Prediction accuracy held
+(0.891 to 0.887).
+Logs: scratchpad `ab-base/`, `ab-kin/` and `ab-split/` (not kept in the repo).
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
   track. The probe-policy agent above is that submission; the agent that
