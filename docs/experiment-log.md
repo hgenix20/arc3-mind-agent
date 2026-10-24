@@ -362,9 +362,23 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
   is click label times subject times context, and click labels carry the
   clicked object's sig and ring color, so it never runs dry. A cap per
   attempt resets on every game over and doesn't bind. The earlier caps
-  (reverted in a8ac9ba) lowered the count and the score together. Not yet
-  checked: whether one observed click closes every open pair for its label,
-  or only the pair the test named. If only the named pair, that's the leak.
+  (reverted in a8ac9ba) lowered the count and the score together.
+  Found offline on dc22: the subjects mostly recur (3 of 96 appear once). The
+  leak is an action that reshapes a tracked thing. Facts are keyed by shape,
+  so the new shape has none, and the same click came back as a test 59 times
+  in 400 moves, each time about the newest shape. 5daf0c6 lets the tester use
+  the facts a tracked thing has under its earlier shapes (391 tests to 303 on
+  that probe). Still open: things that split or merge get new track ids and
+  no history, and they make up most of what's left.
+
+| date | commit | run | levels | score est. | notes |
+|---|---|---|---|---|---|
+| 2026-10-24 | fb765b7 | offline FLUID, 25 games, seed 0, 240 s per game, 4 workers | 5 | 0.13 | lf52, lp85 x2, r11l, tn36; 268 tests per level |
+| 2026-10-24 | 5daf0c6 | same, with the reshaped-thing fix | 5 | 0.14 | ar25, g50t, lf52, lp85, r11l; 201 tests per level |
+
+One run each under wall-clock caps, so the levels and the score are within
+noise; the drop in tests is the effect the fix was for. Merged to main.
+Logs: scratchpad `ab-base/` and `ab-kin/` (not kept in the repo).
 
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
   track. The probe-policy agent above is that submission; the agent that
