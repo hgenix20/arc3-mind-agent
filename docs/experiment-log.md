@@ -356,6 +356,16 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 
 ## Open items
 
+- The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
+  question no earlier test asked (2,354 distinct of 2,447 on cd82), while the
+  same cell is clicked up to 200 times (dc22 at (10, 40)). The question space
+  is click label times subject times context, and click labels carry the
+  clicked object's sig and ring color, so it never runs dry. A cap per
+  attempt resets on every game over and doesn't bind. The earlier caps
+  (reverted in a8ac9ba) lowered the count and the score together. Not yet
+  checked: whether one observed click closes every open pair for its label,
+  or only the pair the test named. If only the named pair, that's the leak.
+
 - Paper eligibility needs a linked Kaggle *code submission* on the ARC-AGI-3
   track. The probe-policy agent above is that submission; the agent that
   plans against synthesized models is the next step.
