@@ -377,6 +377,7 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 | 2026-10-24 | 5daf0c6 | same, with the reshaped-thing fix | 5 | 0.14 | ar25, g50t, lf52, lp85, r11l; 201 tests per level |
 | 2026-10-24 | cd9007e | same, with kin for split, merged and clicked things | 10 | 0.37 | the five above plus bp35, cd82, ft09, m0r0, tn36 |
 | 2026-10-24 | d828d73 | same, plus win confirmation on the predicted outcome and no off-board clicks | 10 | 0.37 | same games; lf52 confirms `clear c14`; lp85's 6 agent errors gone |
+| 2026-10-24 | 8265321 | same, plus a bound of 3 tests per (label, subject) per level | 8 | 0.35 | lost bp35 and m0r0; reverted |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
@@ -395,6 +396,11 @@ ran on the frame before the move, so a goal that became true on that move never
 counted. And a predicted scene could push a thing past the board's edge, and the
 search then built a click off the board (6 agent errors on lp85). Both are fixed and
 the score didn't move.
+8265321 bounded a loop seen on lf52's level 2: one question asked 48 times, because
+its `any` fact had broken and every later observation was filed under `blocked`, so
+the fact was never re-seeded. The bound ended the loop and cost two levels (bp35's
+win came from the explorer fallback and m0r0's from novelty moves, so this may be
+noise), and it's reverted. The loop itself is still there.
 Scale, for reading these rows: the scorecard is in percent, so 0.37 is 0.37 of 100.
 Level counts barely move it, because a level scores (human ÷ agent actions)²: our won
 levels took 12 to 306 actions. No game gets past level 1, and later levels weigh more.
