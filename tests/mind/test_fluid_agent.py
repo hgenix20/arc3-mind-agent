@@ -10,7 +10,7 @@ from concurrent.futures import Executor, Future
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, ClassVar, ParamSpec, TypeVar, cast
 
 import numpy as np
 
@@ -1373,3 +1373,88 @@ def test_a_tight_budget_puts_a_fitting_partial_plan_before_tests() -> None:
     assert not fluid.budget_tight(remaining=4, distance=5)  # doesn't fit at all
     assert not fluid.budget_tight(remaining=None, distance=5)
     assert fluid.TEST_RESERVE == 2
+
+
+class SequenceGame:
+    """A player (color 1, one cell) and three 2x2 pads (colors 2, 3 and 6) that block it.
+    Bumping a pad is a step: the next pad of a hidden order lights the next of three 2x2
+    boxes along the bottom (color 7, lit 11); any other pad puts every box out (bumping
+    the pad that lit the last box does nothing). Three lit boxes win. Arrows 1 to 4."""
+
+    PADS: ClassVar[dict[int, tuple[int, int]]] = {2: (20, 20), 3: (40, 30), 6: (25, 44)}
+    BOXES = (20, 24, 28)
+
+    def __init__(self, order: tuple[int, ...] = (6, 2, 3)) -> None:
+        self.order = order
+        self.player = (10, 30)
+        self.lit = 0
+        self.bumps: list[int] = []
+        self.levels = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def _pad_at(self, x: int, y: int) -> int | None:
+        for color, (px, py) in self.PADS.items():
+            if px <= x < px + 2 and py <= y < py + 2:
+                return color
+        return None
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        for color, (px, py) in self.PADS.items():
+            g[py : py + 2, px : px + 2] = color
+        for i, bx in enumerate(self.BOXES):
+            g[60:62, bx : bx + 2] = 11 if i < self.lit else 7
+        g[self.player[1], self.player[0]] = 1
+        return Observation(g, self.phase, self.levels, 1, (0, 1, 2, 3, 4))
+
+    def step(self, action: Action) -> Observation:
+        moves = {1: (0, -1), 2: (0, 1), 3: (-1, 0), 4: (1, 0)}
+        if self.phase != Phase.NOT_FINISHED or action.id not in moves:
+            return self.observe()
+        dx, dy = moves[action.id]
+        x, y = self.player[0] + dx, self.player[1] + dy
+        if not (0 <= x < 64 and 0 <= y < 58):
+            return self.observe()
+        pad = self._pad_at(x, y)
+        if pad is None:
+            self.player = (x, y)
+            return self.observe()
+        self.bumps.append(pad)
+        if pad == self.order[self.lit]:
+            self.lit += 1
+        elif self.lit == 0 or pad != self.order[self.lit - 1]:
+            self.lit = 0
+        if self.lit == len(self.order):
+            self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_the_agent_finishes_a_hidden_order_sequence(tmp_path: Path) -> None:
+    # (3, 6, 2) needs both kinds of learning: a wrong pad puts the boxes out, and the
+    # agent's first bumps (2, then 6) don't start it. Without sequence steps only the
+    # order its bumps happen to follow wins (one of the six).
+    for order in ((6, 2, 3), (3, 6, 2)):
+        game = SequenceGame(order)
+        name = "".join(map(str, order))
+        agent = make_agent(tmp_path, name)
+        play(game, agent, max_steps=400)
+        agent.close()
+        assert game.phase == Phase.WIN, order
+        assert agent._seq.row is not None  # pyright: ignore[reportPrivateUsage]
+        assert any(r["type"] == "sequence" for r in records(tmp_path, name))
+
+
+def test_a_reached_goal_is_probed_by_running_into_its_target(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    game = SequenceGame((2, 3, 6))
+    agent = make_agent(tmp_path)
+
+    def no_steps(_scene: Scene) -> list[fluid.Goal]:
+        return []
+
+    monkeypatch.setattr(agent, "_sequence_goals", no_steps)
+    play(game, agent, max_steps=200, until=lambda: bool(game.bumps))
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert game.bumps and acts[-1]["branch"] == "commit"
