@@ -523,23 +523,20 @@ class GoalBook:
         grid: Grid | None = None,
         kin: Kinematics | None = None,
         salient: frozenset[str] = frozenset(),
-        budget: int | None = None,
     ) -> list[Goal]:
         """Confirmed forms, then the ``SEARCH_GOALS`` best open goals.
 
         An open goal scores ``prior * salience / (1 + cost)``: ``prior`` from the rule-book,
         ``salience`` ``SALIENCE`` when one of its sigs is in ``salient`` (the agent passes
         controlled things and things that changed this level), else 1; ``cost`` its distance
-        in ``scene``, or ``UNKNOWN_COST``. A goal whose distance exceeds ``budget`` (moves
-        left this life) is left out of this ranking, without changing its status. Ties keep
-        the open list's order.
+        in ``scene``, or ``UNKNOWN_COST``. Ties keep the open list's order. Moves left this
+        life don't filter goals: a distance estimates moves, it doesn't bound them (one
+        move can slide a thing many cells).
         """
         forms = [g for g in self.confirmed_forms if g not in self.stalled_forms]
         scored: list[tuple[float, int, Goal]] = []
         for i, g in enumerate(self._open_goals()):
             d = g.distance(scene, grid, kin)
-            if budget is not None and d is not None and d > budget:
-                continue
             weight = SALIENCE if goal_sigs(g, scene) & salient else 1.0
             cost = UNKNOWN_COST if d is None else d
             scored.append((-prior_of(g.kind) * weight / (1 + cost), i, g))

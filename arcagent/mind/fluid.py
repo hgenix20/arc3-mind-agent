@@ -60,8 +60,7 @@ Per ``choose(obs)``, in order:
    search runs once more without it. A first step that a veto refuses counts as a
    failed attempt at that goal (see step 4). Search goals come from ``GoalBook.ranked``: the
    confirmed forms, then the best twelve open goals by prior, salience and distance,
-   leaving out goals farther than the moves left this life, plus every goal the
-   executive named.
+   plus every goal the executive named.
 6. Else, when the budget is tight (``budget_tight``: the best partial plan's goal is
    within the moves left with at most ``TEST_RESERVE`` to spare), that plan's step.
    Else the Voi module's test (``tester.choose_test`` when real) with the search's
@@ -1173,8 +1172,7 @@ class FluidAgent:
 
     def _ranked(self, scene: Scene) -> list[Goal]:
         """``GoalBook.ranked`` for this move (salient: controlled things and things that
-        changed this level; the budget's moves left), plus every open goal the executive
-        named."""
+        changed this level), plus every open goal the executive named."""
         changed = {s for t in scene.things if t.id in self._changed for s in (t.sig, t.kind)}
         salient = frozenset(controlled_sigs(self.mem) | changed)
         ranked = self.goals.ranked(
@@ -1182,7 +1180,6 @@ class FluidAgent:
             grid=self._last_grid,
             kin=self._kin,
             salient=salient,
-            budget=self._budget.remaining(),
         )
         named = [
             g

@@ -110,13 +110,6 @@ def test_ranked_puts_cheap_salient_goals_first() -> None:
     assert book.open() == [far, near]  # the open list keeps insertion order
 
 
-def test_goal_beyond_budget_is_left_out_this_life_only() -> None:
-    scene, _ = scene_of({(10, 10): 3, (30, 10): 8, (40, 40): 9})
-    book, near, far = ranked_book(scene)
-    assert near not in book.ranked(scene, budget=5)  # 19 cells away, 5 moves left
-    assert far in book.ranked(scene, budget=5) and book.status[near] == "open"
-
-
 def test_confirmed_form_stays_first_and_search_gets_at_most_twelve() -> None:
     scene, _ = scene_of({(10, 10): 3, (13, 10): 8})
     book = GoalBook()
