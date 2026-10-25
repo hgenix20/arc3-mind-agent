@@ -26,7 +26,8 @@ Branch rules:
   objects predicted to change therefore can't multiply the state space. With nothing
   protected, the full ``Scene.key()`` is used.
 - A prediction whose key equals its parent's changes nothing that matters and is dropped.
-- ``match`` goals need a grid, so slice 1 search skips them.
+- ``match`` goals need a grid: when one is live, every scene is rendered
+  (``regions.render``) and goals are checked and scored on that grid.
 - ``noop`` holds ``(Scene.key(), Action.key())`` pairs seen to change nothing on a real
   frame. Such an action is not expanded from a scene with that full key, whatever the
   facts predict: the observation beats the prediction, and the pair costs no node.
@@ -72,6 +73,7 @@ from arcagent.mind.goals import Goal, goal_sigs, mover_sigs
 from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
+from arcagent.mind.regions import render
 
 SEARCH_MAX_NODES = 3000  # the main bound: predict calls per search
 SEARCH_TIME_S = 1.0  # wall-clock safety cap; shared with other game threads under the GIL
@@ -151,6 +153,7 @@ class _Best:
 
     trap: Callable[[Scene], bool]
     kin: Kinematics | None = None
+    grids: bool = False  # render scenes for match goals
     gain: int = 0
     goal: Goal | None = None
     distance: int | None = None
@@ -163,8 +166,9 @@ class _Best:
         and the lowest distance of any goal."""
         hit: Goal | None = None
         low: int | None = None
+        grid = render(scene) if self.grids else None
         for g, r in root.items():
-            d = g.distance(scene, None, self.kin)
+            d = g.distance(scene, grid, self.kin)
             if d is None:
                 continue
             low = d if low is None else min(low, d)
@@ -198,8 +202,9 @@ def _distances(
 ) -> dict[Goal, int]:
     """Each goal's distance in ``scene``, in goal order; goals with no estimate left out."""
     out: dict[Goal, int] = {}
+    grid = render(scene) if any(g.kind == "match" for g in goals) else None
     for g in goals:
-        d = g.distance(scene, None, kin)
+        d = g.distance(scene, grid, kin)
         if d is not None:
             out[g] = d
     return out
@@ -230,7 +235,7 @@ def search(
     ``protected_sigs``. ``goal_test``, when given, is one more goal: the first scene where
     it holds (after no goal in ``goals`` did) ends the search as ``found``, goal None.
     """
-    live = [g for g in goals if g.kind != "match"]
+    live = list(goals)
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
     run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
     run.weight = weight
@@ -260,7 +265,7 @@ class _Run:
         self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
         self.frontier: dict[tuple[str, str], None] = {}
         self.kin = kin
-        self.best = _Best(self.trap, kin)
+        self.best = _Best(self.trap, kin, any(g.kind == "match" for g in live))
         self.held: list[tuple[Goal | None, Plan]] = []  # a found plan ending in a trap
         self.root: dict[Goal, int] = {}
         self.unscored: list[Goal] = []

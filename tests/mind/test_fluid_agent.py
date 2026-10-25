@@ -1344,12 +1344,12 @@ class BudgetGame(FakeGame):
         if action.id == 0:
             self.used = 0
             return super().step(action)
-        obs = super().step(action)
+        super().step(action)
         self.used += 1
         if self.used >= self.BUDGET and self.phase == Phase.NOT_FINISHED:
             self.phase = Phase.GAME_OVER
             self.game_overs += 1
-        return self.observe() if obs.grid is not None else obs
+        return self.observe()
 
 
 def test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death(

@@ -407,37 +407,11 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 - **LLM out of the frame loop:** already true for goals; this keeps it so.
 - **Offline LLM compile:** carries over with one guard. The rule-book must describe generic goal forms (match a reference, cover every target), never what a public game needs; anything else breaks the "no memorized solutions" rule. My recommendation: write the rule-book by hand from root mechanics; if an LLM drafts entries, it sees only the generic descriptions, and every entry is reviewed before commit.
 
-### Task 5.1: Region primitives
+### Tasks 5.1 and 5.2: region primitives, the rule-book, match and cover
 
-**Files:**
-- Create: `arcagent/mind/regions.py`
-- Test: `tests/mind/test_regions.py`
+**As built:** `arcagent/mind/regions.py` (`framed_regions`, `twin_regions` with `TWIN_MIN = 3` and `MAX_TWINS = 20`, `static_cells`, `render`). The rule-book is `arcagent/mind/goal_rules.py`, a typed Python data module instead of JSON, so it ships inside the package with no data-file step (`GoalRule(kind, prior, proposed)`, `prior_of`, `proposed`). Goal kinds: `match` (already evaluated, never proposed before) is proposed for each twin pair of framed regions when `propose` gets the raw grid, and search now plans toward it by rendering predicted scenes; `cover(a, b)` is new: every visible thing named `b` has its own thing named `a` on or beside it, one-to-one by `assign` over cell gaps, proposed for movers and pushables against target sigs with two or more things (`MAX_COVER_TARGETS = 5`). Not built: `match_thing` (region match covers multi-color patterns), `sequence` (needs a progress-indicator detector first), `hold_commit` (the Task 1.4 commit probe does it). Spec component 4 records the decision.
 
-**Interfaces:**
-- Produces: `framed_regions(grid, scene) -> list[Region]` (rectangles enclosed by a one-color border), `twin_regions(grid, scene) -> list[tuple[Region, Region]]` (pairs of equal-size regions, at least `TWIN_MIN = 3×3`, at most `MAX_TWINS = 20` pairs ranked by how much content they hold), `static_cells(history) -> frozenset[Cell]` (never changed this level).
-
-- [ ] **Step 1: Failing tests.** `test_framed_region_found`, `test_twin_regions_pair_equal_sizes`, `test_twins_capped`, `test_static_cells_from_history`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Region primitives".
-
-### Task 5.2: Rule-book and new goal kinds (spec change)
-
-**Files:**
-- Create: `arcagent/mind/rules/goal_kinds.json`
-- Modify: `arcagent/mind/goals.py`
-- Modify: spec component 4: add the kinds and the rule-book; record the decision
-- Test: `tests/mind/test_goals.py`
-
-**Interfaces:**
-- Rule-book entry: `{"kind": str, "recognizer": str, "distance": str, "prior": float, "needs": [str]}`. `recognizer` and `distance` name functions in `goals.py`; unknown names fail at load with a clear error.
-- New `GoalKind` values and predicates:
-  - `match_ref`: a changing twin region equals its static twin. Distance: mismatched cells.
-  - `match_thing`: a thing of kind A has the same shape and colors as reference thing R (a pattern a player carries against a displayed target). Distance: differing cells after aligning top-lefts.
-  - `cover`: every thing of kind B has a thing of kind A on it. Distance: uncovered count, plus the assignment cost from `assign` over kinematic steps when kinematics exist.
-  - `sequence`: targets of kind B touched in an order. Order hypotheses, at most `MAX_ORDERS = 4`: left to right, top to bottom, by size, and the order shown by a static row of colors if one exists. A touch that undoes a progress indicator excludes that order. Proposed only when a progress indicator exists (a thing whose count or size changes exactly on touches).
-  - `hold_commit`: any goal plus a commit action (Task 1.4 records which action committed it).
-
-- [ ] **Step 1: Failing tests.** One holds/distance pair per kind; `test_rule_book_loads_and_names_known_functions`; `test_unknown_recognizer_fails_at_load`; `test_sequence_order_excluded_by_an_undo`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Rule-book and new goal kinds".
+- [x] Tests: `tests/mind/test_regions.py` (6), `tests/mind/test_goal_kinds.py` (5: rule-book kinds, cover holds and distance, cover with one side missing, cover and match proposed, search plans toward a match goal).
 
 ### Task 5.3: Rank goals instead of capping at 200
 

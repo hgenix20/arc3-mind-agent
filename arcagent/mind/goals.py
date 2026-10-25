@@ -16,8 +16,11 @@ the agent was pursuing that holds without a level-up can be set ``probing``
 out, a level-up confirms it, and ``end_probe`` excludes it. A confirmed form
 can stall too, for the rest of its level.
 
-Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``match`` and
-``count`` are evaluated but never proposed. ``mover_sigs`` and ``goal_sigs`` name the sigs
+``GoalBook.propose`` makes the kinds the rule-book (``goal_rules``) marks proposed:
+``reach``, ``clear``, ``match`` (from pairs of equal-size framed regions,
+``regions.twin_regions``, when given the raw grid) and ``cover`` (every target of one kind
+has its own mover or pushable thing on or beside it). ``count`` is evaluated but never
+proposed. ``mover_sigs`` and ``goal_sigs`` name the sigs
 a plan depends on; search and the fluid agent protect them from the stillness assumption.
 Pure and deterministic; callers strip noise things from the scene before calling
 ``propose``.
@@ -35,18 +38,22 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from arcagent.core.types import GRID_SIZE, Grid
+from arcagent.mind.assign import ASSIGN_MAX, assign
 from arcagent.mind.facts import Effect, FactMemory, clicked_sig
+from arcagent.mind.goal_rules import proposed
 from arcagent.mind.kinds import base_sig
 from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene, Thing
+from arcagent.mind.regions import twin_regions
 
-GoalKind = Literal["reach", "clear", "match", "count"]
+GoalKind = Literal["reach", "clear", "match", "count", "cover"]
 GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled", "probing"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
 MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
 MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
+MAX_COVER_TARGETS = 5  # cover goals per mover, fewest-cell target sigs first
 _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
 
 
@@ -54,7 +61,8 @@ _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
 class Goal:
     """One guess. Unused fields keep their defaults so equal goals compare equal.
 
-    ``reach``: ``a``, ``b`` are sigs. ``clear``: ``color``. ``count``: ``color`` and ``n``.
+    ``reach`` and ``cover``: ``a``, ``b`` are sigs or kinds. ``clear``: ``color``.
+    ``count``: ``color`` and ``n``.
     ``match``: two grid regions ``(x0, y0, x1, y1)``, end exclusive.
     """
 
@@ -77,6 +85,8 @@ class Goal:
                 return f"count c{self.color}={self.n}"
             case "match":
                 return f"match {self.region_a}={self.region_b}"
+            case "cover":
+                return f"cover {self.a}>{self.b}"
 
     def holds(self, scene: Scene, grid: Grid | None = None) -> bool:
         """Whether the predicate is true in ``scene``. ``match`` is False without a grid."""
@@ -89,6 +99,8 @@ class Goal:
                 return sum(1 for t in scene.things if t.color == self.color) == self.n
             case "match":
                 return grid is not None and _regions_equal(grid, self.region_a, self.region_b)
+            case "cover":
+                return _cover_cost(scene, self.a, self.b) == 0
 
     def distance(
         self, scene: Scene, grid: Grid | None = None, kin: Kinematics | None = None
@@ -101,25 +113,33 @@ class Goal:
         of the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1.
         None when either is missing. ``clear``: things of the color left. ``count``:
         ``abs(n - count)``. ``match``: mismatched cells; None without a grid or with
-        regions that are off the board or of different sizes. Cell gaps ignore walls and
-        step sizes: a ranking of scenes, not a move count.
+        regions that are off the board or of different sizes. ``cover``: the least total,
+        over a one-to-one matching of targets to movers, of each pair's cell gap less one
+        (0 when they touch), plus ``GRID_SIZE`` per target left without a mover; 0 when no
+        target is visible (all covered); None when targets show and no mover does. Cell gaps
+        ignore walls and step sizes: a ranking of scenes, not a move count.
         """
         match self.kind:
             case "reach":
-                gap = _reach_distance(scene, self.a, self.b)
-                if not gap or kin is None:
-                    return gap
-                body = kin.body(scene, self.a)
-                moves = kin.field(scene, self.a, self.b).get((body.x, body.y)) if body else None
-                return moves if moves else gap
+                return _reach_moves(scene, self.a, self.b, kin)
             case "clear":
                 return sum(1 for t in scene.things if t.color == self.color)
             case "count":
                 return abs(self.n - sum(1 for t in scene.things if t.color == self.color))
             case "match":
-                if grid is None:
-                    return None
-                return _mismatched(grid, self.region_a, self.region_b)
+                return None if grid is None else _mismatched(grid, self.region_a, self.region_b)
+            case "cover":
+                return _cover_cost(scene, self.a, self.b)
+
+
+def _reach_moves(scene: Scene, a: str, b: str, kin: Kinematics | None) -> int | None:
+    """``reach``'s distance: moves from ``kin``'s field when positive, else the cell gap."""
+    gap = _reach_distance(scene, a, b)
+    if not gap or kin is None:
+        return gap
+    body = kin.body(scene, a)
+    moves = kin.field(scene, a, b).get((body.x, body.y)) if body else None
+    return moves if moves else gap
 
 
 def _reach_distance(scene: Scene, a: str, b: str) -> int | None:
@@ -139,6 +159,25 @@ def _reach_distance(scene: Scene, a: str, b: str) -> int | None:
             gap = max(0, bx0 - ax1, ax0 - bx1) + max(0, by0 - ay1, ay0 - by1)
             best = gap if best is None else min(best, gap)
     return None if best is None else max(1, best - 1)
+
+
+def _gap(a: Thing, b: Thing) -> int:
+    ax0, ay0, ax1, ay1 = _bbox(a)
+    bx0, by0, bx1, by1 = _bbox(b)
+    return max(0, bx0 - ax1, ax0 - bx1) + max(0, by0 - ay1, ay0 - by1)
+
+
+def _cover_cost(scene: Scene, a: str, b: str) -> int | None:
+    """``cover``'s distance (see ``Goal.distance``); None past ``assign.ASSIGN_MAX``."""
+    targets = [t for t in scene.things if _is(t, b)]
+    if not targets:
+        return 0
+    movers = [t for t in scene.things if _is(t, a)]
+    if not movers or len(targets) > ASSIGN_MAX or len(movers) > ASSIGN_MAX:
+        return None
+    cost = [[float(max(0, _gap(m, t) - 1)) for m in movers] for t in targets]
+    pairs = assign(cost, float("inf"))
+    return int(sum(cost[i][j] for i, j in pairs)) + GRID_SIZE * (len(targets) - len(pairs))
 
 
 def _mismatched(grid: Grid, ra: Region, rb: Region) -> int | None:
@@ -237,11 +276,11 @@ def controlled_sigs(mem: FactMemory) -> frozenset[str]:
 def goal_sigs(goal: Goal, scene: Scene, *, targets: bool = True) -> frozenset[str]:
     """The sigs a goal is about.
 
-    ``reach``: ``a``, plus ``b`` when ``targets``. ``clear`` and ``count``: the sigs of the
-    things in ``scene`` with the goal's color. ``match``: none.
+    ``reach`` and ``cover``: ``a``, plus ``b`` when ``targets``. ``clear`` and ``count``:
+    the sigs of the things in ``scene`` with the goal's color. ``match``: none.
     """
     match goal.kind:
-        case "reach":
+        case "reach" | "cover":
             return frozenset({goal.a, goal.b} if targets else {goal.a})
         case "clear" | "count":
             return frozenset(t.sig for t in scene.things if t.color == goal.color)
@@ -275,6 +314,37 @@ def _clear_colors(mem: FactMemory) -> list[int]:
     return sorted(colors)
 
 
+def _pushed_sigs(mem: FactMemory) -> list[str]:
+    """Sigs with a non-broken ``pushed`` fact that moves them."""
+    out: set[str] = set()
+    for fact in mem.facts.values():
+        if fact.key[2] != "pushed" or fact.status == "broken":
+            continue
+        if any(e.kind in _MOVE_KINDS for e in fact.effects) and _sig_color(fact.key[1]) is not None:
+            out.add(fact.key[1])
+    return sorted(out)
+
+
+def _cover_guesses(
+    scene: Scene,
+    mem: FactMemory,
+    shadowed: set[str],
+    looks: dict[str, str],
+    ranked: list[str],
+) -> list[Goal]:
+    """``cover(a, b)`` for each mover or pushable ``a`` on screen and each target sig ``b``
+    with two or more things, at most ``MAX_COVER_TARGETS`` per mover, fewest cells first."""
+    present = {t.sig for t in scene.things} | {t.kind for t in scene.things}
+    many = {s for s in ranked if sum(1 for t in scene.things if t.sig == s) >= 2}
+    out: list[Goal] = []
+    for a in dict.fromkeys([*_mover_sigs(mem), *_pushed_sigs(mem)]):
+        if a not in present or a in shadowed:
+            continue
+        targets = [b for b in ranked if b in many and b != a and looks.get(b) != a]
+        out += [Goal("cover", a=a, b=b) for b in targets[:MAX_COVER_TARGETS]]
+    return out
+
+
 def _is_target(t: Thing) -> bool:
     x0, y0, x1, y1 = _bbox(t)
     return (x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_TARGET_AREA
@@ -289,7 +359,9 @@ class GoalBook:
     sources: dict[Goal, str] = field(default_factory=dict[Goal, str])
     stalled_forms: set[Goal] = field(default_factory=set[Goal])
 
-    def propose(self, scene: Scene, mem: FactMemory, *, source: str) -> list[Goal]:
+    def propose(
+        self, scene: Scene, mem: FactMemory, *, source: str, grid: Grid | None = None
+    ) -> list[Goal]:
         """Add the heuristic guesses not yet in ``status``; return the new ones in order.
 
         ``reach(a, b)`` for every non-broken mover sig ``a`` present in the scene against
@@ -315,6 +387,12 @@ class GoalBook:
             for b in [g for g in ranked if g != a and looks.get(g) != a][:MAX_REACH_TARGETS]
         ]
         guesses += [Goal("clear", color=c) for c in _clear_colors(mem)]
+        guesses += _cover_guesses(scene, mem, shadowed, looks, ranked)
+        if grid is not None:
+            guesses += [
+                Goal("match", region_a=ra, region_b=rb) for ra, rb in twin_regions(scene, grid)
+            ]
+        guesses = [g for g in guesses if proposed(g.kind)]
         added: list[Goal] = []
         room = MAX_OPEN_GOALS - sum(1 for _ in self._open_goals())
         for goal in guesses:

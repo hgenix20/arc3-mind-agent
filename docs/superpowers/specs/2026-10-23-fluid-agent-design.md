@@ -155,6 +155,15 @@ it is changed in place; the list says what is kept and what is replaced.
 - Goal guesses are predicates over objects: reach (object A on object B),
   clear (no objects of a kind left), match (a region equals a template
   region), count (n objects of a kind), and compositions of two.
+- Goal kinds (Kameron's decision, 2026-10-24: a deterministic parser of screen
+  primitives feeding a symbolic rule-book, no LLM in the loop). The rule-book
+  (`arcagent/mind/goal_rules.py`) lists generic kinds with a prior and whether
+  each is proposed; it never encodes what a particular game needs. Proposed
+  now: reach, clear, match (two equal-size framed regions, from
+  `regions.twin_regions`; search checks it on rendered predicted scenes) and
+  cover (every target of one kind has its own mover or pushable on or beside
+  it, matched one to one). Not built yet: a sequence in order (needs a
+  detector for progress indicators); "hold then submit" is the commit probe.
 - Guesses come from the LLM's reading of the screen and from signs of
   progress (a HUD or progress region that changes, a level-up event).
 - A guess the move log already rules out is thrown out: if its predicate was

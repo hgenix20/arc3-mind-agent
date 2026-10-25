@@ -988,7 +988,7 @@ class FluidAgent:
         return None if alive is None else _Choice(alive, "forced", FORCED_WHY)
 
     def _plan_choice(self, scene: Scene) -> _Choice | None:
-        added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE)
+        added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE, grid=self._last_grid)
         if added:
             self._log_goals(added, "open")
             self._log_goals(self._rule_out(added), "ruled_out")
