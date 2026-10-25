@@ -328,3 +328,18 @@ def test_search_never_plans_past_the_budget() -> None:
     assert search(s, simple_actions, mem, [goal], max_depth=5).stop == "found"
     short = search(s, simple_actions, mem, [goal], max_depth=4)
     assert short.stop != "found" and len(short.best) <= 4
+
+
+def test_a_pinned_reference_does_not_hide_another_goals_plan() -> None:
+    s = scene_of({(2, 2): 5, (9, 9): 7})
+    ref = next(t for t in s.things if t.color == 5)
+    mem = FactMemory()
+    mem.record(("A1", ref.sig, "any"), (Effect("disappear"),), 0)
+    mem.record(("A1", f"c7:{DOT}", "any"), (Effect("none"),), 0)
+    goals = [
+        Goal("clear", color=5),
+        Goal("match_thing", a="7", b=f"c7:{DOT}", n=ref.id, region_b=(2, 2, 3, 3)),
+    ]
+    r = search(s, lambda _s: [Action(1)], mem, goals)
+    assert r.stop == "found" and r.goal == Goal("clear", color=5)
+    assert [x.action.id for x in r.plan] == [1]
