@@ -103,12 +103,17 @@ class Scene:
     ``terrain`` is a (64, 64) int8 grid of the color under the things (see the module
     docstring); read-only by convention and left out of equality and hashing. A scene
     built without one gets the background everywhere and -1 on ``blocked`` cells.
+
+    ``selected`` and ``active`` are the hidden mode (``modes.ModeTracker``): the ids of
+    selected things and of the active controller. Both are part of ``key()``.
     """
 
     things: tuple[Thing, ...]
     background: int
     blocked: frozenset[Cell]
     terrain: Grid = field(default_factory=lambda: _UNSET, compare=False)
+    selected: frozenset[int] = frozenset()
+    active: int | None = None
 
     def __post_init__(self) -> None:
         if self.terrain.size == 0:
@@ -119,8 +124,16 @@ class Scene:
             object.__setattr__(self, "terrain", plain)
 
     def key(self) -> tuple[tuple[str, int, int], ...]:
-        """Sorted (sig, x, y); ids are ignored so equal layouts dedupe."""
-        return tuple(sorted((t.sig, t.x, t.y) for t in self.things))
+        """Sorted (sig, x, y), plus ("sel:" + sig, x, y) for each selected thing and
+        ("active:" + sig, x, y) for the active one; ids are ignored so equal layouts dedupe."""
+        out = [(t.sig, t.x, t.y) for t in self.things]
+        if self.selected or self.active is not None:
+            for t in self.things:
+                if t.id in self.selected:
+                    out.append(("sel:" + t.sig, t.x, t.y))
+                if t.id == self.active:
+                    out.append(("active:" + t.sig, t.x, t.y))
+        return tuple(sorted(out))
 
     def by_id(self) -> dict[int, Thing]:
         return {t.id: t for t in self.things}

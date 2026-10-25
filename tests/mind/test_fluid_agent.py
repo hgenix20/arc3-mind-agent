@@ -1206,3 +1206,54 @@ def test_a_turning_player_becomes_one_kind_and_reaches_the_target(tmp_path: Path
     assert any(r["type"] == "kind" for r in records(tmp_path))
     kinds = {agent._kinds.kind_of(t.sig) for t in agent._last_full.things if t.color == 1}  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
     assert all(k.startswith("k") for k in kinds)
+
+
+class PegGame:
+    """Pegs (color 2) and holes (color 3) in a row two cells apart. Clicking a peg selects it
+    (an outline, color 8, around it); clicking a hole two slots from the selected peg with a
+    peg between makes it jump, emptying both; any other click clears the selection. One peg
+    left wins."""
+
+    def __init__(self) -> None:
+        self.slots = {10: 2, 12: 2, 14: 3, 16: 2, 18: 3}
+        self.y = 20
+        self.sel: int | None = None
+        self.levels = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        for x, c in self.slots.items():
+            g[self.y, x] = c
+        if self.sel is not None:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if dx or dy:
+                        g[self.y + dy, self.sel + dx] = 8
+        return Observation(g, self.phase, self.levels, 1, (0, 6))
+
+    def step(self, action: Action) -> Observation:
+        x = action.x if action.id == 6 and action.y == self.y else None
+        kind = self.slots.get(x) if x is not None else None
+        if x is not None and kind == 2:
+            self.sel = x
+        elif x is not None and kind == 3 and self.sel is not None and abs(x - self.sel) == 4:
+            mid = (x + self.sel) // 2
+            if self.slots.get(mid) == 2:
+                self.slots[self.sel], self.slots[mid], self.slots[x] = 3, 3, 2
+            self.sel = None
+        else:
+            self.sel = None
+        if sum(1 for c in self.slots.values() if c == 2) == 1:
+            self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_the_agent_learns_a_selection_marker_and_files_clicks_under_it(tmp_path: Path) -> None:
+    game = PegGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=60)
+    agent.close()
+    assert agent._modes.known  # pyright: ignore[reportPrivateUsage]
+    assert f"c2:{DOT}" in agent.mem.selectable
+    assert any(k[2].startswith(("selected:", "sel:")) for k in agent.mem.facts)

@@ -21,7 +21,9 @@ Per ``choose(obs)``, in order:
    the real Transfer) and goal statuses stay. The new screen teaches nothing. ``close``
    sleeps once more over the current level's keys (game end). ``FactMemory.level``
    follows ``levels_completed`` so each new fact records the level it was made on.
-3. Otherwise update tracker (the last prediction's scene is its prior) and noise,
+3. Otherwise update tracker (the last prediction's scene is its prior), kinds
+   (``kinds.KindBook``), the mode (``modes.ModeTracker``: selection and the active thing,
+   stored on the scene) and noise,
    strip noisy things from both scenes and the diff, ``learn`` from the transition and
    ``check`` the previous prediction (its misses feed only the log and the plan stop;
    ``learn`` charges facts itself). Then
@@ -206,6 +208,7 @@ from arcagent.mind.goals import (
     mover_sigs,
 )
 from arcagent.mind.kinds import KindBook
+from arcagent.mind.modes import ModeTracker
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
@@ -495,6 +498,7 @@ class FluidAgent:
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
         self._seen_at: set[tuple[str, int, int]] = set()  # (kind, x, y) seen this level
         self._kinds = KindBook()  # identity classes of looks, for the whole game
+        self._modes = ModeTracker()  # selection and the active thing, per attempt
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -580,6 +584,7 @@ class FluidAgent:
         """
         self._tracker.reset()
         self.mem.kin_reset()
+        self._modes.reset()
         if new_attempt:
             self._noise.new_attempt()
         else:
@@ -730,6 +735,8 @@ class FluidAgent:
                 self._log.event("kind", step=move, kinds=joined)
                 prev_full = self._kinds.label(prev_full)
         full = self._kinds.label(full)
+        if diff is not None and prev_full is not None:
+            full = self._note_mode(prev_full, action, full, diff)
         if diff is None or prev_full is None:  # cannot happen after a non-fresh frame
             scene = _strip(full, self._noise.noisy_ids)
             self._keep(full, scene, obs.grid)
@@ -788,6 +795,19 @@ class FluidAgent:
         """Stop probing; a goal still probing is excluded."""
         self._probe = None
         self._log_goals(self.goals.end_probe(), "excluded")
+
+    def _note_mode(self, before: Scene, action: Action, after: Scene, diff: SceneDiff) -> Scene:
+        """Run the mode tracker; ``after`` with its selection and active thing. Things seen
+        selected make their sig and kind selectable for predictions."""
+        mode = self._modes.observe(
+            before, action, after, diff, self._noise.cells, controlled=controlled_sigs(self.mem)
+        )
+        by_id = after.by_id()
+        for sid in mode.selected:
+            t = by_id.get(sid)
+            if t is not None:
+                self.mem.selectable.update((t.sig, t.kind))
+        return replace(after, selected=mode.selected, active=mode.active)
 
     def _check_plan(
         self, pred: Prediction, before: Scene, after: Scene, keys: list[FactKey], grid: Grid

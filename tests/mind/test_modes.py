@@ -148,3 +148,12 @@ def test_click_moves_never_set_active() -> None:
     assert diff is not None
     mode = run.modes.observe(before, click(A), run.scene, diff, controlled=ctl)
     assert mode.active is None
+
+
+def test_a_lone_controlled_thing_is_never_tagged_active() -> None:
+    run = Run({A: 1})
+    ctl = controlled(run)
+    before = run.scene
+    run.scene, diff = run.t.update(grid_with({(A[0] + 1, A[1]): 1}), frozenset())
+    assert diff is not None
+    assert run.modes.observe(before, Action(4), run.scene, diff, controlled=ctl).active is None

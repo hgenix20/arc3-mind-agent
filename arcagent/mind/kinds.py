@@ -100,4 +100,4 @@ class KindBook:
     def label(self, scene: Scene) -> Scene:
         """``scene`` with every thing's ``kind`` set."""
         things = tuple(replace(t, kind=self.kind_of(t.sig)) for t in scene.things)
-        return Scene(things, scene.background, scene.blocked, scene.terrain)
+        return replace(scene, things=things)

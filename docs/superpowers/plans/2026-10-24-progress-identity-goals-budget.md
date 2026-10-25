@@ -319,53 +319,14 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 **What carries over:** all of it. My calls are how the tags get detected from the screen and how facts read them, since nothing announces a selection: the agent has to infer it from what a click changed.
 
-### Task 4.1: Detect selection
+### Tasks 4.1 to 4.3: selection, the active controller, and facts that read them
 
-**Files:**
-- Create: `arcagent/mind/modes.py`
-- Test: `tests/mind/test_modes.py`
+**As built:**
+- 4.1 `arcagent/mind/modes.py` `ModeTracker`: a candidate mark is an outline appearing around a clicked thing (color and shape) or the clicked thing recoloring; it is a known selection marker once it moves to another clicked thing (the tracker may keep the outline's id as it jumps, so a moved mark counts) or a second click takes it away. Masked cells and the clicked thing's own move are never marks.
+- 4.2 `Mode.active`: after a non-click action in which exactly one controlled thing (`goals.controlled_sigs`) moved, that thing is active, but only while two or more controlled things are on screen: with one, filing its moves under `active` would pull them out of the `any` facts that the slide, teleport and blocked rules read (a test caught it). Action numbers carry no meaning.
+- 4.3 `Scene.selected` and `Scene.active` are part of the scene and its key. `modes.mode_contexts`: `selected:dx,dy`, `between:dx,dy`, `sel:dx,dy` (past `SEL_RANGE = 8`: `far`) for a click while something is selected; `active` for the active thing under other actions. `learn` gives those contexts to observations still in `any`; the predictor looks them up first (falling back to `any`) and predicts the next mode (`modes.predicted_mode`: a click on a sig or kind in `FactMemory.selectable` selects it alone, any other click clears the selection). The agent runs the tracker each transition and stores the mode on the scene; spec component 11 records the decision.
 
-**Interfaces:**
-- Produces:
-  - `@dataclass(frozen=True) class Mode: selected: frozenset[int] = frozenset(); active: int | None = None` (track ids).
-  - `class ModeTracker`: `observe(before: Scene, action: Action, after: Scene, diff: SceneDiff, masked: frozenset[Cell]) -> Mode`; `mode -> Mode`; `reset()`.
-  - Selection rule: a click on thing T is followed by a non-move change confined to T's bbox grown by `MARK_RING = 2` cells (an outline appears, T recolors or reshapes), and a later click on another thing U moves that same change pattern to U, or a click on T again undoes it. After one such transfer or undo, the pattern is a known selection marker; from then on, any thing showing it is selected. Changes on masked cells never count.
-
-- [ ] **Step 1: Failing tests.** `test_outline_moving_with_clicks_marks_selection`, `test_recolor_on_click_then_undo_marks_selection`, `test_one_click_alone_is_not_yet_selection`, `test_masked_change_is_not_a_selection_marker`, `test_reset_clears_mode`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Detect selection from what clicks change".
-
-### Task 4.2: Detect the active controller
-
-**Files:**
-- Modify: `arcagent/mind/modes.py`
-- Test: `tests/mind/test_modes.py`
-
-**Interfaces:**
-- Produces: `Mode.active`: among controlled kinds with more than one thing on screen (or more than one controlled kind), the track that moved under the last direction action. A switch is learned as a fact with a new effect kind `switch_active` (Task 4.3) when, after an action, a different track answers the same direction action.
-
-- [ ] **Step 1: Failing tests.** `test_active_is_the_thing_that_moved`, `test_switch_action_changes_active`, `test_single_controlled_thing_is_always_active`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Track the active controller".
-
-### Task 4.3: Facts read the mode (spec change)
-
-**Files:**
-- Modify: `arcagent/mind/facts.py`, `arcagent/mind/predictor.py`, `arcagent/mind/fluid.py`
-- Modify: spec component 11 (contexts): add `sel` and relative effects; record the decision
-- Test: `tests/mind/test_facts.py`, `tests/mind/test_predictor.py`
-
-**Interfaces:**
-- Consumes: `Mode`.
-- Produces:
-  - Context `sel:<dx>,<dy>` for a click while a thing is selected: the clicked cell's offset from the selected thing's click cell, with `|dx|, |dy| ≤ SEL_RANGE = 8`; farther offsets use `sel:far`.
-  - Effects anchored to the selection: `Effect.rel: Literal["", "selected", "between"]`. `move` with `rel="selected"`: the selected thing moves to the clicked cell. `disappear` with `rel="between"`: things on cells strictly between the selected and clicked cells vanish. Learned only from observation: when a click under a selection changes things, each change is described relative to (selected, clicked) when that description is exact, and absolutely otherwise.
-  - Direction facts apply only to `Mode.active` when it's set.
-- This is the "relative-position click effects" lever noted on 2026-10-24 as Kameron's decision; this direction makes it.
-
-- [ ] **Step 1: Failing tests.**
-  - `test_jump_two_away_is_learned_relative_to_selection`: select A, click an empty slot two cells right; A moves there and the thing between disappears. Assert a fact under context `sel:2,0` with effects `move rel=selected` and `disappear rel=between`, and a correct prediction for a different selected thing at another position.
-  - `test_same_click_without_selection_is_a_different_fact`.
-  - `test_direction_moves_only_the_active_thing`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Facts read selection and the active controller".
+- [x] Tests: `tests/mind/test_modes.py` (11), `tests/mind/test_mode_facts.py` (6), `test_the_agent_learns_a_selection_marker_and_files_clicks_under_it`. On a five-slot peg game the agent wins in 22 moves with the mode and doesn't win in 300 without it.
 
 ### Task 4.4: Tests and no-op memory key on mode, not the whole scene
 

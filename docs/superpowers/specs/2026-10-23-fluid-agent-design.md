@@ -232,6 +232,18 @@ bounded.
   direction, touching a color, inside a region, selected. The LLM may add a
   context as a predicate over objects (sandboxed); it is then computed like
   the built-in ones.
+- Hidden mode (Kameron's decision, 2026-10-24: tags on tracked things, no
+  global mode slot, no LLM). A selection marker is learned from clicks (a mark
+  that follows the clicked thing or goes away on a second click), and the
+  active controller is the one controlled thing that answered a non-click
+  action when two or more are on screen. Both live on the scene and in its
+  key. A click made while a thing is selected gives contexts relative to the
+  selection: `selected:dx,dy` for the selected thing, `between:dx,dy` for
+  things on the cells between it and the click, `sel:dx,dy` for the clicked
+  thing (offsets past 8 cells are `far`); the active thing's facts for
+  non-click actions use context `active`. The predictor predicts the next
+  selection: a click on a kind seen selected selects it, any other click
+  clears it.
 
 ### 12. The paper's four modules (Claude's call)
 

@@ -18,8 +18,10 @@ move is never a mark.
 
 Active controller: after a transition caused by a non-click action in which exactly one
 thing whose sig or kind is in ``controlled`` (the agent's ``goals.controlled_sigs``) moved,
-that thing is active. It stays active through transitions where no controlled thing moved
-or several did, and loses the tag only when another controlled thing alone answers. Action
+that thing is active, provided two or more controlled things are on screen (with one,
+there is no choice to track, and its facts stay in context ``any``). It stays active
+through transitions where no controlled thing moved or several did, and loses the tag
+only when another controlled thing alone answers. Action
 numbers carry no meaning here: which thing a direction drives is learned, not assumed.
 Pure apart from the tracker's own state; ids are the object tracker's.
 """
@@ -29,9 +31,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
-from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing
+from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, click_cell
 
 MARK_RING = 2  # a mark lies within the clicked thing's bbox grown by this many cells
+SEL_RANGE = 8  # selection offsets beyond this many cells on an axis share the "far" context
 
 Mark = tuple[str, int, str]  # ("appear", color, shape) or ("recolor", color, "")
 
@@ -61,6 +64,74 @@ def clicked_thing(scene: Scene, action: Action) -> Thing | None:
         return None
     point = (action.x, action.y)
     return next((t for t in scene.things if point in t.cells), None)
+
+
+def _sign(v: int) -> int:
+    return (v > 0) - (v < 0)
+
+
+def mode_contexts(scene: Scene, action: Action) -> dict[int, str]:
+    """Fact contexts the mode gives things for ``action`` (others keep ``any``).
+
+    A click while something is selected: ``selection_contexts``. Any other action while a
+    thing is active: ``"active"`` for that thing.
+    """
+    if action.id == COORD_ACTION_ID:
+        return selection_contexts(scene, action)
+    if scene.active is not None and any(t.id == scene.active for t in scene.things):
+        return {scene.active: "active"}
+    return {}
+
+
+def selection_contexts(scene: Scene, action: Action) -> dict[int, str]:
+    """Contexts of a click made while a thing is selected (the lowest id if several).
+
+    With (dx, dy) the click point less the selected thing's click cell (``far`` past
+    ``SEL_RANGE``): the selected thing gets ``selected:dx,dy``, the clicked thing
+    ``sel:dx,dy``, and things on the cells strictly between the two along a row, column or
+    diagonal ``between:dx,dy``. Empty when nothing is selected or the action isn't a click.
+    """
+    if action.id != COORD_ACTION_ID or not scene.selected:
+        return {}
+    by_id = scene.by_id()
+    sid = min(scene.selected)
+    sel = by_id.get(sid)
+    if sel is None:
+        return {}
+    sx, sy = click_cell(sel)
+    dx, dy = action.x - sx, action.y - sy
+    near = max(abs(dx), abs(dy)) <= SEL_RANGE
+    tag = f"{dx},{dy}" if near else "far"
+    out = {sid: f"selected:{tag}"}
+    clicked = clicked_thing(scene, action)
+    if clicked is not None and clicked.id != sid:
+        out[clicked.id] = f"sel:{tag}"
+    if near and (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+        ux, uy = _sign(dx), _sign(dy)
+        between = {(sx + ux * i, sy + uy * i) for i in range(1, max(abs(dx), abs(dy)))}
+        for t in scene.things:
+            if t.id not in out and not t.cells.isdisjoint(between):
+                out[t.id] = f"between:{tag}"
+    return out
+
+
+def predicted_mode(
+    scene: Scene, action: Action, survivors: frozenset[int], selectable: set[str]
+) -> tuple[frozenset[int], int | None]:
+    """The mode after ``action``: a click on a thing of a selectable sig or kind selects it
+    alone; any other click clears the selection; other actions keep it. The active thing
+    stays active while it exists. ``survivors`` are the ids still present after."""
+    selected = scene.selected & survivors
+    if action.id == COORD_ACTION_ID:
+        clicked = clicked_thing(scene, action)
+        pick = (
+            clicked is not None
+            and clicked.id in survivors
+            and (clicked.sig in selectable or clicked.kind in selectable)
+        )
+        selected = frozenset({clicked.id}) if pick and clicked is not None else frozenset()
+    active = scene.active if scene.active in survivors else None
+    return selected, active
 
 
 class ModeTracker:
@@ -131,6 +202,10 @@ class ModeTracker:
         if action.id == COORD_ACTION_ID or not controlled:
             return
         olds, news = before.by_id(), after.by_id()
+        present = [t for t in after.things if t.sig in controlled or t.kind in controlled]
+        if len(present) < 2:
+            self._active = None
+            return
         moved = [
             c.id
             for c in diff.changes

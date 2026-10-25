@@ -61,6 +61,7 @@ from arcagent.mind.facts import (
     cell_owner,
     touch_contexts,
 )
+from arcagent.mind.modes import mode_contexts, predicted_mode
 from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing
 
 SPAWN_MIN_HITS = 2  # a spawn fact predicts appears only after this many agreeing observations
@@ -139,6 +140,7 @@ class _Run:
         self.protect = protect
         self.assumed: dict[Pair, None] = {}
         self.subject = {t.id: "self" if t.id == clicked else t.sig for t in scene.things}
+        self.context = mode_contexts(scene, action)  # selection and active-thing contexts
         self.effects: dict[int, tuple[Effect, ...]] = {}
         self.sources: dict[int, FactKey] = {}
         self.used: dict[FactKey, None] = {}
@@ -289,7 +291,8 @@ def _base(run: _Run) -> dict[int, _Mover]:
     movers: dict[int, _Mover] = {}
     for t in run.scene.things:
         subject = run.subject[t.id]
-        found = run.mem.lookup(run.label, subject, "any", run.kind_of(t.id))
+        ctx = run.context.get(t.id, "any")
+        found = run.mem.lookup(run.label, subject, ctx, run.kind_of(t.id))
         if found is None or found[0].status == "broken":
             run.pending[t.id] = (run.label, subject)
             continue
@@ -567,7 +570,11 @@ def predict(
             moved = _apply(t, run.effects.get(t.id, _NONE), run.shift.get(t.id, (0, 0)))
             if moved is not None:
                 things.append(moved)
-        new_scene = Scene((*things, *spawned), scene.background, scene.blocked, scene.terrain)
+        alive = frozenset(t.id for t in things)
+        selected, active = predicted_mode(scene, action, alive, mem.selectable)
+        new_scene = Scene(
+            (*things, *spawned), scene.background, scene.blocked, scene.terrain, selected, active
+        )
     return Prediction(
         new_scene,
         run.effects,

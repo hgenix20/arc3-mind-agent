@@ -37,6 +37,7 @@ from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, Action
+from arcagent.mind.modes import mode_contexts
 from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing, color_at
 
 EffectKind = Literal[
@@ -239,6 +240,8 @@ class FactMemory:
         self.last_move: dict[FactKey, tuple[Effect, bool]] = {}
         self.safe_touch: dict[str, set[int]] = {}
         self.safe_near: dict[str, set[int]] = {}
+        # sigs and kinds seen selected (``modes.ModeTracker``); a click selects one of these
+        self.selectable: set[str] = set()
         # (label, context, shape) -> keys; built alongside the toc for borrowing
         self._siblings: dict[tuple[str, str, str], set[FactKey]] = {}
         # track id -> the sigs that thing has carried since the tracker last reset, oldest
@@ -963,6 +966,14 @@ def _record_appear(
     return [key]
 
 
+def _mark_mode(before: Scene, action: Action, obs: list[_Obs]) -> None:
+    """Give observations still in context ``any`` the mode's context (``modes.mode_contexts``)."""
+    ctx = mode_contexts(before, action)
+    for o in obs:
+        if o.context == "any" and o.thing.id in ctx:
+            o.context = ctx[o.thing.id]
+
+
 def _kind_observations(obs: list[_Obs], after: Scene | None) -> list[_Obs]:
     """Each observation of a thing whose kind isn't its sig, again under the kind.
 
@@ -1108,6 +1119,7 @@ def learn(
     _mark_pushed(mem, label, obs)
     _note_walkable(mem, room_before, obs)
     _mark_blocked(mem, label, room_before, obs)
+    _mark_mode(before, action, obs)
     keys = _record_groups(mem, label, room_after, obs, move)
     keys += _record_groups(mem, label, room_after, _kind_observations(obs, after), move)
     _share_with_kinds(mem, obs)
