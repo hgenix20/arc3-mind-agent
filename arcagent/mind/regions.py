@@ -80,6 +80,6 @@ def render(scene: Scene) -> Grid:
     """The scene as a grid: its terrain with every thing painted on."""
     g = np.array(scene.terrain, dtype=np.int8, copy=True)
     for t in scene.things:
-        for x, y in t.cells:
-            g[y, x] = t.color
+        for (x, y), color in t.colored():
+            g[y, x] = color
     return g

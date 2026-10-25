@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 
 from arcagent.core.types import COORD_ACTION_ID, Action, Grid
-from arcagent.mind.modes import Mode, ModeTracker
+from arcagent.mind.modes import Mode, ModeTracker, selection_contexts
 from arcagent.mind.objects import Tracker
 
 Cells = dict[tuple[int, int], int]
@@ -157,3 +159,29 @@ def test_a_lone_controlled_thing_is_never_tagged_active() -> None:
     run.scene, diff = run.t.update(grid_with({(A[0] + 1, A[1]): 1}), frozenset())
     assert diff is not None
     assert run.modes.observe(before, Action(4), run.scene, diff, controlled=ctl).active is None
+
+
+def test_a_mark_whose_thing_acts_on_a_click_elsewhere_marks_selection() -> None:
+    run = Run(PEGS)
+    run.step(click(P1), PEGS | ring(*P1))
+    moved = {(14, 10): 2, P2: 2}
+    mode = run.step(click((14, 10)), moved)  # the ringed peg jumps; the ring goes with the click
+    assert mode.selected == frozenset() and run.modes.known
+    mode = run.step(click(P2), moved | ring(*P2))
+    assert mode.selected == frozenset({run.id_at(P2)})
+
+
+def test_a_mark_that_vanishes_while_its_thing_stays_put_is_not_learned() -> None:
+    run = Run(PEGS)
+    run.step(click(P1), PEGS | ring(*P1))
+    run.step(click((40, 40)), PEGS)  # the ring goes, the peg doesn't change
+    assert not run.modes.known
+
+
+def test_a_twelve_cell_jump_keeps_its_offset_and_what_lies_between() -> None:
+    first = {(10, 10): 2, (16, 10): 2}
+    run = Run(first)
+    scene = replace(run.scene, selected=frozenset({run.id_at((10, 10))}))
+    ctx = selection_contexts(scene, click((22, 10)))
+    assert ctx[run.id_at((10, 10))] == "selected:12,0"
+    assert ctx[run.id_at((16, 10))] == "between:12,0"

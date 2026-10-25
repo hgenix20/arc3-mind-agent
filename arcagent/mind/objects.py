@@ -1,7 +1,8 @@
 """Objects, scenes, tracking and diffs: the perception layer of the fluid agent.
 
 Pure and deterministic. A ``Thing`` is a 4-connected single-color component with a
-position-invariant signature and fewer than ``TERRAIN_MIN_CELLS`` cells. A ``Tracker``
+position-invariant signature and fewer than ``TERRAIN_MIN_CELLS`` cells, plus the
+small decorations of other colors it carries (``_join_parts``: a piece). A ``Tracker``
 gives things stable ids across frames and reports what each one did. Padding cells
 (value -1) are never things: they land in ``Scene.blocked``. Callers must call
 ``Tracker.reset`` on a level change or RESET so a whole-screen replacement is not
@@ -40,7 +41,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -66,6 +67,8 @@ KIND_COST: dict[str, float] = {
     "near": 60.0,
 }
 TERRAIN_MIN_CELLS = 128  # a component this large is terrain, never a Thing
+PART_SHARE = 0.25  # a decoration has at most this share of its host's cells
+PIECE_FILL = 0.75  # host and parts fill at least this share of the host's bbox
 _NO_MEMORY = -2  # terrain memory value for a cell never seen uncovered (-1 is padding)
 
 Cell = tuple[int, int]
@@ -73,10 +76,13 @@ Cell = tuple[int, int]
 
 @dataclass(frozen=True, slots=True)
 class Thing:
-    """A single-color component. ``x, y`` is the bbox top-left; ``cells`` are absolute (x, y).
+    """A single-color component, with any decorations it carries. ``x, y`` is the bbox
+    top-left; ``cells`` are absolute (x, y).
 
     ``kind`` is the thing's identity class across looks (``kinds.KindBook``): the first sig
-    its class was seen with. Left empty it is the thing's own sig.
+    its class was seen with. Left empty it is the thing's own sig. ``paint`` lists
+    ``(dx, dy, color)`` for the cells whose color isn't ``color``, offsets from the bbox
+    top-left (empty for a plain thing); read colors through ``colored``.
     """
 
     id: int
@@ -87,10 +93,21 @@ class Thing:
     y: int
     cells: frozenset[Cell]
     kind: str = ""
+    paint: tuple[tuple[int, int, int], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.kind:
             object.__setattr__(self, "kind", self.sig)
+
+    def colored(self) -> Iterator[tuple[Cell, int]]:
+        """Each cell with its color."""
+        if not self.paint:
+            for c in self.cells:
+                yield c, self.color
+            return
+        other = {(self.x + dx, self.y + dy): col for dx, dy, col in self.paint}
+        for c in self.cells:
+            yield c, other.get(c, self.color)
 
 
 _UNSET: Grid = np.zeros((0, 0), dtype=np.int8)
@@ -174,15 +191,18 @@ class SceneDiff:
         return self.stray_cells == 0 and all(c.kind == "same" for c in self.changes)
 
 
-def shape_of(cells: Iterable[Cell]) -> str:
-    """First 10 hex of SHA-1 over the sorted cell offsets from the bbox top-left."""
+def shape_of(cells: Iterable[Cell], paint: Iterable[tuple[int, int, int]] = ()) -> str:
+    """First 10 hex of SHA-1 over the sorted cell offsets from the bbox top-left, and the
+    sorted ``paint`` when there is any (a plain thing's hash doesn't change)."""
     pts = list(cells)
     if not pts:
         return ""
     x0 = min(x for x, _ in pts)
     y0 = min(y for _, y in pts)
     offs = sorted((x - x0, y - y0) for x, y in pts)
-    return hashlib.sha1(repr(offs).encode()).hexdigest()[:10]
+    marks = sorted(paint)
+    key = repr((offs, marks)) if marks else repr(offs)
+    return hashlib.sha1(key.encode()).hexdigest()[:10]
 
 
 def _visible(grid: Grid, mask: frozenset[Cell]) -> tuple[Grid, int]:
@@ -226,7 +246,68 @@ def _things(grid: Grid, memory: Grid | None = None) -> list[Thing]:
                 cells=cells,
             )
         )
-    return out
+    return _join_parts(out)
+
+
+def _bbox(t: Thing) -> tuple[int, int, int, int]:
+    xs = [x for x, _ in t.cells]
+    ys = [y for _, y in t.cells]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _host(i: int, things: list[Thing], at: dict[Cell, int]) -> int | None:
+    """The largest touching thing of another color whose bbox holds all of ``things[i]``,
+    with some cell of it on the bbox's rim, and has at least ``1 / PART_SHARE`` times its
+    cells."""
+    t = things[i]
+    best: int | None = None
+    for x, y in t.cells:
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            j = at.get((x + dx, y + dy))
+            if j is None or j == i or things[j].color == t.color:
+                continue
+            h = things[j]
+            if len(t.cells) > PART_SHARE * len(h.cells):
+                continue
+            x0, y0, x1, y1 = _bbox(h)
+            if not all(x0 <= a <= x1 and y0 <= b <= y1 for a, b in t.cells):
+                continue
+            if not any(a in (x0, x1) or b in (y0, y1) for a, b in t.cells):
+                continue  # inside, off the rim: a selection ring doesn't own what it rings
+            if best is None or len(h.cells) > len(things[best].cells):
+                best = j
+    return best
+
+
+def _join_parts(things: list[Thing]) -> list[Thing]:
+    """Merge each small decoration into the sprite that carries it (a piece).
+
+    A thing joins its ``_host``; a host takes its parts only when together they fill at
+    least ``PIECE_FILL`` of its bbox, so a hollow frame never swallows what stands inside
+    it. The piece keeps the host's color and lists the parts' cells in ``paint``. Order:
+    hosts where they stood, parts dropped.
+    """
+    at = {c: i for i, t in enumerate(things) for c in t.cells}
+    host_of = {i: j for i in range(len(things)) if (j := _host(i, things, at)) is not None}
+    parts: dict[int, list[int]] = {}
+    for i, j in host_of.items():
+        if j not in host_of:  # a host that is itself a part keeps to itself
+            parts.setdefault(j, []).append(i)
+    joined: dict[int, Thing] = {}
+    dropped: set[int] = set()
+    for j, mine in parts.items():
+        h = things[j]
+        x0, y0, x1, y1 = _bbox(h)
+        cells = h.cells.union(*(things[i].cells for i in mine))
+        if len(cells) < PIECE_FILL * (x1 - x0 + 1) * (y1 - y0 + 1):
+            continue
+        paint = tuple(
+            sorted((x - x0, y - y0, things[i].color) for i in mine for x, y in things[i].cells)
+        )
+        shape = shape_of(cells, paint)
+        joined[j] = Thing(-1, h.color, shape, f"c{h.color}:{shape}", x0, y0, cells, paint=paint)
+        dropped.update(mine)
+    return [joined.get(i, t) for i, t in enumerate(things) if i not in dropped]
 
 
 def extract(grid: Grid, mask: frozenset[Cell] = frozenset()) -> list[Thing]:
@@ -271,7 +352,7 @@ def _terrain(visible: Grid, things: Iterable[Thing], memory: Grid, bg: int) -> G
 
 
 def _with_id(t: Thing, tid: int) -> Thing:
-    return Thing(tid, t.color, t.shape, t.sig, t.x, t.y, t.cells)
+    return Thing(tid, t.color, t.shape, t.sig, t.x, t.y, t.cells, paint=t.paint)
 
 
 Pairs = dict[int, int]

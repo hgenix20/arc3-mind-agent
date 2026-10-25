@@ -7,7 +7,9 @@ import time
 import numpy as np
 
 from arcagent.core.types import Grid
+from arcagent.mind.facts import cell_owner
 from arcagent.mind.objects import Scene, Thing, Tracker, color_at, extract, shape_of
+from arcagent.mind.regions import render
 
 
 def grid_with(cells: dict[tuple[int, int], int], bg: int = 0) -> Grid:
@@ -305,3 +307,57 @@ def test_how_records_still_and_same_sig_matches() -> None:
     t.update(grid_with({(7, 5): 2, (30, 30): 4}), frozenset())
     by_color = {th.color: th.id for th in s0.things}
     assert t.how[by_color[4]] == "still" and t.how[by_color[2]] == "sig"
+
+
+def _piece(x: int, y: int, body: int = 14, corner: int = 1) -> dict[tuple[int, int], int]:
+    """A 4x4 sprite: ``body`` everywhere but its four corner cells, which are ``corner``."""
+    cells = {(x + i, y + j): body for i in range(4) for j in range(4)}
+    for i, j in ((0, 0), (3, 0), (0, 3), (3, 3)):
+        cells[(x + i, y + j)] = corner
+    return cells
+
+
+def test_corner_decorations_join_their_sprite() -> None:
+    (t,) = extract(grid_with(_piece(10, 10)))
+    plain = extract(grid_with({(10 + i, 10 + j): 14 for i in range(4) for j in range(4)}))[0]
+    assert t.color == 14 and len(t.cells) == 16 and (t.x, t.y) == (10, 10)
+    assert sorted(t.paint) == [(0, 0, 1), (0, 3, 1), (3, 0, 1), (3, 3, 1)]
+    assert t.sig.startswith("c14:") and t.sig != plain.sig and plain.paint == ()
+    assert t.sig == extract(grid_with(_piece(30, 40)))[0].sig
+
+
+def test_a_thing_inside_a_hollow_frame_stays_its_own() -> None:
+    frame = {(x, y): 5 for x in range(10, 20) for y in (10, 19)}
+    frame |= {(x, y): 5 for y in range(10, 20) for x in (10, 19)}
+    things = extract(grid_with(frame | {(11, 11): 3}))
+    assert sorted(t.color for t in things) == [3, 5] and all(t.paint == () for t in things)
+
+
+def test_a_part_over_a_quarter_of_its_host_stays_its_own() -> None:
+    cells = {(10 + i, 10 + j): 14 for i in range(4) for j in range(4)}
+    cells |= {(11, 11): 2, (12, 11): 2, (11, 12): 2, (12, 12): 2, (13, 12): 2}
+    assert sorted(t.color for t in extract(grid_with(cells))) == [2, 14]
+
+
+def test_a_piece_paints_and_owns_its_part_colors() -> None:
+    s, _ = Tracker().update(grid_with(_piece(10, 10)), frozenset())
+    g = render(s)
+    assert g[10, 10] == 1 and g[10, 11] == 14 and g[13, 13] == 1
+    owner = cell_owner(s)
+    assert owner[(10, 10)][1] == 1 and owner[(11, 10)][1] == 14
+
+
+def test_a_moving_piece_keeps_its_id_and_paint() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with(_piece(10, 10)), frozenset())
+    s1, d = t.update(grid_with(_piece(22, 10)), frozenset())
+    assert d is not None
+    (c,) = [c for c in d.changes if c.kind != "same"]
+    assert c.kind == "moved" and (c.dx, c.dy) == (12, 0)
+    assert s1.by_id()[c.id].paint == s0.by_id()[c.id].paint != ()
+
+
+def test_a_selection_ring_does_not_own_the_thing_it_rings() -> None:
+    cells = {(10 + dx, 10 + dy): 8 for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy}
+    things = extract(grid_with(cells | {(10, 10): 2}))
+    assert sorted(t.color for t in things) == [2, 8] and all(t.paint == () for t in things)

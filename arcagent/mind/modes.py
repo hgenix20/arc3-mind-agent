@@ -5,8 +5,10 @@ a click on a thing T, a non-move change confined to T's bbox grown by ``MARK_RIN
 a candidate mark: a thing that appears there (an outline), described by its color and
 shape, or T itself recoloring, described by the new color. A candidate becomes a known
 selection marker when a later transition shows it was a selection: the same mark appears
-on another clicked thing while it vanishes from the one it was on, or a second click on the
-thing it is on makes it vanish (an undo). From then on, a thing showing a known mark is
+on another clicked thing while it vanishes from the one it was on, a second click on the
+thing it is on makes it vanish (an undo), or a click on something else changes the thing it
+is on (moves it, changes its look or removes it) as the mark vanishes (a use: the click acted
+through the marked thing). From then on, a thing showing a known mark is
 selected, and stops being selected when the mark vanishes from it.
 
 A mark vanishes when the thing that drew it disappears, or when its owner recolors away
@@ -34,7 +36,7 @@ from arcagent.core.types import COORD_ACTION_ID, Action
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, click_cell
 
 MARK_RING = 2  # a mark lies within the clicked thing's bbox grown by this many cells
-SEL_RANGE = 8  # selection offsets beyond this many cells on an axis share the "far" context
+SEL_RANGE = 16  # selection offsets beyond this many cells on an axis share the "far" context
 
 Mark = tuple[str, int, str]  # ("appear", color, shape) or ("recolor", color, "")
 
@@ -170,9 +172,14 @@ class ModeTracker:
         vanished += self._vanished(diff)
         if clicked is not None:
             fresh += self._fresh(clicked, after, diff, masked)
+        changed = {c.id for c in diff.changes if c.kind != "same"}
         for mark, owner in vanished:
-            if clicked is not None and owner == clicked.id and self._last_on.get(mark) == owner:
+            if self._last_on.get(mark) != owner:
+                continue
+            if clicked is not None and owner == clicked.id:
                 self.known.add(mark)  # a second click on it took it away: an undo
+            elif action.id == COORD_ACTION_ID and owner in changed:
+                self.known.add(mark)  # a click elsewhere acted through it: a use
         for mark in fresh:
             assert clicked is not None
             prev = self._last_on.get(mark)

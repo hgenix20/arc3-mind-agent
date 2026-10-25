@@ -517,6 +517,26 @@ Two fixes the test game exposed, in the same commit: the noise mask now masks a 
 
 ---
 
+## Section 7: Composite pieces (Kameron's go, 2026-10-25)
+
+**Why.** lf52 stalls after level 1. It was filed as "click effects depend on where a thing sits relative to the click", but replaying it through the tracker shows the blocker sits in perception. Each piece is a color-14 blob with four single color-1 corner cells, so the agent sees five things. A click lands on a 1x1 corner. The selection ring (6x6) then lies outside that corner's box grown by `MARK_RING`, so it's never a mark, selection is never found, and the relative contexts that already exist (`selected:dx,dy`, `sel:dx,dy`, `between:dx,dy`) never fire. The corner cells also "move 12 cells" between unrelated slots whenever a ring or a marker swaps their color, which is where the broken `moves 12 cells right/down` facts come from. Kameron chose to fix perception (composite pieces) over a click-only patch or a facts-only change.
+
+### Task 7.1: Decorations join their sprite
+
+A thing joins a touching thing of another color (its host) when every cell of it lies inside the host's bbox, some cell of it lies on that bbox's rim (a selection ring doesn't own the peg it rings) and it has at most `PART_SHARE = 0.25` of the host's cells; with several candidate hosts, the largest. A host takes its parts only when host and parts together fill at least `PIECE_FILL = 0.75` of the host's bbox, so a hollow frame never swallows what stands inside it. The piece keeps the host's color; `Thing.paint` lists `(dx, dy, color)` for the cells of another color, offsets from the bbox top-left, so a move keeps it. The shape hash covers the paint (a plain thing's hash is unchanged), so a piece and its bare host have different sigs. Everything that paints a thing cell by cell reads the paint: `regions.render`, `facts.cell_owner`, the tracker's copies and the predictor's moved and spawned things.
+
+Probe on each public game's first frame: lf52 gets its 5 pieces (16 cells, 4 painted), and six other games get pieces too (bp35 7, sk48 2, r11l, sc25, tn36 and tu93 1 each); the full A/B decides whether those hurt.
+
+### Task 7.2: A selection shown by use
+
+A mark that appeared on a clicked thing also becomes a known selection marker when a later click on something else changes that thing (it moves, changes look or disappears) and the mark vanishes in the same transition: the click acted through the marked thing. lf52 never undoes a selection or moves it straight to another piece, so the two existing tests never fire there.
+
+### Task 7.3: Selection offsets reach a jump
+
+`SEL_RANGE` goes from 8 to 16 cells, so a 12-cell jump keeps its own `selected:dx,dy` context and its `between` things instead of sharing `far`.
+
+**Gate:** lf52 alone first (levels and actions against main's single-game run), then the full 25-game A/B; merge only on more levels or a higher score.
+
 ## Sources
 
 - Rudakov, Shock, Cowley. Graph-Based Exploration for ARC-AGI-3 Interactive Reasoning Tasks. arXiv 2512.24156 (status-bar masking, five salience tiers, nearest untested pair, the reset-loop bug, the state-space limit).

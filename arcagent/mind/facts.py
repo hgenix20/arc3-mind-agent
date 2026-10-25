@@ -529,7 +529,7 @@ def clicked_sig(label: str) -> str | None:
 
 def cell_owner(scene: Scene) -> dict[Cell, tuple[int, int]]:
     """Cell to ``(thing id, color)`` for every thing cell; build once per scene."""
-    return {c: (t.id, t.color) for t in scene.things for c in t.cells}
+    return {c: (t.id, color) for t in scene.things for c, color in t.colored()}
 
 
 def _neighbors(cells: frozenset[Cell]) -> set[Cell]:

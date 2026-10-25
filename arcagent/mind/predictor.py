@@ -515,7 +515,8 @@ def _spawn(run: _Run) -> list[Thing]:
             cells = _shifted(template.cells, x - template.x, y - template.y)
         color_text, _, shape = e.sig.partition(":")
         color = int(color_text[1:]) if color_text[1:].isdigit() else -1
-        out.append(Thing(next_id, color, shape, e.sig, x, y, cells))
+        paint = template.paint if template is not None else ()
+        out.append(Thing(next_id, color, shape, e.sig, x, y, cells, paint=paint))
         run.effects[next_id] = (e,)
         run.sources[next_id] = key
         next_id += 1
@@ -567,7 +568,7 @@ def _apply(t: Thing, effects: tuple[Effect, ...], shift: tuple[int, int]) -> Thi
     if not (dx or dy) and sig == t.sig:
         return t
     cells = _shifted(t.cells, dx, dy) if dx or dy else t.cells
-    return Thing(t.id, color, shape, sig, t.x + dx, t.y + dy, cells, t.kind)
+    return Thing(t.id, color, shape, sig, t.x + dx, t.y + dy, cells, t.kind, t.paint)
 
 
 def predict(
