@@ -261,7 +261,7 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - Test: `tests/mind/test_assign.py`
 
 **Interfaces:**
-- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`: minimum-total-cost pairs of row and column indices for a rectangular matrix, leaving out every pair whose cost exceeds `gate`. `ASSIGN_MAX = 40`; a matrix with a side above it raises `ValueError` (callers fall back).
+- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`, pairs sorted by row: among assignments that use only pairs with cost at most `gate` (and finite), the one with the most pairs, then the least total cost (as built: a tracker would rather explain two things with two plausible matches than one cheap match and an unexplained appearance). `ASSIGN_MAX = 40`; a matrix with a side above it, or ragged rows, raises `ValueError` (callers fall back). Measured: 1.4 ms for 40×40, 0.08 ms for 10×10.
 
 - [ ] **Step 1: Failing tests.** `test_square_matrix_optimum` (a 3×3 case where greedy is wrong: `[[1,2,9],[2,9,9],[9,9,1]]` gives `{(0,1),(1,0),(2,2)}`), `test_rectangular_leaves_extra_unmatched`, `test_gate_drops_expensive_pairs`, `test_empty_matrix`, `test_size_cap_raises`, `test_matches_brute_force_on_random_5x5` (100 seeded matrices against `itertools.permutations`).
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (Kuhn-Munkres with potentials, pure Python). **Step 4: Gates.** **Step 5: Commit** "Hungarian assignment".
