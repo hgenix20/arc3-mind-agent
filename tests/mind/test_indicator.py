@@ -64,6 +64,7 @@ def test_tracker_learns_the_next_step_and_a_wrong_one() -> None:
     assert t.next_kinds() == frozenset({"pad5"})  # back at zero: the first step is known
     t.observe(grid_of(base | boxes([20], 60, 11)), frozenset({"pad5"}), None)
     assert "pad3" in t.avoid() and "pad5" in t.avoid()  # wrong here, and already used
+    assert t.wrong_now() == frozenset({"pad3"})
     goal = t.goal()
     assert goal is not None and goal.kind == "sequence"
 

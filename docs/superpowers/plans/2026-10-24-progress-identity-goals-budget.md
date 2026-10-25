@@ -438,7 +438,9 @@ Kameron's call (2026-10-25): build it anyway, generically, with no public game a
 - `Goal("sequence", a=base, b="x,y,w,h;...")`: holds when every box differs from `base`; distance is the boxes still at `base`; None without a grid.
 - Agent: trigger per move is the clicked thing's kind for a click, else the kinds touching a controlled thing after the move. The sequence goal joins the book once the indicator is found. `_ranked` puts reach goals toward the next step's kinds first (or toward kinds not yet ruled out at this count, nearest first, at most `SEQ_TRIES = 4`). When the indicator rose on a click, `_sequence_choice` clicks a thing of the next step's kind (or an untried candidate) before tests.
 
-- [ ] Tests: `test_slot_rows_finds_three_equal_boxes_in_a_row`, `test_slot_rows_skips_pairs_and_mixed_shapes`, `test_tracker_learns_the_next_step_and_a_wrong_one`, `test_a_clicked_row_is_an_input_not_an_indicator`, `test_sequence_goal_holds_when_every_box_is_lit`, `test_the_agent_finishes_a_hidden_order_sequence`.
+**As built:** as above, plus two things the toy game exposed. A reach goal holds when the mover is beside its target, but a step can need a real touch: `_bump_choice` (before search) takes the learned move that runs the mover into a sequence step's target, and the commit probe now tries those bumps for any probed reach goal (`_bumps`, after A5). Without the second, a first bump at the wrong pad changes nothing on screen, so the indicator is never found. `SequenceTracker.wrong_now()` was added for the candidate fallback. In `SequenceGame` (three pads, a hidden order, three boxes) the agent wins every one of the six orders in 109 to 250 moves; with the sequence steps switched off it wins one of six in 600.
+
+- [x] Tests: `tests/mind/test_indicator.py` (6), `test_the_agent_finishes_a_hidden_order_sequence` (two orders), `test_a_reached_goal_is_probed_by_running_into_its_target`.
 
 **Gate:** full offline run against main (10 levels, 0.626).
 

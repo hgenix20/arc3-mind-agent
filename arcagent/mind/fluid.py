@@ -31,8 +31,10 @@ Per ``choose(obs)``, in order:
    followed (a found or a partial plan) is open and holds with no level-up, it is set
    ``probing`` instead of excluded, the plan ends, and a commit probe starts: while the
    scene stays the same, the next moves (branch ``commit``, event ``commit_probe``) try
-   A5, then clicks on small non-mover things whose color is unique on screen, each once,
-   at most ``COMMIT_PROBES``. They skip the ``known no effect`` veto, since a commit shows
+   A5, then, for a reach goal, the learned moves that run its mover into its target
+   (``_bumps``: standing beside a thing isn't touching it), then clicks on small
+   non-mover things whose color is unique on screen, each once, at most
+   ``COMMIT_PROBES``. They skip the ``known no effect`` veto, since a commit shows
    nothing until the winning state, but honor a predicted game over and a no-op seen on
    this scene. A level-up confirms the goal; a probe that ends any other way (the scene
    changed, no candidate left, game over) excludes it.
@@ -60,9 +62,19 @@ Per ``choose(obs)``, in order:
    search runs once more without it. A first step that a veto refuses counts as a
    failed attempt at that goal (see step 4). Search goals come from ``GoalBook.ranked``: the
    confirmed forms, then every open goal ordered by prior, salience and distance, plus
-   every goal the executive named.
+   every goal the executive named. Ahead of all of them go the sequence steps, once a
+   progress indicator is found (``indicator.SequenceTracker``) and it rose on a touch:
+   reach goals from each controlled mover to the kinds that lit the next box before, or,
+   when that isn't known, to up to ``SEQ_TRIES`` nearest kinds not yet wrong at this
+   count. They are rebuilt every move and kept out of the goal book, so reaching one
+   without a level-up doesn't exclude it. Before search, a step that already holds (the
+   mover beside its target) gets the learned move that runs into the target, untried on
+   this view (branch ``plan``, why ``sequence bump <goal id>``).
 6. Else, when the budget is tight (``budget_tight``: the best partial plan's goal is
    within the moves left with at most ``TEST_RESERVE`` to spare), that plan's step.
+   Else, when the indicator rose on a click, a click on a thing of the next step's kind,
+   or on an untried thing of a kind not yet wrong at this count (branch ``plan``, why
+   ``sequence step`` or ``sequence try``).
    Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question), unless this level attempt
    already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
@@ -207,6 +219,7 @@ from arcagent.mind.facts import (
 from arcagent.mind.fluid_modules import NullFluidInhibition, build_fluid_modules
 from arcagent.mind.fluid_sleep import FluidSleepReport, fluid_sleep
 from arcagent.mind.goals import (
+    MAX_TARGET_AREA,
     Goal,
     GoalBook,
     GoalStatus,
@@ -214,9 +227,10 @@ from arcagent.mind.goals import (
     goal_sigs,
     mover_sigs,
 )
+from arcagent.mind.indicator import SequenceTracker
 from arcagent.mind.kinds import KindBook
 from arcagent.mind.kinematics import Kinematics
-from arcagent.mind.modes import ModeTracker
+from arcagent.mind.modes import ModeTracker, clicked_thing
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
@@ -232,6 +246,8 @@ from arcagent.mind.vchat import ImagesRejected, VisionChat
 STALL_AFTER = 2  # failed attempts at one goal in one level before it is set aside
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
+SEQ_SOURCE = "indicator"  # the sequence goal, from a progress indicator
+SEQ_TRIES = 4  # untried kinds a sequence step tries at once, nearest first
 SEEN_NO_EFFECT = "seen no effect here"  # this action changed nothing on this very scene
 UNDOES_PROGRESS = "undoes progress"  # a known level reset while this life has progress
 _PLAN_VETOES = frozenset(
@@ -508,6 +524,8 @@ class FluidAgent:
         self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
         self._budget = BudgetReader()  # moves left this life, from a counter bar
         self._progress = ProgressMonitor()  # progress or motion, per life
+        self._seq = SequenceTracker()  # a progress indicator and its learned steps
+        self._seq_now: list[Goal] = []  # this move's sequence steps (reach goals)
         self._verdict: Verdict = "none"  # this move's progress verdict
         self._motion = 0  # motion verdicts in a row
         self._start_key: tuple[tuple[str, int, int], ...] = ()  # the attempt's first scene
@@ -665,6 +683,9 @@ class FluidAgent:
         self._prev_grid = None
         self._attempt_from = self._action_no
         if self._level_start:
+            self._seq.start_level(scene, obs.grid)
+        self._seq.start_life(obs.grid)
+        if self._level_start:
             self._level_start = False
             self._stretch_from = self._action_no
             self._notes.add("level start")
@@ -790,6 +811,7 @@ class FluidAgent:
             self._noop.add((before_s.key(), action.key()))
         self._read_budget(obs.grid, changed=not _strip_diff(diff, noisy).empty)
         self._keep(full, after, obs.grid)
+        self._note_sequence(before, action, after, obs.grid, move)
         snap = self._statuses()
         keys = learn(
             self.mem,
@@ -878,6 +900,7 @@ class FluidAgent:
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
         self._partial = None
         self._kin = Kinematics(self.mem, self._lone_mover(scene))  # this move's walks
+        self._seq_now = self._sequence_goals(scene)
         self._note_closest(scene)
         self._note_progress(scene)
         probe = self._probe_choice(scene)
@@ -886,17 +909,20 @@ class FluidAgent:
     def _choose(self, obs: Observation, scene: Scene) -> _Choice:
         """Every branch but a commit probe, in the order of the module docstring."""
         late = self._clock() >= self._deadline
-        if self._plan and self._plan_goal not in self.goals.open():
+        live = self._plan_goal in self.goals.open() or self._plan_goal in self._seq_now
+        if self._plan and not live:
             self._plan = []  # its goal was ruled out, excluded or stalled
         choice, llm_step = self._llm_choice(scene, late)
         if choice is None and self._plan:
             step = self._plan.pop(0)
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
         if choice is None and not late:
-            choice = self._forced(scene) or self._plan_choice(scene)
+            choice = self._forced(scene) or self._bump_choice(scene) or self._plan_choice(scene)
         if choice is None and not late:
-            choice = self._tight_choice(scene) or (
-                self._test_choice(obs, scene)
+            choice = (
+                self._tight_choice(scene)
+                or self._sequence_choice(scene)
+                or self._test_choice(obs, scene)
                 if self._tests_attempt < MAX_TESTS_PER_ATTEMPT
                 else None
             )
@@ -1009,7 +1035,7 @@ class FluidAgent:
             self._log_goals(added, "open")
             self._log_goals(self._rule_out(added), "ruled_out")
         goals = self.goals.open()
-        if not goals:
+        if not goals and not self._seq_now:
             self._frontier = ()
             return None
         sources = self.goals.sources
@@ -1067,9 +1093,11 @@ class FluidAgent:
         return choice
 
     def _commit_candidates(self, scene: Scene) -> list[Action]:
-        """A5 when offered, then clicks on small non-mover things whose color no other thing
-        on screen has, fewest cells first."""
+        """A5 when offered, then the probed goal's bumps, then clicks on small non-mover
+        things whose color no other thing on screen has, fewest cells first."""
         out = [a for a in self._simple if a.id == 5]
+        if self._probe is not None:
+            out += [a for a in self._bumps(scene, self._probe.goal) if a not in out]
         if self._can_click:
             movers = mover_sigs(self.mem)
             colors = Counter(t.color for t in scene.things)
@@ -1127,6 +1155,138 @@ class FluidAgent:
             d = g.distance(scene, None, self._kin)
             if d is not None and d < best:
                 self._closest[g] = d
+
+    def _note_sequence(
+        self, before: Scene, action: Action, after: Scene, grid: Grid, move: int
+    ) -> None:
+        """Feed the sequence tracker this move's trigger; add the sequence goal to the book
+        the move the indicator is found."""
+        clicked = clicked_thing(before, action)
+        if clicked is not None:
+            trigger = frozenset({clicked.kind})
+        elif action.id == COORD_ACTION_ID:
+            trigger = frozenset()
+        else:
+            trigger = self._touched(after)
+        cell = (action.x, action.y) if action.id == COORD_ACTION_ID else None
+        found = self._seq.row is None
+        event = self._seq.observe(grid, trigger, cell)
+        if event == "none":
+            return
+        self._notes.add(f"sequence {event}")
+        goal = self._seq.goal()
+        if found and goal is not None and goal not in self.goals.status:
+            self.goals.status[goal] = "open"
+            self.goals.sources[goal] = SEQ_SOURCE
+            self._log_goals([goal], "open")
+        self._log.event("sequence", step=move, event=event, trigger=sorted(trigger))
+
+    def _touched(self, scene: Scene) -> frozenset[str]:
+        """Kinds of the things on or 4-beside a controlled thing in ``scene``."""
+        controlled = controlled_sigs(self.mem)
+        mine = [t for t in scene.things if t.sig in controlled or t.kind in controlled]
+        near: set[Cell] = set()
+        for t in mine:
+            for x, y in t.cells:
+                near.update(((x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+        return frozenset(
+            t.kind for t in scene.things if t not in mine and not t.cells.isdisjoint(near)
+        )
+
+    def _sequence_targets(self, scene: Scene) -> list[Thing]:
+        """Things that could be the next sequence step: not controlled, not in the
+        indicator, not too big; the known next kinds when there are any, else kinds not
+        yet wrong at this count (all kinds not wrong, if that leaves none)."""
+        row = self._seq.row
+        if row is None:
+            return []
+        controlled = controlled_sigs(self.mem)
+        boxes = row.boxes
+        pool = [
+            t
+            for t in scene.things
+            if t.sig not in controlled
+            and t.kind not in controlled
+            and len(t.cells) <= MAX_TARGET_AREA
+            and not any(
+                bx <= x < bx + w and by <= y < by + h for x, y in t.cells for bx, by, w, h in boxes
+            )
+        ]
+        nxt = self._seq.next_kinds()
+        if nxt:
+            return [t for t in pool if t.kind in nxt]
+        avoid = self._seq.avoid()
+        fresh = [t for t in pool if t.kind not in avoid]
+        return fresh or [t for t in pool if t.kind not in self._seq.wrong_now()]
+
+    def _sequence_goals(self, scene: Scene) -> list[Goal]:
+        """Reach goals toward the next sequence step (module docstring, step 5)."""
+        if self._seq.row is None or self._seq.by_click:
+            return []
+        controlled = controlled_sigs(self.mem)
+        movers = sorted(
+            {t.kind for t in scene.things if t.sig in controlled or t.kind in controlled}
+        )
+        kinds = list(dict.fromkeys(t.kind for t in self._sequence_targets(scene)))
+        goals = [Goal("reach", a=m, b=k) for m in movers for k in kinds]
+        if self._seq.next_kinds():
+            return goals
+        far = {g: g.distance(scene, None, self._kin) for g in goals}
+        goals.sort(key=lambda g: (far[g] is None, far[g] or 0))
+        return goals[:SEQ_TRIES]
+
+    def _bump_choice(self, scene: Scene) -> _Choice | None:
+        """When a sequence step already holds (the mover beside its target), the learned
+        move that runs into the target: standing beside it is not touching it. Like a
+        commit probe, it skips the ``known no effect`` veto (a bump changes nothing but
+        the indicator) but not a predicted game over or a no-op seen on this scene."""
+        for goal in self._seq_now:
+            if not goal.holds(scene):
+                continue
+            for action in self._bumps(scene, goal):
+                if tried_key(scene, action) in self._tried:
+                    continue
+                if self._veto(scene, action) in (GAME_OVER, SEEN_NO_EFFECT):
+                    continue
+                return _Choice(action, "plan", f"sequence bump {goal.id()}")
+        return None
+
+    def _bumps(self, scene: Scene, goal: Goal) -> list[Action]:
+        """For a reach goal, the simple actions whose learned gait moves its mover onto a
+        cell of its target, in gait order; none for other kinds."""
+        if goal.kind != "reach":
+            return []
+        body = self._kin.body(scene, goal.a)
+        if body is None:
+            return []
+        targets: set[Cell] = set()
+        for t in scene.things:
+            if goal.b in (t.sig, t.kind):
+                targets |= t.cells
+        out: list[Action] = []
+        for gait in self._kin.gaits(goal.a):
+            moved = {(x + gait.dx, y + gait.dy) for x, y in body.cells}
+            if gait.action[1:].isdigit() and not moved.isdisjoint(targets):
+                action = Action(int(gait.action[1:]))
+                if action not in out:
+                    out.append(action)
+        return out
+
+    def _sequence_choice(self, scene: Scene) -> _Choice | None:
+        """A click toward the next sequence step, when the indicator rose on a click."""
+        if self._seq.row is None or not self._seq.by_click:
+            return None
+        known = bool(self._seq.next_kinds())
+        for t in sorted(self._sequence_targets(scene), key=lambda t: (t.y, t.x)):
+            x, y = click_cell(t)
+            action = Action(COORD_ACTION_ID, x, y)
+            if not known and tried_key(scene, action) in self._tried:
+                continue
+            why = "sequence step" if known else "sequence try"
+            choice = self._offer(scene, action, "plan", why, False, plan=False)
+            if choice is not None:
+                return choice
+        return None
 
     def _tight_choice(self, scene: Scene) -> _Choice | None:
         """The partial plan's step ahead of tests, when its goal just fits the moves left
@@ -1186,7 +1346,8 @@ class FluidAgent:
             for g in self.goals.open()
             if self.goals.sources.get(g) == LLM_SOURCE and g not in ranked
         ]
-        return ranked + named
+        steps = self._seq_now
+        return steps + [g for g in ranked + named if g not in steps]
 
     def _search(
         self,

@@ -174,10 +174,14 @@ class SequenceTracker:
         """The kinds that lit the next box before (empty when not known yet)."""
         return self._steps.get(self._k, frozenset())
 
+    def wrong_now(self) -> frozenset[str]:
+        """Kinds that put the indicator out at this count."""
+        return frozenset(self._wrong.get(self._k, set()))
+
     def avoid(self) -> frozenset[str]:
         """Kinds that were wrong at this count, and kinds used at other counts."""
         used = {kind for k, kinds in self._steps.items() if k != self._k for kind in kinds}
-        return frozenset(self._wrong.get(self._k, set()) | used)
+        return self.wrong_now() | used
 
     def goal(self) -> Goal | None:
         """The ``sequence`` goal for the indicator, once found."""
