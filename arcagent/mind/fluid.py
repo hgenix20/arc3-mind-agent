@@ -39,7 +39,10 @@ Per ``choose(obs)``, in order:
    Each search logs a ``search`` event (``step, stop, nodes, depth, goals, frontier,
    protected, novel``). Plan steps are predicted with ``assume_still`` set to the
    mover sigs plus the goal's sigs, so the check covers what the plan relies on.
-5. Else ``goals.propose`` and ``search``: first over the open goals the executive named
+5. Else, when exactly one of search's actions survives the plan vetoes (``settled
+   test`` doesn't count: a settled action can still be a plan step), it's taken with
+   no search (branch ``forced``, why ``only move left``). Else ``goals.propose`` and
+   ``search``: first over the open goals the executive named
    (source ``llm``) alone, then, only if that finds no plan, over all of
    ``goals.open()``. A found plan starts (branch ``plan``, why ``goal <id>``). A goal
    that already holds at the root is treated as reached (``note_reached``) and the
@@ -208,6 +211,7 @@ MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skippe
 NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
 NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
+FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
 TURN_DEADLINE_S = 30.0  # the longest a move waits for its turn
@@ -759,7 +763,7 @@ class FluidAgent:
             step = self._plan.pop(0)
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
         if choice is None and not late:
-            choice = self._plan_choice(scene)
+            choice = self._forced(scene) or self._plan_choice(scene)
         if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
             choice = self._test_choice(obs, scene)
         if choice is None and not late:
@@ -843,6 +847,18 @@ class FluidAgent:
         self._log.event(
             "veto", step=self._action_no, action=[action.id, action.x, action.y], reason=reason
         )
+
+    def _forced(self, scene: Scene) -> _Choice | None:
+        """The one action no plan veto refuses, as a choice; None when there are more or
+        none. Stops at the second survivor, so a usual move costs two vetoes."""
+        alive: Action | None = None
+        for action in self._actions(scene):
+            if self._veto(scene, action) in _PLAN_VETOES:
+                continue
+            if alive is not None:
+                return None
+            alive = action
+        return None if alive is None else _Choice(alive, "forced", FORCED_WHY)
 
     def _plan_choice(self, scene: Scene) -> _Choice | None:
         added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE)

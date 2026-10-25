@@ -1037,3 +1037,39 @@ def test_counter_cells_survive_game_over(tmp_path: Path) -> None:
     agent.choose(_bar_frame(20, levels=1))  # a level-up drops the counter cells
     assert (0, 63) not in noise.cells
     agent.close()
+
+
+def test_single_unvetoed_action_is_taken_without_search(tmp_path: Path, monkeypatch: Any) -> None:
+    game = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    first = agent.choose(obs)
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    others = [Action(i) for i in (1, 2, 3, 4) if i != first.id]
+    for b in others[:2]:  # seen to do nothing here; ``first`` joins them on the next frame
+        agent._noop.add((scene.key(), b.key()))  # pyright: ignore[reportPrivateUsage]
+
+    def no_search(*_a: object, **_k: object) -> object:
+        raise AssertionError("a forced move must not search")
+
+    monkeypatch.setattr(fluid, "search", no_search)
+    forced = agent.choose(obs)  # the same frame back: ``first`` changed nothing either
+    assert forced.key() == others[2].key()
+    agent.close()
+    last = [r for r in records(tmp_path) if r.get("type") == "action"][-1]
+    assert last["branch"] == "forced"
+
+
+def test_settled_actions_do_not_make_a_move_forced(tmp_path: Path) -> None:
+    game = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    agent.choose(obs)
+    obs = game.step(Action(1))
+    agent.choose(obs)
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    agent._tried.update((scene.key(), Action(i).key()) for i in (1, 2, 3, 4))  # pyright: ignore[reportPrivateUsage]
+    assert agent._forced(scene) is None  # pyright: ignore[reportPrivateUsage]
+    agent.close()
