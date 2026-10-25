@@ -55,7 +55,6 @@ MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or
 MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
 MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
 MAX_COVER_TARGETS = 5  # cover goals per mover, fewest-cell target sigs first
-SEARCH_GOALS = 12  # open goals ``ranked`` hands to search, after the confirmed forms
 MAX_ROUTE_TARGETS = 20  # a clear goal routes its mover through at most this many things
 UNKNOWN_COST = 20  # the distance ranking assumes for a goal with no estimate
 SALIENCE = 2.0  # rank weight of a goal about a controlled thing or one that changed
@@ -524,7 +523,7 @@ class GoalBook:
         kin: Kinematics | None = None,
         salient: frozenset[str] = frozenset(),
     ) -> list[Goal]:
-        """Confirmed forms, then the ``SEARCH_GOALS`` best open goals.
+        """Confirmed forms, then every open goal, best first.
 
         An open goal scores ``prior * salience / (1 + cost)``: ``prior`` from the rule-book,
         ``salience`` ``SALIENCE`` when one of its sigs is in ``salient`` (the agent passes
@@ -541,7 +540,7 @@ class GoalBook:
             cost = UNKNOWN_COST if d is None else d
             scored.append((-prior_of(g.kind) * weight / (1 + cost), i, g))
         scored.sort(key=lambda x: (x[0], x[1]))
-        return forms + [g for _, _, g in scored[:SEARCH_GOALS] if g not in forms]
+        return forms + [g for _, _, g in scored if g not in forms]
 
     def open(self) -> list[Goal]:
         """Confirmed forms first, then open goals in insertion order; stalled ones left out."""

@@ -417,9 +417,9 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 **As built:** `GoalBook.ranked(scene, grid=, kin=, salient=, budget=)`: confirmed forms, then the best `SEARCH_GOALS = 12` open goals by `prior * salience / (1 + cost)` (`SALIENCE = 2.0` when a goal's sigs touch `salient`, `UNKNOWN_COST = 20` with no distance), leaving out goals farther than `budget` for that ranking only. The agent's searches use it (`_ranked`: salient = controlled things and things changed this level, budget = the reader's moves left) plus every goal the executive named. `open()` keeps its insertion order for everything else.
 
-**Changed after the bisect (2026-10-25):** the budget filter is gone. Distances estimate moves without bounding them, so a goal one sliding click away could be left out as "too far".
+**Changed after the bisect (2026-10-25):** the budget filter is gone. Distances estimate moves without bounding them, so a goal one sliding click away could be left out as "too far". The twelve-goal cut is gone too: search gets every open goal, best first. On the full offline run this took the branch from 9 levels and 0.390 to 10 levels and 0.626 (ls20 back to 60 actions, vc33's second level in 195).
 
-- [x] Tests: `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_is_left_out_this_life_only`, `test_confirmed_form_stays_first_and_search_gets_at_most_twelve`.
+- [x] Tests: `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_is_left_out_this_life_only`, `test_confirmed_form_stays_first_and_search_gets_every_open_goal`.
 
 **Section gate:** paired offline A/B. Watch ls20 (pattern against target), vc33 and wa30 (carry into the frame), and the goal count per game (was up to 202).
 

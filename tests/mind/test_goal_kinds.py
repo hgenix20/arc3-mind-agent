@@ -9,7 +9,7 @@ import numpy as np
 from arcagent.core.types import COORD_ACTION_ID, Action, Grid
 from arcagent.mind.facts import Effect, FactMemory
 from arcagent.mind.goal_rules import GOAL_RULES, prior_of
-from arcagent.mind.goals import SEARCH_GOALS, Goal, GoalBook, GoalKind
+from arcagent.mind.goals import Goal, GoalBook, GoalKind
 from arcagent.mind.objects import Scene, Tracker, shape_of
 from arcagent.mind.search import search
 
@@ -110,7 +110,7 @@ def test_ranked_puts_cheap_salient_goals_first() -> None:
     assert book.open() == [far, near]  # the open list keeps insertion order
 
 
-def test_confirmed_form_stays_first_and_search_gets_at_most_twelve() -> None:
+def test_confirmed_form_stays_first_and_search_gets_every_open_goal() -> None:
     scene, _ = scene_of({(10, 10): 3, (13, 10): 8})
     book = GoalBook()
     form = Goal("clear", color=7)
@@ -118,4 +118,4 @@ def test_confirmed_form_stays_first_and_search_gets_at_most_twelve() -> None:
     for c in range(20):
         book.status[Goal("count", color=c, n=1)] = "open"
     ranked = book.ranked(scene)
-    assert ranked[0] == form and len(ranked) == SEARCH_GOALS + 1 == 13
+    assert ranked[0] == form and len(ranked) == 21
