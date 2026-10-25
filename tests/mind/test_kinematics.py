@@ -98,3 +98,13 @@ def test_goal_distance_with_kinematics_counts_moves_around_a_wall() -> None:
     assert plain == 9 and moved is not None and moved > 30  # down to the gap and back up
     near = scene_of({(19, 10): 1, (20, 10): 4} | wall_column(15, gap=30))
     assert goal.distance(near, None, Kinematics(walker())) == 0
+
+
+def test_clear_distance_with_a_mover_adds_the_route_through_what_is_left() -> None:
+    s = scene_of({(10, 10): 1, (14, 10): 4, (20, 10): 4})
+    goal = Goal("clear", color=4)
+    assert goal.distance(s) == 2  # things left
+    kin = Kinematics(walker())
+    kin.mover = PSIG
+    assert goal.distance(s, None, kin) == 2 + 4 + 6  # plus the cells walked: 10 to 14 to 20
+    assert goal.distance(scene_of({(10, 10): 1}), None, kin) == 0

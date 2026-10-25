@@ -900,7 +900,7 @@ class FluidAgent:
 
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
         self._partial = None
-        self._kin = Kinematics(self.mem)  # this move's walks, shared with its searches
+        self._kin = Kinematics(self.mem, self._lone_mover(scene))  # this move's walks
         self._note_closest(scene)
         self._note_progress(scene)
         probe = self._probe_choice(scene)
@@ -1115,6 +1115,12 @@ class FluidAgent:
         if counters and self._budget.counter is None:
             self._budget.set_counter(next((c for c in counters if c.shrinks), counters[0]))
         self._budget.observe(grid, changed=changed)
+
+    def _lone_mover(self, scene: Scene) -> str | None:
+        """The kind of the one controlled thing on screen, or None (none, or several)."""
+        controlled = controlled_sigs(self.mem)
+        mine = [t for t in scene.things if t.sig in controlled or t.kind in controlled]
+        return mine[0].kind if len(mine) == 1 else None
 
     def _note_progress(self, scene: Scene) -> None:
         """Name this move with the progress monitor, over the pursued goal, the confirmed

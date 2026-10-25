@@ -15,7 +15,9 @@ moves to the target from each top-left; it is cached per (subject, target) for t
 the object, so a search builds it once from its root scene. Every walk visits at most
 ``KIN_LIMIT`` top-lefts, and one object builds at most ``KIN_FIELDS`` fields (later pairs
 get an empty field, and goal distances fall back to cell gaps): a search may score up to
-200 goals, and the first ones (confirmed forms, the executive's) matter most. Pure.
+200 goals, and the first ones (confirmed forms, the executive's) matter most. ``mover``
+names the one controlled thing when the agent knows it; ``Goal.distance`` then routes it
+through what a ``clear`` goal has left (``route.route``). Pure.
 """
 
 from __future__ import annotations
@@ -51,8 +53,9 @@ class Gait:
 class Kinematics:
     """Gaits, forward walks and cached distance fields over one ``FactMemory``."""
 
-    def __init__(self, mem: FactMemory) -> None:
+    def __init__(self, mem: FactMemory, mover: str | None = None) -> None:
         self.mem = mem
+        self.mover = mover  # the one controlled thing's name, when the agent knows it
         self._fields: dict[tuple[str, str], dict[Cell, int]] = {}
 
     def gaits(self, name: str) -> tuple[Gait, ...]:

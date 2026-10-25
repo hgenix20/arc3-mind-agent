@@ -45,6 +45,7 @@ from arcagent.mind.kinds import base_sig
 from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene, Thing
 from arcagent.mind.regions import twin_regions
+from arcagent.mind.route import route
 
 GoalKind = Literal["reach", "clear", "match", "count", "cover"]
 GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled", "probing"]
@@ -55,6 +56,7 @@ MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
 MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
 MAX_COVER_TARGETS = 5  # cover goals per mover, fewest-cell target sigs first
 SEARCH_GOALS = 12  # open goals ``ranked`` hands to search, after the confirmed forms
+MAX_ROUTE_TARGETS = 20  # a clear goal routes its mover through at most this many things
 UNKNOWN_COST = 20  # the distance ranking assumes for a goal with no estimate
 SALIENCE = 2.0  # rank weight of a goal about a controlled thing or one that changed
 _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
@@ -110,13 +112,14 @@ class Goal:
     ) -> int | None:
         """How far ``scene`` is from the goal; 0 exactly when ``holds``, None for no estimate.
 
-        ``reach``: 0 when it holds; else, with ``kin``, the moves from ``a``'s top-left in
+        ``clear``: things of the color left, plus, with ``kin.mover`` set, the cells of a
+        route that mover walks through them (``route.route``, heuristic order). ``reach``:
+        0 when it holds; else, with ``kin``, the moves from ``a``'s top-left in
         ``kin.field`` (built on the first scene it saw for this pair: a search's root),
         when that is a positive number; else the Manhattan gap in cells between the bboxes
         of the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1.
-        None when either is missing. ``clear``: things of the color left. ``count``:
-        ``abs(n - count)``. ``match``: mismatched cells; None without a grid or with
-        regions that are off the board or of different sizes. ``cover``: the least total,
+        None when either is missing. ``count``: ``abs(n - count)``. ``match``: mismatched
+        cells; None without a grid or with regions off the board or of different sizes. ``cover``: the least total,
         over a one-to-one matching of targets to movers, of each pair's cell gap less one
         (0 when they touch), plus ``GRID_SIZE`` per target left without a mover; 0 when no
         target is visible (all covered); None when targets show and no mover does. Cell gaps
@@ -126,13 +129,31 @@ class Goal:
             case "reach":
                 return _reach_moves(scene, self.a, self.b, kin)
             case "clear":
-                return sum(1 for t in scene.things if t.color == self.color)
+                return _clear_cost(scene, self.color, kin)
             case "count":
                 return abs(self.n - sum(1 for t in scene.things if t.color == self.color))
             case "match":
                 return None if grid is None else _mismatched(grid, self.region_a, self.region_b)
             case "cover":
                 return _cover_cost(scene, self.a, self.b)
+
+
+def _clear_cost(scene: Scene, color: int, kin: Kinematics | None) -> int:
+    """``clear``'s distance: things of the color left, plus, with a known mover
+    (``kin.mover``), the cells of the shortest route it walks through them (heuristic order,
+    at most ``MAX_ROUTE_TARGETS`` things; more is just the count)."""
+    left = [t for t in scene.things if t.color == color]
+    if not left or kin is None or kin.mover is None or len(left) > MAX_ROUTE_TARGETS:
+        return len(left)
+    body = kin.body(scene, kin.mover)
+    if body is None or body.color == color:
+        return len(left)
+    found = route((body.x, body.y), [(t.x, t.y) for t in left], _cells_apart, exact_limit=0)
+    return len(left) + (found[1] if found is not None else 0)
+
+
+def _cells_apart(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
 def _reach_moves(scene: Scene, a: str, b: str, kin: Kinematics | None) -> int | None:
