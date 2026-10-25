@@ -62,7 +62,9 @@ Per ``choose(obs)``, in order:
    confirmed forms, then the best twelve open goals by prior, salience and distance,
    leaving out goals farther than the moves left this life, plus every goal the
    executive named.
-6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
+6. Else, when the budget is tight (``budget_tight``: the best partial plan's goal is
+   within the moves left with at most ``TEST_RESERVE`` to spare), that plan's step.
+   Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question), unless this level attempt
    already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
    change and on game over); then Voi is skipped.
@@ -223,7 +225,7 @@ from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.progress import ProgressMonitor, Verdict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
-from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, test_key
+from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, tried_key
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
@@ -244,6 +246,7 @@ PARTIAL_WHY = "toward"  # why prefix of a best-partial-plan step: ``toward <goal
 MOTION_CUT = 3  # motion verdicts in a row after which novelty yields
 PROGRESS_GOALS = 20  # goals the progress monitor measures per move (pursued and forms first)
 LEVEL = "level"  # subject of a reset-level fact: (action label, LEVEL, "any")
+TEST_RESERVE = 2  # moves to spare that still leave room for a test before a fitting plan
 COMMIT_PROBES = 4  # most commit-probe moves on one reached goal
 COMMIT_MAX_CELLS = 16  # a commit-probe click target has at most this many cells
 FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
@@ -353,6 +356,12 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
         ):
             return True
     return False
+
+
+def budget_tight(*, remaining: int | None, distance: int) -> bool:
+    """Whether a plan ``distance`` moves long fits the moves left with under
+    ``TEST_RESERVE`` + 1 to spare: no room for a test first."""
+    return remaining is not None and distance <= remaining <= distance + TEST_RESERVE
 
 
 def wake_reason(notes: Collection[str]) -> str | None:
@@ -885,8 +894,12 @@ class FluidAgent:
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
         if choice is None and not late:
             choice = self._forced(scene) or self._plan_choice(scene)
-        if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
-            choice = self._test_choice(obs, scene)
+        if choice is None and not late:
+            choice = self._tight_choice(scene) or (
+                self._test_choice(obs, scene)
+                if self._tests_attempt < MAX_TESTS_PER_ATTEMPT
+                else None
+            )
         if choice is None and not late:
             choice = self._partial_choice(scene) or (
                 self._novel_choice(scene) if self._motion < MOTION_CUT else None
@@ -899,7 +912,7 @@ class FluidAgent:
             choice = _Choice(action, "fallback", "deadline passed" if late else "b0")
         if self._chat is not None:
             choice, llm_step = self._maybe_turn(obs, scene, choice, llm_step, late)
-        self._tried.add(test_key(scene, choice.action))
+        self._tried.add(tried_key(scene, choice.action))
         if choice.test is not None:
             self._tests += 1
             self._tests_attempt += 1
@@ -1047,7 +1060,7 @@ class FluidAgent:
         """Take a commit-probe move: logged, tried, predicted like a test."""
         a = choice.action
         self._log.event("commit_probe", step=self._action_no, action=[a.id, a.x, a.y])
-        self._tried.add(test_key(scene, a))
+        self._tried.add(tried_key(scene, a))
         self._plan_goal, self._llm_step = None, False
         self._pred = predict(scene, a, self.mem)
         self._used_level.update(self._pred.used)
@@ -1108,6 +1121,16 @@ class FluidAgent:
             d = g.distance(scene, None, self._kin)
             if d is not None and d < best:
                 self._closest[g] = d
+
+    def _tight_choice(self, scene: Scene) -> _Choice | None:
+        """The partial plan's step ahead of tests, when its goal just fits the moves left
+        (``budget_tight``)."""
+        res = self._partial
+        if res is None or res.best_distance is None:
+            return None
+        if not budget_tight(remaining=self._budget.remaining(), distance=res.best_distance):
+            return None
+        return self._partial_choice(scene)
 
     def _partial_choice(self, scene: Scene) -> _Choice | None:
         """The first step of this move's best partial plan (``SearchResult.best``), held as a
@@ -1180,6 +1203,7 @@ class FluidAgent:
             time_s=time_s,
             noop=self._known_noop(),
             kin=self._kin,
+            max_depth=self._budget.remaining(),
         )
         self._log.event(
             "search",

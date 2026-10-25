@@ -1364,3 +1364,12 @@ def test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death(
     assert any(r["budget"] is not None for r in acts[:30])  # read during the first life
     last = acts[-1]
     assert last["budget"] == BudgetGame.BUDGET - game.used + 1  # exact: before its own move
+
+
+def test_a_tight_budget_puts_a_fitting_partial_plan_before_tests() -> None:
+    assert fluid.budget_tight(remaining=6, distance=5)
+    assert fluid.budget_tight(remaining=7, distance=5)
+    assert not fluid.budget_tight(remaining=8, distance=5)  # room for a test
+    assert not fluid.budget_tight(remaining=4, distance=5)  # doesn't fit at all
+    assert not fluid.budget_tight(remaining=None, distance=5)
+    assert fluid.TEST_RESERVE == 2

@@ -320,3 +320,11 @@ def test_without_distances_search_is_breadth_first() -> None:
     a = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], weight=0.0)
     b = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)])
     assert [x.action.id for x in a.plan] == [x.action.id for x in b.plan] == [4, 4, 4]
+
+
+def test_search_never_plans_past_the_budget() -> None:
+    s = scene_of({(2, 2): 1, (8, 2): 4})  # five moves to touch the target
+    mem, goal = moves((1, 2, 3, 4)), reach(PSIG, TSIG)
+    assert search(s, simple_actions, mem, [goal], max_depth=5).stop == "found"
+    short = search(s, simple_actions, mem, [goal], max_depth=4)
+    assert short.stop != "found" and len(short.best) <= 4

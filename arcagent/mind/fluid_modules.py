@@ -30,7 +30,7 @@ from arcagent.mind.facts import BROKEN_MISSES, FactMemory
 from arcagent.mind.goals import GoalBook
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import predict
-from arcagent.mind.tester import Test, Tried, choose_test, question, test_key, veto
+from arcagent.mind.tester import Test, Tried, choose_test, question, tried_key, veto
 
 NEVER_BROKEN = 10**9  # the null metacognition's threshold: no fact ever breaks
 
@@ -109,7 +109,7 @@ class NullFluidVoi:
         toward: Action | None,
     ) -> Test | None:
         for action in sorted(actions, key=Action.key):
-            if test_key(scene, action) in tried:
+            if tried_key(scene, action) in tried:
                 continue
             pred = predict(scene, action, mem)
             if pred.unknown:

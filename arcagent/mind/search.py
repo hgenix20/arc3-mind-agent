@@ -53,6 +53,9 @@ next to a death color isn't a trap by
 itself: the move back is usually safe, and vetoes refuse the deadly moves. Slides can't be
 caught mid-way: the predictor resolves each to where it stops.
 
+``max_depth`` (the agent passes the moves left this life) caps plan length: a scene that
+deep is not expanded.
+
 Bounded two ways. ``max_nodes`` expansions (``predict`` calls) is the main bound: every
 game runs as a thread of one process, so a wall-clock budget would buy less search the
 more games share the GIL. ``time_s`` of wall clock (read from ``clock`` before every
@@ -224,6 +227,7 @@ def search(
     noop: Collection[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]] = (),
     kin: Kinematics | None = None,
     weight: float = HEURISTIC_WEIGHT,
+    max_depth: int | None = None,
 ) -> SearchResult:
     """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
 
@@ -239,6 +243,7 @@ def search(
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
     run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
     run.weight = weight
+    run.max_depth = max_depth
     return run.run(scene, clock, time_s, max_nodes)
 
 
@@ -273,6 +278,7 @@ class _Run:
         self.nodes = 0
         self.deepest = 0
         self.weight = HEURISTIC_WEIGHT
+        self.max_depth: int | None = None
         self.queued = 0  # tiebreak: the order scenes were queued in
 
     def trap(self, s: Scene) -> bool:
@@ -328,6 +334,8 @@ class _Run:
             *_, current, plan = heapq.heappop(queue)
             if self.held and len(plan) >= len(self.held[0][1]) + QUIESCENCE_PLIES:
                 continue  # can't beat the held trap plan within the extra plies
+            if self.max_depth is not None and len(plan) >= self.max_depth:
+                continue
             self.deepest = max(self.deepest, len(plan))
             full_key = current.key() if self.noop else ()
             for action in self.actions(current):

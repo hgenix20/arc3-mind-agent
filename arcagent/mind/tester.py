@@ -5,10 +5,10 @@
 click answers its clicked sig). Ties break by: an action touching a broken fact, then a
 thin one, then the earliest ``frontier`` pair it answers, then ``toward`` (the first step
 of the best partial plan), then the lowest ``Action.key()``. An action whose
-``test_key(scene, action)`` is in ``tried`` is never chosen, and neither is one
+``tried_key(scene, action)`` is in ``tried`` is never chosen, and neither is one
 predicted to end the game.
 
-``test_key``: a simple action keys on the whole scene, ``(scene.key(), action.key())``. A
+``tried_key``: a simple action keys on the whole scene, ``(scene.key(), action.key())``. A
 click keys on what a click can see: the clicked thing's sig, the colors of the cells within
 ``modes.MARK_RING`` of its bbox (of the click point on empty space), and each selected
 thing's sig and offset from the click. Moving something far away then doesn't reopen a
@@ -44,12 +44,12 @@ from arcagent.mind.modes import MARK_RING, clicked_thing
 from arcagent.mind.objects import Scene, click_cell, color_at
 from arcagent.mind.predictor import Prediction, predict
 
-Tried = set[Hashable]  # test_key values of the actions taken this level
+Tried = set[Hashable]  # tried_key values of the actions taken this level
 TriedView = Container[Hashable]  # what the tester reads: membership only
 Noop = set[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]]  # (scene key, action key)
 
 
-def test_key(scene: Scene, action: Action) -> Hashable:
+def tried_key(scene: Scene, action: Action) -> Hashable:
     """The key under which ``action`` counts as tried in ``scene`` (module docstring)."""
     if action.id != COORD_ACTION_ID:
         return (scene.key(), action.key())
@@ -197,7 +197,7 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     order = {pair: i for i, pair in reversed(list(enumerate(frontier)))}
     best: tuple[tuple[int, int, int, int, tuple[int, int, int]], Test] | None = None
     for action in actions:
-        if test_key(scene, action) in tried:
+        if tried_key(scene, action) in tried:
             continue
         pred = predict(scene, action, mem)
         pairs = open_pairs(scene, action, pred, mem)
@@ -223,7 +223,7 @@ def veto(scene: Scene, action: Action, mem: FactMemory, tried: TriedView) -> str
         return GAME_OVER
     if open_pairs(scene, action, pred, mem):
         return None
-    if test_key(scene, action) in tried:
+    if tried_key(scene, action) in tried:
         return SETTLED
     fresh = pred.scene
     if fresh is not None and fresh.key() == scene.key():

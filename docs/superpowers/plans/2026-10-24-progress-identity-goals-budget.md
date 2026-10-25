@@ -285,7 +285,7 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 ### Task 4.4: Click tests key on local view and mode
 
-**As built:** `tester.test_key(scene, action)`: a simple action keys on `(scene.key(), action.key())` as before; a click keys on the clicked thing's sig, the colors within `MARK_RING` of its bbox (of the point on empty space), and each selected thing's sig and offset from the click. `Tried` is a set of those keys; the tester reads it as a `Container`. The no-op memory keeps the exact scene key (`tester.Noop`).
+**As built:** `tester.tried_key(scene, action)`: a simple action keys on `(scene.key(), action.key())` as before; a click keys on the clicked thing's sig, the colors within `MARK_RING` of its bbox (of the point on empty space), and each selected thing's sig and offset from the click. `Tried` is a set of those keys; the tester reads it as a `Container`. The no-op memory keeps the exact scene key (`tester.Noop`).
 
 - [x] Tests: `test_moving_an_unrelated_thing_does_not_reopen_click_tests`, `test_selection_change_does_reopen_click_tests`, `test_identical_neighborhoods_share_a_click_key_but_different_ones_do_not`, `test_simple_actions_keep_the_whole_scene_key`, `test_a_tried_click_settles_its_twins`.
 
@@ -442,15 +442,11 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 ### Task 6.2: Budget-bounded search and tests
 
-**Files:**
-- Modify: `arcagent/mind/fluid.py`, `arcagent/mind/search.py`
-- Test: `tests/mind/test_fluid_agent.py`
+**As built:** `search(..., max_depth=)` doesn't expand a scene whose plan is that long; the agent passes the reader's moves left. `budget_tight(remaining=, distance=)`: a plan fits with at most `TEST_RESERVE = 2` moves to spare; then the best partial plan's step goes ahead of tests (`_tight_choice`).
 
-**Interfaces:**
-- Produces: search `max_depth = remaining` when known. Tests stop when `remaining <= cheapest feasible plan + TEST_RESERVE` (`TEST_RESERVE = 2`), so the moves left go to the plan.
+Also in this commit: `tester.test_key` is renamed `tried_key`. Pytest had been collecting the imported `test_key` in `tests/mind/test_tester.py` as a test since Task 4.4 (an ERROR in every run that a FAILED-only filter didn't show); the suite is clean again (518 passed, 1 skipped).
 
-- [ ] **Step 1: Failing tests.** `test_search_never_plans_past_the_budget`, `test_tests_yield_to_a_plan_that_just_fits`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Bound search and tests by the budget".
+- [x] Tests: `test_search_never_plans_past_the_budget`, `test_a_tight_budget_puts_a_fitting_partial_plan_before_tests`.
 
 ### Task 6.3: RESET a life that can't finish
 

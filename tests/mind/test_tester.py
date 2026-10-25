@@ -10,7 +10,7 @@ import numpy as np
 from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import Effect, FactMemory, action_label
 from arcagent.mind.objects import Scene, Thing, Tracker, shape_of
-from arcagent.mind.tester import choose_test, test_key, veto
+from arcagent.mind.tester import choose_test, tried_key, veto
 
 Cells = dict[tuple[int, int], int]
 
@@ -295,7 +295,7 @@ def test_moving_an_unrelated_thing_does_not_reopen_click_tests() -> None:
     before = scene_of(SLOTS)
     moved = scene_of({**{k: v for k, v in SLOTS.items() if v != 7}, (44, 50): 7})
     for x in (10, 14, 18):
-        assert test_key(before, _click(x, 10)) == test_key(moved, _click(x, 10))
+        assert tried_key(before, _click(x, 10)) == tried_key(moved, _click(x, 10))
     assert before.key() != moved.key()
 
 
@@ -303,24 +303,24 @@ def test_selection_change_does_reopen_click_tests() -> None:
     plain = scene_of({**SLOTS, (6, 10): 2})
     peg = next(t.id for t in plain.things if t.color == 2)
     picked = replace(plain, selected=frozenset({peg}))
-    assert test_key(plain, _click(10, 10)) != test_key(picked, _click(10, 10))
+    assert tried_key(plain, _click(10, 10)) != tried_key(picked, _click(10, 10))
 
 
 def test_identical_neighborhoods_share_a_click_key_but_different_ones_do_not() -> None:
     s = scene_of({**SLOTS, (20, 10): 5})
-    assert test_key(s, _click(10, 10)) == test_key(s, _click(14, 10))
-    assert test_key(s, _click(18, 10)) != test_key(s, _click(14, 10))  # a wall beside it
+    assert tried_key(s, _click(10, 10)) == tried_key(s, _click(14, 10))
+    assert tried_key(s, _click(18, 10)) != tried_key(s, _click(14, 10))  # a wall beside it
 
 
 def test_simple_actions_keep_the_whole_scene_key() -> None:
     s = scene_of(SLOTS)
-    assert test_key(s, Action(1)) == (s.key(), Action(1).key())
+    assert tried_key(s, Action(1)) == (s.key(), Action(1).key())
 
 
 def test_a_tried_click_settles_its_twins() -> None:
     s = scene_of(SLOTS)
     mem = FactMemory()
-    tried = {test_key(s, _click(10, 10))}
+    tried = {tried_key(s, _click(10, 10))}
     actions = [_click(10, 10), _click(14, 10)]
     assert choose_test(s, actions, mem, (), set(), None) is not None  # open without the key
     assert choose_test(s, actions, mem, (), tried, None) is None  # both share the tried key
