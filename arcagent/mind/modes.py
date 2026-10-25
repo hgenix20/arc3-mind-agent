@@ -14,7 +14,13 @@ from the mark color. A drawn mark can also move (the tracker keeps one outline's
 jumps to another piece): moving to surround the clicked thing is the same as vanishing
 from the old owner and appearing on the clicked one; moving anywhere else is vanishing.
 Changes on ``masked`` cells (counters, noise) are never marks, and the clicked thing's own
-move is never a mark. ``Mode.active`` is filled by the active-controller rule (Task 4.2).
+move is never a mark.
+
+Active controller: after a transition caused by a non-click action in which exactly one
+thing whose sig or kind is in ``controlled`` (the agent's ``goals.controlled_sigs``) moved,
+that thing is active. It stays active through transitions where no controlled thing moved
+or several did, and loses the tag only when another controlled thing alone answers. Action
+numbers carry no meaning here: which thing a direction drives is learned, not assumed.
 Pure apart from the tracker's own state; ids are the object tracker's.
 """
 
@@ -83,8 +89,11 @@ class ModeTracker:
         after: Scene,
         diff: SceneDiff,
         masked: frozenset[Cell] = frozenset(),
+        *,
+        controlled: frozenset[str] = frozenset(),
     ) -> Mode:
         """Update from one transition; return the mode after it."""
+        self._note_active(before, action, after, diff, controlled)
         clicked = clicked_thing(before, action)
         vanished, fresh = self._moved(clicked, after, diff)
         vanished += self._vanished(diff)
@@ -106,7 +115,32 @@ class ModeTracker:
             self._selected.add(clicked.id)
         alive = {t.id for t in after.things}
         self._selected &= alive
+        if self._active not in alive:
+            self._active = None
         return self.mode
+
+    def _note_active(
+        self,
+        before: Scene,
+        action: Action,
+        after: Scene,
+        diff: SceneDiff,
+        controlled: frozenset[str],
+    ) -> None:
+        """The one controlled thing that moved under a non-click action becomes active."""
+        if action.id == COORD_ACTION_ID or not controlled:
+            return
+        olds, news = before.by_id(), after.by_id()
+        moved = [
+            c.id
+            for c in diff.changes
+            if (c.dx or c.dy)
+            and c.id in news
+            and (t := olds.get(c.id)) is not None
+            and (t.sig in controlled or t.kind in controlled)
+        ]
+        if len(moved) == 1:
+            self._active = moved[0]
 
     def _moved(
         self, clicked: Thing | None, after: Scene, diff: SceneDiff
