@@ -155,6 +155,7 @@ class _Run:
         self._by_id: dict[int, Thing] | None = None
         # thing id -> other ids its game-over touch test ignores (mates, pushed things)
         self.skip: dict[int, frozenset[int]] = {}
+        self.pinned: frozenset[int] = frozenset()  # ids that stay put (``predict``)
 
     @property
     def owner(self) -> Owner:
@@ -290,10 +291,16 @@ def _base(run: _Run) -> dict[int, _Mover]:
     """Look up every thing's ``any`` fact; return the movers."""
     movers: dict[int, _Mover] = {}
     for t in run.scene.things:
+        if t.id in run.pinned:
+            continue
         subject = run.subject[t.id]
         ctx = run.context.get(t.id, "any")
         found = run.mem.lookup(run.label, subject, ctx, run.kind_of(t.id))
-        if found is None or found[0].status == "broken":
+        if (
+            found is None
+            or found[0].status == "broken"
+            or _restyled_here(run, found[0], subject, t)
+        ):
             run.pending[t.id] = (run.label, subject)
             continue
         fact, borrowed = found
@@ -310,6 +317,32 @@ def _base(run: _Run) -> dict[int, _Mover]:
                 continue
             break
     return movers
+
+
+def _restyled_here(run: _Run, fact: Fact, subject: str, t: Thing) -> bool:
+    """Whether ``t``'s current look came from this very action and it has no fact of its
+    own: the borrowed ``fact`` (a sibling's, a kind's) restyles into ``t``'s look, or the
+    action restyled one of ``t``'s earlier looks into it. Either way the borrowed answer
+    can't tell an action that sets this look from one that cycles looks, so the pair
+    stays unknown until ``t``'s own look is tested. A kind's fact is exempt: kind facts
+    are normalized to "its look becomes X" on purpose, to hold from every look."""
+    if fact.key[1] in (subject, t.kind):
+        return False
+    if _into(fact, t):
+        return True
+    for old in run.mem.earlier_sigs(t):
+        own = run.mem.get((run.label, old, "any"))
+        if own is not None and own.status != "broken" and _into(own, t):
+            return True
+    return False
+
+
+def _into(fact: Fact, t: Thing) -> bool:
+    """Whether the fact recolors or reshapes into ``t``'s current look."""
+    return any(
+        (e.kind == "recolor" and e.color == t.color) or (e.kind == "reshape" and e.sig == t.sig)
+        for e in fact.effects
+    )
 
 
 def _bodies(movers: dict[int, _Mover]) -> list[list[_Mover]]:
@@ -448,7 +481,7 @@ def _toggle(run: _Run) -> None:
                 continue
             recolor = Effect("recolor", color=e.color)
             for t in run.scene.things:
-                if t.sig != e.sig:
+                if t.sig != e.sig or t.id in run.pinned:
                     continue
                 keep = tuple(
                     x for x in run.effects.get(t.id, ()) if x.kind not in ("none", "recolor")
@@ -544,14 +577,17 @@ def predict(
     *,
     assume_still: frozenset[str] | None = None,
     spawns: bool = True,
+    pinned: frozenset[int] = frozenset(),
 ) -> Prediction:
     """Predict the scene after ``action``, or the (label, subject) pairs with no fact.
 
     ``assume_still`` is the set of protected sigs: when given, a thing outside it with no
     usable fact stays as it is and its pair is listed in ``assumed``. ``spawns=False``
-    predicts no spawn at all.
+    predicts no spawn at all. ``pinned`` ids stay as they are, facts or not: search pins a
+    match_thing goal's reference, which shares its look with things the action changes.
     """
     run = _Run(scene, action, mem, assume_still, spawns)
+    run.pinned = pinned
     movers = _base(run)
     if movers:
         run.movers = set(movers)

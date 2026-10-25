@@ -23,7 +23,10 @@ A pair is not open when it has a usable fact once reshapes are undone
 (``FactMemory.kin``): the subject under a sig its own track carried before, or, for a
 click, the clicked thing's label under an earlier sig. Without this, an action that
 reshapes a thing opens a new question about it every time it's taken, and the tests
-never run out (the test flood of eval v4).
+never run out (the test flood of eval v4). An earlier look's fact that is the very
+recolor or reshape that produced the current look settles nothing, and neither does any
+other earlier look's fact then: they can't tell an action that sets this look from one
+that cycles looks, so each new look gets one test.
 
 ``veto`` returns the reason to refuse an action, or None: ``"predicted game_over"``,
 ``"known no effect here"`` (no unknown pairs, the scene is unchanged, every used fact
@@ -41,7 +44,7 @@ from dataclasses import dataclass
 from arcagent.core.types import COORD_ACTION_ID, Action
 from arcagent.mind.facts import FactMemory, action_label, cell_owner, clicked_sig
 from arcagent.mind.modes import MARK_RING, clicked_thing
-from arcagent.mind.objects import Scene, click_cell, color_at
+from arcagent.mind.objects import Scene, Thing, click_cell, color_at
 from arcagent.mind.predictor import Prediction, predict
 
 Tried = set[Hashable]  # tried_key values of the actions taken this level
@@ -135,12 +138,28 @@ def _kin_known(scene: Scene, mem: FactMemory, labels: list[str], subject: str) -
     if not carriers:
         return False
     for t in carriers:
-        sigs = (t.sig, *mem.earlier_sigs(t))
+        earlier = mem.earlier_sigs(t)
+        if any(_made(mem, lab, sig, t) for lab in labels for sig in earlier):
+            return False  # this action made the look: earlier looks can't settle it
+        sigs = (t.sig, *earlier)
         if not any(
             _usable(mem, lab, sig) for lab in labels for sig in sigs if (lab, sig) != (label, t.sig)
         ):
             return False
     return True
+
+
+def _made(mem: FactMemory, label: str, sig: str, t: Thing) -> bool:
+    """Whether ``label``'s fact about the earlier look ``sig`` is the restyle that gave
+    ``t`` its look: borrowed for the new look it predicts no change, which can't tell an
+    action that sets this look from one that cycles looks."""
+    found = mem.lookup(label, sig, "any")
+    if found is None:
+        return False
+    return any(
+        (e.kind == "recolor" and e.color == t.color) or (e.kind == "reshape" and e.sig == t.sig)
+        for e in found[0].effects
+    )
 
 
 def open_pairs(

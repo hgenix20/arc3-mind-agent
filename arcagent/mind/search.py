@@ -84,6 +84,7 @@ SEARCH_SLICES = (500, 1000, 2000)  # node counts where the best plan is noted
 STABLE_SLICES = 2  # boundaries in a row with the same best plan that end the search
 QUIESCENCE_PLIES = 2  # extra moves a safe plan may take over a plan ending in a trap
 HEURISTIC_WEIGHT = 1.0  # weight of the goal distance in the best-first priority
+_GRID_KINDS = frozenset({"match", "match_thing"})  # goal kinds scored on rendered scenes
 
 Stop = Literal["found", "exhausted", "time", "nodes", "stable"]
 
@@ -136,6 +137,7 @@ def is_trap(
     actions: Callable[[Scene], list[Action]],
     mem: FactMemory,
     protect: frozenset[str],
+    pinned: frozenset[int] = frozenset(),
 ) -> bool:
     """Every offered action from ``scene`` is predicted to end the game (and there is one).
 
@@ -143,7 +145,8 @@ def is_trap(
     """
     offered = actions(scene)
     return bool(offered) and all(
-        predict(scene, a, mem, assume_still=protect, spawns=False).game_over for a in offered
+        predict(scene, a, mem, assume_still=protect, spawns=False, pinned=pinned).game_over
+        for a in offered
     )
 
 
@@ -156,7 +159,7 @@ class _Best:
 
     trap: Callable[[Scene], bool]
     kin: Kinematics | None = None
-    grids: bool = False  # render scenes for match goals
+    grids: bool = False  # render scenes for match and match_thing goals
     gain: int = 0
     goal: Goal | None = None
     distance: int | None = None
@@ -205,7 +208,7 @@ def _distances(
 ) -> dict[Goal, int]:
     """Each goal's distance in ``scene``, in goal order; goals with no estimate left out."""
     out: dict[Goal, int] = {}
-    grid = render(scene) if any(g.kind == "match" for g in goals) else None
+    grid = render(scene) if any(g.kind in _GRID_KINDS for g in goals) else None
     for g in goals:
         d = g.distance(scene, grid, kin)
         if d is not None:
@@ -266,11 +269,12 @@ class _Run:
         kin: Kinematics | None = None,
     ) -> None:
         self.actions, self.mem, self.live, self.protect = actions, mem, live, protect
+        self.pinned = frozenset(g.n for g in live if g.kind == "match_thing" and g.n >= 0)
         self.goal_test, self.noop = goal_test, noop
         self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
         self.frontier: dict[tuple[str, str], None] = {}
         self.kin = kin
-        self.best = _Best(self.trap, kin, any(g.kind == "match" for g in live))
+        self.best = _Best(self.trap, kin, any(g.kind in _GRID_KINDS for g in live))
         self.held: list[tuple[Goal | None, Plan]] = []  # a found plan ending in a trap
         self.root: dict[Goal, int] = {}
         self.unscored: list[Goal] = []
@@ -282,7 +286,7 @@ class _Run:
         self.queued = 0  # tiebreak: the order scenes were queued in
 
     def trap(self, s: Scene) -> bool:
-        return is_trap(s, self.actions, self.mem, self.protect)
+        return is_trap(s, self.actions, self.mem, self.protect, self.pinned)
 
     def key_of(self, s: Scene) -> tuple[tuple[str, int, int], ...]:
         if not self.protect and not self.colors:
@@ -362,7 +366,9 @@ class _Run:
         self, current: Scene, plan: Plan, action: Action, queue: Queue
     ) -> SearchResult | None:
         """Predict one child; queue it, hold it (a trap goal), or return it as found."""
-        pred = predict(current, action, self.mem, assume_still=self.protect, spawns=False)
+        pred = predict(
+            current, action, self.mem, assume_still=self.protect, spawns=False, pinned=self.pinned
+        )
         self.nodes += 1
         if pred.scene is None:
             for pair in pred.unknown:

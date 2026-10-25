@@ -37,6 +37,9 @@ from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
+import numpy as np
+import numpy.typing as npt
+
 from arcagent.core.types import GRID_SIZE, Grid
 from arcagent.mind.assign import ASSIGN_MAX, assign
 from arcagent.mind.facts import Effect, FactMemory, clicked_sig
@@ -44,17 +47,19 @@ from arcagent.mind.goal_rules import prior_of, proposed
 from arcagent.mind.kinds import base_sig
 from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene, Thing
-from arcagent.mind.regions import twin_regions
+from arcagent.mind.regions import framed_regions, twin_regions
 from arcagent.mind.route import route
 
-GoalKind = Literal["reach", "clear", "match", "count", "cover"]
+GoalKind = Literal["reach", "clear", "match", "count", "cover", "match_thing"]
 GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled", "probing"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
+Mask = npt.NDArray[np.bool_]  # per cell, (64, 64)
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
 MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
 MAX_OPEN_GOALS = 200  # propose stops adding once this many goals are open
 MAX_COVER_TARGETS = 5  # cover goals per mover, fewest-cell target sigs first
+MAX_MATCH_THINGS = 10  # match_thing goals a propose call adds, at most
 MAX_ROUTE_TARGETS = 20  # a clear goal routes its mover through at most this many things
 UNKNOWN_COST = 20  # the distance ranking assumes for a goal with no estimate
 SALIENCE = 2.0  # rank weight of a goal about a controlled thing or one that changed
@@ -68,6 +73,14 @@ class Goal:
     ``reach`` and ``cover``: ``a``, ``b`` are sigs or kinds. ``clear``: ``color``.
     ``count``: ``color`` and ``n``.
     ``match``: two grid regions ``(x0, y0, x1, y1)``, end exclusive.
+    ``match_thing``: ``b`` a restyle family (looks joined by recolor and reshape facts,
+    sorted, joined by ``|``), ``region_b`` a reference region and ``a`` its picture when
+    proposed (``picture``): some thing of the family shows that picture, top-lefts
+    aligned, wherever it stands. The picture is kept in the goal because the reference
+    shares a look with the family, so predictions apply the family's restyles and moves
+    to it too; references are static by construction. ``n`` is the tracked id of the
+    thing on the reference when proposed (-1 for none): that thing never counts as the
+    family thing, wherever a prediction puts it.
     """
 
     kind: GoalKind
@@ -91,6 +104,8 @@ class Goal:
                 return f"match {self.region_a}={self.region_b}"
             case "cover":
                 return f"cover {self.a}>{self.b}"
+            case "match_thing":
+                return f"match_thing {self.b.split('|')[0]}={self.region_b}"
 
     def holds(self, scene: Scene, grid: Grid | None = None) -> bool:
         """Whether the predicate is true in ``scene``. ``match`` is False without a grid."""
@@ -105,6 +120,8 @@ class Goal:
                 return grid is not None and _regions_equal(grid, self.region_a, self.region_b)
             case "cover":
                 return _cover_cost(scene, self.a, self.b) == 0
+            case "match_thing":
+                return grid is not None and _thing_mismatch(scene, grid, self) == 0
 
     def distance(
         self, scene: Scene, grid: Grid | None = None, kin: Kinematics | None = None
@@ -123,7 +140,10 @@ class Goal:
         each pair's cell gap less one
         (0 when they touch), plus ``GRID_SIZE`` per target left without a mover; 0 when no
         target is visible (all covered); None when targets show and no mover does. Cell gaps
-        ignore walls and step sizes: a ranking of scenes, not a move count.
+        ignore walls and step sizes: a ranking of scenes, not a move count. ``match_thing``:
+        the fewest differing cells between the reference and the same-size picture at the
+        top-left of a family thing not standing on the reference; None without a grid, with
+        no such thing on screen or with every picture off the board.
         """
         match self.kind:
             case "reach":
@@ -136,6 +156,8 @@ class Goal:
                 return None if grid is None else _mismatched(grid, self.region_a, self.region_b)
             case "cover":
                 return _cover_cost(scene, self.a, self.b)
+            case "match_thing":
+                return None if grid is None else _thing_mismatch(scene, grid, self)
 
 
 def _clear_cost(scene: Scene, color: int, kin: Kinematics | None) -> int:
@@ -213,6 +235,39 @@ def _mismatched(grid: Grid, ra: Region, rb: Region) -> int | None:
     if (ax1 - ax0, ay1 - ay0) != (bx1 - bx0, by1 - by0):
         return None
     return int((grid[ay0:ay1, ax0:ax1] != grid[by0:by1, bx0:bx1]).sum())
+
+
+def picture(grid: Grid, region: Region) -> str:
+    """A region's cells as hex digits, row by row (the ``a`` of a match_thing goal)."""
+    x0, y0, x1, y1 = region
+    return "".join(f"{int(v) & 0xF:x}" for v in grid[y0:y1, x0:x1].ravel())
+
+
+def _thing_mismatch(scene: Scene, grid: Grid, goal: Goal) -> int | None:
+    """Fewest cells where the picture at the top-left of a family thing (not the one on
+    the reference) differs from the goal's picture."""
+    family = frozenset(goal.b.split("|"))
+    x0, y0, x1, y1 = goal.region_b
+    h, w = grid.shape
+    if not (0 <= x0 < x1 <= w and 0 <= y0 < y1 <= h) or len(goal.a) != (x1 - x0) * (y1 - y0):
+        return None
+    want = np.array([int(c, 16) for c in goal.a], dtype=np.int8).reshape(y1 - y0, x1 - x0)
+    best: int | None = None
+    for t in scene.things:
+        if t.id == goal.n or not (t.sig in family or t.kind in family):
+            continue
+        tx, ty, _, _ = _bbox(t)
+        if tx + (x1 - x0) > w or ty + (y1 - y0) > h or (tx, ty) == (x0, y0):
+            continue
+        d = int((grid[ty : ty + (y1 - y0), tx : tx + (x1 - x0)] != want).sum())
+        best = d if best is None else min(best, d)
+    return best
+
+
+def _region_of(t: Thing) -> Region:
+    """The thing's bbox as a region, end exclusive."""
+    x0, y0, x1, y1 = _bbox(t)
+    return x0, y0, x1 + 1, y1 + 1
 
 
 def _bbox(t: Thing) -> tuple[int, int, int, int]:
@@ -301,13 +356,16 @@ def goal_sigs(goal: Goal, scene: Scene, *, targets: bool = True) -> frozenset[st
     """The sigs a goal is about.
 
     ``reach`` and ``cover``: ``a``, plus ``b`` when ``targets``. ``clear`` and ``count``:
-    the sigs of the things in ``scene`` with the goal's color. ``match``: none.
+    the sigs of the things in ``scene`` with the goal's color. ``match_thing``: its family.
+    ``match``: none.
     """
     match goal.kind:
         case "reach" | "cover":
             return frozenset({goal.a, goal.b} if targets else {goal.a})
         case "clear" | "count":
             return frozenset(t.sig for t in scene.things if t.color == goal.color)
+        case "match_thing":
+            return frozenset(goal.b.split("|"))
         case "match":
             return frozenset()
 
@@ -369,6 +427,81 @@ def _cover_guesses(
     return out
 
 
+def restyle_families(mem: FactMemory) -> list[frozenset[str]]:
+    """Looks joined by recolor and reshape facts (a fact's subject and the look it
+    produces), as connected groups in a deterministic order: things whose look the agent
+    can change, under every look, before kinds have joined them."""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for fact in mem.facts.values():
+        name = _subject_sig(fact.key[1], fact.key[0])
+        if name is None:
+            continue
+        for e in fact.effects:
+            new: str | None = None
+            if e.kind == "recolor" and e.color >= 0:
+                head, sep, shape = base_sig(name).partition(":")
+                new = f"c{e.color}:{shape}" if sep and head.startswith("c") else None
+            elif e.kind == "reshape" and e.sig:
+                new = e.sig
+            if new is not None:
+                parent[find(name)] = find(new)
+    groups: dict[str, set[str]] = {}
+    for x in list(parent):
+        groups.setdefault(find(x), set()).add(x)
+    return sorted((frozenset(g) for g in groups.values()), key=min)
+
+
+def _match_thing_guesses(
+    scene: Scene, mem: FactMemory, grid: Grid, static: Mask | None
+) -> list[Goal]:
+    """``match_thing(family, ref)`` for each restyle family on screen against every region
+    of a family thing's bbox size that is a thing's bbox or a framed region's inside and
+    lies on cells unchanged since the level started (``static``; without it nothing is
+    proposed). Only once a family thing has moved or changed this level (some cell of it
+    isn't static): until then the thing's own spot looks like a reference too. A region
+    whose picture a family thing elsewhere already shows is skipped: that goal only asks
+    to move the thing; at most
+    ``MAX_MATCH_THINGS``, by family then region."""
+    if static is None:
+        return []
+    refs: set[Region] = set(framed_regions(scene))
+    for t in scene.things:
+        x0, y0, x1, y1 = _bbox(t)
+        refs.add((x0, y0, x1 + 1, y1 + 1))
+    refs = {r for r in refs if bool(static[r[1] : r[3], r[0] : r[2]].all())}
+    out: list[Goal] = []
+    for family in restyle_families(mem):
+        mine = [t for t in scene.things if t.sig in family or t.kind in family]
+        if all(static[y, x] for t in mine for x, y in t.cells):
+            continue  # nothing of the family has changed yet: no telling piece from reference
+        boxes = [_bbox(t) for t in mine]
+        sizes = {(x1 - x0 + 1, y1 - y0 + 1) for x0, y0, x1, y1 in boxes}
+        b = "|".join(sorted(family))
+        h, w = grid.shape
+        for r in sorted(refs):
+            rw, rh = r[2] - r[0], r[3] - r[1]
+            if (rw, rh) not in sizes:
+                continue
+            want = picture(grid, r)
+            shown = {
+                picture(grid, (x0, y0, x0 + rw, y0 + rh))
+                for x0, y0, _, _ in boxes
+                if x0 + rw <= w and y0 + rh <= h and (x0, y0) != (r[0], r[1])
+            }
+            if want not in shown:
+                on = [t.id for t in scene.things if _region_of(t) == r]
+                out.append(Goal("match_thing", a=want, b=b, n=min(on, default=-1), region_b=r))
+    return out[:MAX_MATCH_THINGS]
+
+
 def _is_target(t: Thing) -> bool:
     x0, y0, x1, y1 = _bbox(t)
     return (x1 - x0 + 1) * (y1 - y0 + 1) <= MAX_TARGET_AREA
@@ -384,7 +517,13 @@ class GoalBook:
     stalled_forms: set[Goal] = field(default_factory=set[Goal])
 
     def propose(
-        self, scene: Scene, mem: FactMemory, *, source: str, grid: Grid | None = None
+        self,
+        scene: Scene,
+        mem: FactMemory,
+        *,
+        source: str,
+        grid: Grid | None = None,
+        static: Mask | None = None,
     ) -> list[Goal]:
         """Add the heuristic guesses not yet in ``status``; return the new ones in order.
 
@@ -416,6 +555,7 @@ class GoalBook:
             guesses += [
                 Goal("match", region_a=ra, region_b=rb) for ra, rb in twin_regions(scene, grid)
             ]
+            guesses += _match_thing_guesses(scene, mem, grid, static)
         guesses = [g for g in guesses if proposed(g.kind)]
         added: list[Goal] = []
         room = MAX_OPEN_GOALS - sum(1 for _ in self._open_goals())

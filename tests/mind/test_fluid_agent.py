@@ -1373,3 +1373,63 @@ def test_a_tight_budget_puts_a_fitting_partial_plan_before_tests() -> None:
     assert not fluid.budget_tight(remaining=4, distance=5)  # doesn't fit at all
     assert not fluid.budget_tight(remaining=None, distance=5)
     assert fluid.TEST_RESERVE == 2
+
+
+class RestyleGame:
+    """A 2x2 piece (color 2) the arrows move and A5 recolors through 2, 3, 4, 9, 6 in turn,
+    and a 2x2 reference that never changes: color 6 on level 1, 4 on level 2. The piece
+    showing the reference's color completes the level, wherever it stands; each level
+    starts with the piece at color 2 in its corner."""
+
+    CYCLE = (2, 3, 4, 9, 6)
+    REFS = (6, 4)
+
+    def __init__(self) -> None:
+        self.levels = 0
+        self.level_moves: list[int] = []
+        self.moves = 0
+        self.phase = Phase.NOT_FINISHED
+        self._load()
+
+    def _load(self) -> None:
+        self.piece = (10, 10)
+        self.i = 0
+        self.moves = 0
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        g[10:12, 40:42] = self.REFS[min(self.levels, len(self.REFS) - 1)]
+        x, y = self.piece
+        g[y : y + 2, x : x + 2] = self.CYCLE[self.i]
+        return Observation(g, self.phase, self.levels, len(self.REFS), (0, 1, 2, 3, 4, 5))
+
+    def step(self, action: Action) -> Observation:
+        moves = {1: (0, -1), 2: (0, 1), 3: (-1, 0), 4: (1, 0)}
+        if self.phase != Phase.NOT_FINISHED:
+            return self.observe()
+        self.moves += 1
+        if action.id == 5:
+            self.i = (self.i + 1) % len(self.CYCLE)
+        elif action.id in moves:
+            dx, dy = moves[action.id]
+            x, y = self.piece[0] + dx, self.piece[1] + dy
+            if 0 <= x < 30 and 0 <= y < 60:
+                self.piece = (x, y)
+        if self.CYCLE[self.i] == self.REFS[self.levels]:
+            self.levels += 1
+            self.level_moves.append(self.moves)
+            if self.levels == len(self.REFS):
+                self.phase = Phase.WIN
+            else:
+                self._load()
+        return self.observe()
+
+
+def test_the_agent_restyles_a_piece_to_match_a_reference(tmp_path: Path) -> None:
+    game = RestyleGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=300)
+    agent.close()
+    assert game.phase == Phase.WIN
+    assert any(g.kind == "match_thing" for g in agent.goals.status)
+    assert game.level_moves[1] <= 4  # the cycle is known: two presses, a few moves at most

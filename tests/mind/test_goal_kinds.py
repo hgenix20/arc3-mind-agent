@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import get_args
 
 import numpy as np
@@ -11,6 +12,7 @@ from arcagent.mind.facts import Effect, FactMemory
 from arcagent.mind.goal_rules import GOAL_RULES, prior_of
 from arcagent.mind.goals import Goal, GoalBook, GoalKind
 from arcagent.mind.objects import Scene, Tracker, shape_of
+from arcagent.mind.regions import render
 from arcagent.mind.search import search
 
 Cells = dict[tuple[int, int], int]
@@ -119,3 +121,79 @@ def test_confirmed_form_stays_first_and_search_gets_every_open_goal() -> None:
         book.status[Goal("count", color=c, n=1)] = "open"
     ranked = book.ranked(scene)
     assert ranked[0] == form and len(ranked) == 21
+
+
+SQ = shape_of([(0, 0), (1, 0), (0, 1), (1, 1)])
+PIECE = f"c2:{SQ}"
+
+
+def square(x: int, y: int, color: int) -> Cells:
+    return {(x + dx, y + dy): color for dx in (0, 1) for dy in (0, 1)}
+
+
+def test_match_thing_compares_pictures_wherever_the_thing_is() -> None:
+    goal = Goal("match_thing", a="6666", b=PIECE, region_b=(40, 10, 42, 12))
+    off, g = scene_of(square(10, 10, 2) | square(40, 10, 6))
+    assert goal.distance(off, g) == 4 and not goal.holds(off, g)
+    same, g = scene_of(square(10, 30, 6) | square(40, 10, 6))  # another place, same picture
+    assert goal.distance(same, g) is None  # no thing of the family on screen
+    two = Goal("match_thing", a="6666", b=f"{PIECE}|c6:{SQ}", region_b=(40, 10, 42, 12))
+    assert two.distance(same, g) == 0 and two.holds(same, g)
+    moved, g = scene_of(square(10, 30, 6) | square(40, 10, 9))  # the reference changed
+    assert two.holds(moved, g)  # the goal keeps the picture it was proposed with
+    ref = next(t for t in same.things if t.x == 40)
+    away = replace(
+        same,
+        things=tuple(
+            replace(t, x=50, cells=frozenset((x + 10, y) for x, y in t.cells))
+            if t.id == ref.id
+            else t
+            for t in same.things
+        ),
+    )
+    pinned = replace(two, n=ref.id)
+    piece = next(t for t in same.things if t.x == 10)
+    recolored = replace(away, things=tuple(t for t in away.things if t.id != piece.id))
+    assert two.holds(recolored, render(recolored))  # the moved reference passes for the piece
+    assert not pinned.holds(recolored, render(recolored))  # unless the goal names it
+    assert goal.distance(off, None) is None and not goal.holds(off, None)
+    gone, g = scene_of(square(40, 10, 6))
+    assert goal.distance(gone, g) is None
+    assert goal.id() == f"match_thing {PIECE}=(40, 10, 42, 12)"
+    assert Goal("match_thing", a="66", b=PIECE, region_b=(40, 10, 42, 12)).distance(off, g) is None
+
+
+def test_match_thing_is_proposed_for_a_restyled_thing_and_same_size_references() -> None:
+    mem = FactMemory()
+    mem.record(("A5", PIECE, "any"), (Effect("recolor", color=3),), 0)
+    scene, grid = scene_of(square(10, 10, 2) | square(40, 10, 6) | {(50, 50): 7})
+    assert not any(g.kind == "match_thing" for g in GoalBook().propose(scene, mem, source="t"))
+    static = np.ones((64, 64), dtype=bool)
+    still = GoalBook().propose(scene, mem, source="t", grid=grid, static=static)
+    assert not any(g.kind == "match_thing" for g in still)  # the piece hasn't changed yet
+    static[10:12, 10:12] = False  # it has now (recolored in place)
+    added = GoalBook().propose(scene, mem, source="t", grid=grid, static=static)
+    family = f"{PIECE}|c3:{SQ}"  # the recolor joins the two looks
+    ref = next(t for t in scene.things if t.color == 6)
+    assert Goal("match_thing", a="6666", b=family, n=ref.id, region_b=(40, 10, 42, 12)) in added
+    assert not any(g.kind == "match_thing" and g.region_b == (50, 50, 51, 51) for g in added)
+    assert not any(g.kind == "match_thing" and g.region_b == (10, 10, 12, 12) for g in added)
+    static[10:12, 40:42] = False  # the reference changed this level: not a reference
+    moved = GoalBook().propose(scene, mem, source="t", grid=grid, static=static)
+    assert not any(g.kind == "match_thing" and g.region_b == (40, 10, 42, 12) for g in moved)
+
+
+def test_match_thing_follows_the_family_through_its_looks() -> None:
+    goal = Goal("match_thing", a="3333", b=f"{PIECE}|c3:{SQ}", region_b=(40, 10, 42, 12))
+    scene, g = scene_of(square(10, 10, 3) | square(40, 10, 3))
+    assert goal.holds(scene, g)  # the piece now shows color 3, like the reference
+
+
+def test_search_plans_toward_a_match_thing_goal() -> None:
+    scene, _ = scene_of(square(10, 10, 2) | square(40, 10, 6))
+    mem = FactMemory()
+    mem.record(("A5", PIECE, "any"), (Effect("recolor", color=6),), 0)
+    mem.record(("A5", f"c6:{SQ}", "any"), (Effect("none"),), 0)
+    goal = Goal("match_thing", a="6666", b=f"{PIECE}|c6:{SQ}", region_b=(40, 10, 42, 12))
+    r = search(scene, lambda _s: [Action(5)], mem, [goal])
+    assert r.stop == "found" and r.goal == goal and [x.action.id for x in r.plan] == [5]

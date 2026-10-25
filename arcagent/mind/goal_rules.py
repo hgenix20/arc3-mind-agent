@@ -27,6 +27,7 @@ GOAL_RULES: tuple[GoalRule, ...] = (
     GoalRule("clear", 1.0, proposed=True),  # no thing of a color left
     GoalRule("match", 1.5, proposed=True),  # two framed regions of one size equal
     GoalRule("cover", 1.2, proposed=True),  # every target has its own mover on or beside it
+    GoalRule("match_thing", 1.3, proposed=True),  # a restyled thing shows a reference picture
     GoalRule("count", 0.5, proposed=False),  # n things of a color: evaluated, not proposed
 )
 _BY_KIND = {r.kind: r for r in GOAL_RULES}

@@ -179,6 +179,8 @@ from collections.abc import Callable, Collection, Iterable
 from concurrent.futures import Executor, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
+import numpy as np
+
 from arcagent.core.types import (
     COORD_ACTION_ID,
     GRID_SIZE,
@@ -210,6 +212,7 @@ from arcagent.mind.goals import (
     Goal,
     GoalBook,
     GoalStatus,
+    Mask,
     controlled_sigs,
     goal_sigs,
     mover_sigs,
@@ -508,6 +511,10 @@ class FluidAgent:
         self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
         self._budget = BudgetReader()  # moves left this life, from a counter bar
         self._progress = ProgressMonitor()  # progress or motion, per life
+        self._level_first: Grid | None = None  # this level's first frame
+        self._static: Mask = np.ones(
+            (GRID_SIZE, GRID_SIZE), dtype=bool
+        )  # cells unchanged this level
         self._verdict: Verdict = "none"  # this move's progress verdict
         self._motion = 0  # motion verdicts in a row
         self._start_key: tuple[tuple[str, int, int], ...] = ()  # the attempt's first scene
@@ -665,6 +672,8 @@ class FluidAgent:
         self._prev_grid = None
         self._attempt_from = self._action_no
         if self._level_start:
+            self._level_first = obs.grid.copy()
+            self._static = np.ones(obs.grid.shape, dtype=bool)
             self._level_start = False
             self._stretch_from = self._action_no
             self._notes.add("level start")
@@ -679,6 +688,8 @@ class FluidAgent:
 
     def _keep(self, full: Scene, scene: Scene, grid: Grid) -> None:
         self._last_full, self._last_scene = full, scene
+        if self._level_first is not None and self._level_first.shape == grid.shape:
+            self._static &= grid == self._level_first
         self.mem.note_kin(scene.things)
         self._seen_at.update((t.kind, t.x, t.y) for t in scene.things)
         self._history.setdefault(scene.key(), (scene, grid))
@@ -1004,7 +1015,9 @@ class FluidAgent:
         return None if alive is None else _Choice(alive, "forced", FORCED_WHY)
 
     def _plan_choice(self, scene: Scene) -> _Choice | None:
-        added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE, grid=self._last_grid)
+        added = self.goals.propose(
+            scene, self.mem, source=GOAL_SOURCE, grid=self._last_grid, static=self._static
+        )
         if added:
             self._log_goals(added, "open")
             self._log_goals(self._rule_out(added), "ruled_out")

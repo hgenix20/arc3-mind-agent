@@ -510,3 +510,15 @@ def test_spawns_false_predicts_no_spawn() -> None:
     mem.record(key, (appear,), 1)
     p = predict(scene_of({(5, 5): 1}), Action(5), mem, spawns=False)
     assert at(p.scene, PSIG) == [(5, 5)] and key not in p.used
+
+
+def test_pinned_things_stay_put_whatever_the_facts_say() -> None:
+    s = scene_of({(10, 10): 2, (40, 10): 2})
+    mem = FactMemory()
+    mem.record(("A5", f"c2:{shape_of([(0, 0)])}", "any"), (Effect("recolor", color=3),), 0)
+    both = predict(s, Action(5), mem)
+    assert both.scene is not None and {t.color for t in both.scene.things} == {3}
+    ref = next(t for t in s.things if t.x == 40)
+    one = predict(s, Action(5), mem, pinned=frozenset({ref.id}))
+    assert one.scene is not None
+    assert sorted((t.x, t.color) for t in one.scene.things) == [(10, 3), (40, 2)]

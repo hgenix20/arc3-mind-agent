@@ -419,6 +419,23 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 A random probe rarely makes progress, so 120 moves can't rule an indicator out. Still, nothing in the public traces would let a detector be checked. The toggle and glyph rows are evidence for a different kind: set a row of slots to a target pattern. That's close to `match` when a template is on screen, and close to `match_thing` otherwise.
 
+### Task 5.5: match_thing
+
+Kameron's go (2026-10-25). The draft's definition: a thing of kind A has the same shape and colors as a reference R (a pattern the player changes or carries against a displayed target); distance is the differing cells with top-lefts aligned.
+
+**As built:** `Goal("match_thing", a=picture, b=family, n=ref id, region_b=ref)`.
+- **Family:** `restyle_families(mem)` joins looks by recolor and reshape facts (a fact's subject and the look it produces), so the goal follows the thing through looks that kinds haven't joined yet.
+- **Picture kept in the goal:** `a` is the reference's cells when proposed (`picture`). The reference shares a look with the family, so predictions apply the family's restyles and moves to it too. References are static by construction, so the stored picture is the right one.
+- **Pinned reference:** `n` is the tracked id of the thing on the reference. It never counts as the family thing, and search passes it to `predict(..., pinned=)`, which leaves pinned things where they are whatever the facts say. Without that, search "matched" by moving the reference away, or lost the branch on a predicted restyle of the reference.
+- **Proposal** (`_match_thing_guesses`, needs the agent's `static` mask: cells unchanged since the level's first frame): regions of a family thing's size that are a thing's bbox or a framed region's inside, all static; only once a family thing has moved or changed this level (until then its own spot looks like a reference too); skipping pictures a family thing elsewhere already shows; at most `MAX_MATCH_THINGS = 10` a call. Prior 1.3.
+- **Two fixes the toy game needed outside goals:** the predictor treats a borrowed fact (a sibling's, an earlier look's) that restyles a thing into its current look as unknown, kind facts excepted (`_restyled_here`); the tester no longer counts earlier-look facts as settling a look the same action produced (`_made`). Both said "no change" for a cycling restyle, so the agent never pressed again.
+
+In `RestyleGame` (a piece whose color A5 cycles, a reference of another color, two levels) the agent wins level 2 in 3 moves once the cycle is known; without `match_thing` it doesn't finish level 2 in the 270 moves left.
+
+- [x] Tests: `test_match_thing_compares_pictures_wherever_the_thing_is`, `test_match_thing_is_proposed_for_a_restyled_thing_and_same_size_references`, `test_match_thing_follows_the_family_through_its_looks`, `test_search_plans_toward_a_match_thing_goal`, `test_the_restyle_that_made_a_look_does_not_settle_the_new_look`, `test_pinned_things_stay_put_whatever_the_facts_say`, `test_the_agent_restyles_a_piece_to_match_a_reference`.
+
+**Gate:** full offline run against main (10 levels, 0.626).
+
 - [x] Tests: `tests/mind/test_regions.py` (6), `tests/mind/test_goal_kinds.py` (5: rule-book kinds, cover holds and distance, cover with one side missing, cover and match proposed, search plans toward a match goal).
 
 ### Task 5.3: Rank goals instead of capping at 200
