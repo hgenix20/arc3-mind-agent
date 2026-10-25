@@ -378,9 +378,18 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 | 2026-10-24 | cd9007e | same, with kin for split, merged and clicked things | 10 | 0.37 | the five above plus bp35, cd82, ft09, m0r0, tn36 |
 | 2026-10-24 | d828d73 | same, plus win confirmation on the predicted outcome and no off-board clicks | 10 | 0.37 | same games; lf52 confirms `clear c14`; lp85's 6 agent errors gone |
 | 2026-10-24 | 8265321 | same, plus a bound of 3 tests per (label, subject) per level | 8 | 0.35 | lost bp35 and m0r0; reverted |
+| 2026-10-25 | c2a7001 | main, offline FLUID, 25 games, 240 s per game, 2 workers, run twice | 11 | 0.37 | ar25, bp35, cd82, ft09, g50t, lf52, lp85, m0r0, r11l, tn36, vc33 (601 actions); both runs identical |
+| 2026-10-25 | e175744 | counter mask, refuse seen no-ops, counters kept across lives; same, run twice | 8 | 0.49 | merged: ls20 (116), su15 (373), lp85 x2, lf52 (35), r11l (14), tn36 (14), vc33 (265); lost ar25, bp35, cd82, ft09, g50t, m0r0; both runs identical |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
+The 2026-10-25 pair ran each arm twice, alternating, and each pair of runs came out
+identical game by game: with no LLM, the offline FLUID agent is deterministic, so
+offline comparisons need one run per arm (the 4 to 7 points between runs in the spec
+come from the LLM configuration). e175744 is merged under the rule (higher score):
+fewer levels, but wins are faster (r11l 53 to 14 actions, tn36 102 to 14, vc33 601 to
+265) and ls20 and su15 are new. Four of the six lost levels were won by the explorer
+fallback or novelty moves on main. Logs: scratchpad `ab2/`.
 The split and merge half of cd9007e changed nothing on the dc22 probe (303
 tests either way). The leak that remained was in the click label: it carries
 the clicked thing's sig, so a click on a region that keeps changing shape
