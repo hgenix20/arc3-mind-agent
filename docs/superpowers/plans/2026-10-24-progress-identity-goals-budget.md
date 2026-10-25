@@ -411,6 +411,14 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 **As built:** `arcagent/mind/regions.py` (`framed_regions`, `twin_regions` with `TWIN_MIN = 3` and `MAX_TWINS = 20`, `static_cells`, `render`). The rule-book is `arcagent/mind/goal_rules.py`, a typed Python data module instead of JSON, so it ships inside the package with no data-file step (`GoalRule(kind, prior, proposed)`, `prior_of`, `proposed`). Goal kinds: `match` (already evaluated, never proposed before) is proposed for each twin pair of framed regions when `propose` gets the raw grid, and search now plans toward it by rendering predicted scenes; `cover(a, b)` is new: every visible thing named `b` has its own thing named `a` on or beside it, one-to-one by `assign` over cell gaps, proposed for movers and pushables against target sigs with two or more things (`MAX_COVER_TARGETS = 5`). Not built: `match_thing` (region match covers multi-color patterns), `sequence` (needs a progress-indicator detector first), `hold_commit` (the Task 1.4 commit probe does it). Spec component 4 records the decision.
 
+**Research for `sequence` (2026-10-25):** a sequence goal reads a progress indicator, so the first question was whether the public games show one. A scan of the 25 probe traces (`bench/synth/traces`, 120 moves each) looked for cell groups that change on few moves, then followed each candidate along its edge strip. None fills on a correct event and empties on a wrong one. What the edge strips turned out to be:
+
+- a click budget that drains five cells per click (lp85's left column; the budget reader already handles this kind);
+- a palette whose pieces get outlined when clicked and leave the row when placed (sb26's bottom row);
+- slot rows that a click or an action edits: glyphs that cycle in place (tr87), cells that toggle on and off (sc25, tn36).
+
+A random probe rarely makes progress, so 120 moves can't rule an indicator out. Still, nothing in the public traces would let a detector be checked. The toggle and glyph rows are evidence for a different kind: set a row of slots to a target pattern. That's close to `match` when a template is on screen, and close to `match_thing` otherwise.
+
 - [x] Tests: `tests/mind/test_regions.py` (6), `tests/mind/test_goal_kinds.py` (5: rule-book kinds, cover holds and distance, cover with one side missing, cover and match proposed, search plans toward a match goal).
 
 ### Task 5.3: Rank goals instead of capping at 200
