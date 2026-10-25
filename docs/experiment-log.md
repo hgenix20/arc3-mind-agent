@@ -391,7 +391,7 @@ ar25, dc22 and m0r0 but plays slower wins. Logs: `bench/evals/2026-10-25-fluid-l
 | 2026-10-25 | e440d5b | match_thing goal (restyle families, stored reference picture, pinned reference); same, one run | 12 | 0.34 | merged on more levels: new ar25 (372), m0r0 (831); slower tn36 (15 to 3,219), cd82 (62 to 611); the rest unchanged |
 | 2026-10-25 | 2783b47 | main with the sequence and match_thing goals together; same, one run | 13 | 0.28 | main as it stands: ar25 (565), sc25 (409), m0r0 (831); tn36 still 3,219 and cd82 611 |
 | 2026-10-25 | 705e420 | main plus the route lock (`_route_choice`, `Kinematics.tour`, `_closer`); same, one run | 10 | 0.28 | not merged: loses ar25, cd82 and sc25; m0r0 faster (831 to 698) |
-| 2026-10-25 | 213daa1 | main, but search doesn't pin a match_thing reference whose look is a known mover (tn36 alone: 284 moves on main, 14 with this, 15 before match_thing); same, one run | 12 | 0.28 | not merged: loses ar25; tn36 still 3,219 in the full run, so its full-run slowdown has another cause |
+| 2026-10-25 | 213daa1 | main, but search doesn't pin a match_thing reference whose look is a known mover ; same, one run | 12 | 0.28 | not merged: loses ar25; tn36 still 3,219. Correction: the 14-move tn36 result came from turning pinning off entirely; this commit alone takes 283 moves, like main, because the pinned references (c3:1d2f) have no move fact yet. tn36 is seed 0 alone and seed 20 as game 21 of 25 (`make_agent` seeds by list position); with no plan the explorer fallback finds the win at 284 moves with seed 0 and 3,218 with seed 20, which is the whole full-run gap |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
