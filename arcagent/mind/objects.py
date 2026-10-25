@@ -69,6 +69,7 @@ KIND_COST: dict[str, float] = {
 TERRAIN_MIN_CELLS = 128  # a component this large is terrain, never a Thing
 PART_SHARE = 0.25  # a decoration has at most this share of its host's cells
 PIECE_FILL = 0.75  # host and parts fill at least this share of the host's bbox
+PIECE_REPEATS = 2  # a piece look shows this many times in a frame before it counts
 _NO_MEMORY = -2  # terrain memory value for a cell never seen uncovered (-1 is padding)
 
 Cell = tuple[int, int]
@@ -217,7 +218,9 @@ def _visible(grid: Grid, mask: frozenset[Cell]) -> tuple[Grid, int]:
     return g, bg
 
 
-def _things(grid: Grid, memory: Grid | None = None) -> list[Thing]:
+def _things(
+    grid: Grid, memory: Grid | None = None, pieces: frozenset[str] = frozenset()
+) -> list[Thing]:
     """Components under ``TERRAIN_MIN_CELLS`` cells; larger ones are terrain.
 
     With a terrain ``memory`` (the tracker's), a component with any cell remembered as
@@ -246,7 +249,7 @@ def _things(grid: Grid, memory: Grid | None = None) -> list[Thing]:
                 cells=cells,
             )
         )
-    return _join_parts(out)
+    return _join_parts(out, pieces)
 
 
 def _bbox(t: Thing) -> tuple[int, int, int, int]:
@@ -279,13 +282,16 @@ def _host(i: int, things: list[Thing], at: dict[Cell, int]) -> int | None:
     return best
 
 
-def _join_parts(things: list[Thing]) -> list[Thing]:
+def _join_parts(things: list[Thing], pieces: frozenset[str] = frozenset()) -> list[Thing]:
     """Merge each small decoration into the sprite that carries it (a piece).
 
     A thing joins its ``_host``; a host takes its parts only when together they fill at
     least ``PIECE_FILL`` of its bbox, so a hollow frame never swallows what stands inside
-    it. The piece keeps the host's color and lists the parts' cells in ``paint``. Order:
-    hosts where they stood, parts dropped.
+    it. A piece look must show at least twice in the frame, or be in ``pieces`` (looks the
+    tracker saw twice this level): a decoration repeated on copies of a sprite is part of
+    its look, while one thing touching one sprite may well be its own (r11l's mover). The
+    piece keeps the host's color and lists the parts' cells in ``paint``. Order: hosts
+    where they stood, parts dropped.
     """
     at = {c: i for i, t in enumerate(things) for c in t.cells}
     host_of = {i: j for i in range(len(things)) if (j := _host(i, things, at)) is not None}
@@ -294,7 +300,7 @@ def _join_parts(things: list[Thing]) -> list[Thing]:
         if j not in host_of:  # a host that is itself a part keeps to itself
             parts.setdefault(j, []).append(i)
     joined: dict[int, Thing] = {}
-    dropped: set[int] = set()
+    members: dict[int, list[int]] = {}
     for j, mine in parts.items():
         h = things[j]
         x0, y0, x1, y1 = _bbox(h)
@@ -306,8 +312,11 @@ def _join_parts(things: list[Thing]) -> list[Thing]:
         )
         shape = shape_of(cells, paint)
         joined[j] = Thing(-1, h.color, shape, f"c{h.color}:{shape}", x0, y0, cells, paint=paint)
-        dropped.update(mine)
-    return [joined.get(i, t) for i, t in enumerate(things) if i not in dropped]
+        members[j] = mine
+    seen = Counter(t.sig for t in joined.values())
+    keep = {j for j, t in joined.items() if seen[t.sig] >= PIECE_REPEATS or t.sig in pieces}
+    dropped = {i for j in keep for i in members[j]}
+    return [joined[i] if i in keep else t for i, t in enumerate(things) if i not in dropped]
 
 
 def extract(grid: Grid, mask: frozenset[Cell] = frozenset()) -> list[Thing]:
@@ -527,14 +536,17 @@ class Tracker:
 
     def __init__(self) -> None:
         self._next_id = 1
+        self._pieces: set[str] = set()  # piece looks seen twice this level
         self._scene: Scene | None = None
         self._grid: Grid | None = None
         self._memory: Grid | None = None
         self.how: dict[int, MatchHow] = {}  # how each id kept its track on the last update
 
     def reset(self) -> None:
-        """Forget the previous frame and the terrain memory; restart ids at 1."""
+        """Forget the previous frame, the terrain memory and the piece looks; restart ids
+        at 1."""
         self._next_id = 1
+        self._pieces = set()
         self._scene = None
         self._grid = None
         self._memory = None
@@ -557,7 +569,8 @@ class Tracker:
         memory = (
             self._memory if self._memory is not None and self._memory.shape == grid.shape else None
         )
-        fresh = _things(visible, memory)
+        fresh = _things(visible, memory, frozenset(self._pieces))
+        self._pieces.update(t.sig for t in fresh if t.paint)
         ys, xs = np.nonzero(grid < 0)
         blocked = frozenset(zip(xs.tolist(), ys.tolist(), strict=True))
         prev = self._scene

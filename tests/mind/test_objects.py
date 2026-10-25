@@ -318,12 +318,12 @@ def _piece(x: int, y: int, body: int = 14, corner: int = 1) -> dict[tuple[int, i
 
 
 def test_corner_decorations_join_their_sprite() -> None:
-    (t,) = extract(grid_with(_piece(10, 10)))
+    t = extract(grid_with(_piece(10, 10) | _piece(40, 40)))[0]
     plain = extract(grid_with({(10 + i, 10 + j): 14 for i in range(4) for j in range(4)}))[0]
     assert t.color == 14 and len(t.cells) == 16 and (t.x, t.y) == (10, 10)
     assert sorted(t.paint) == [(0, 0, 1), (0, 3, 1), (3, 0, 1), (3, 3, 1)]
     assert t.sig.startswith("c14:") and t.sig != plain.sig and plain.paint == ()
-    assert t.sig == extract(grid_with(_piece(30, 40)))[0].sig
+    assert t.sig == extract(grid_with(_piece(30, 40) | _piece(10, 50)))[0].sig
 
 
 def test_a_thing_inside_a_hollow_frame_stays_its_own() -> None:
@@ -340,7 +340,7 @@ def test_a_part_over_a_quarter_of_its_host_stays_its_own() -> None:
 
 
 def test_a_piece_paints_and_owns_its_part_colors() -> None:
-    s, _ = Tracker().update(grid_with(_piece(10, 10)), frozenset())
+    s, _ = Tracker().update(grid_with(_piece(10, 10) | _piece(40, 40)), frozenset())
     g = render(s)
     assert g[10, 10] == 1 and g[10, 11] == 14 and g[13, 13] == 1
     owner = cell_owner(s)
@@ -349,8 +349,8 @@ def test_a_piece_paints_and_owns_its_part_colors() -> None:
 
 def test_a_moving_piece_keeps_its_id_and_paint() -> None:
     t = Tracker()
-    s0, _ = t.update(grid_with(_piece(10, 10)), frozenset())
-    s1, d = t.update(grid_with(_piece(22, 10)), frozenset())
+    s0, _ = t.update(grid_with(_piece(10, 10) | _piece(40, 40)), frozenset())
+    s1, d = t.update(grid_with(_piece(22, 10) | _piece(40, 40)), frozenset())
     assert d is not None
     (c,) = [c for c in d.changes if c.kind != "same"]
     assert c.kind == "moved" and (c.dx, c.dy) == (12, 0)
@@ -361,3 +361,16 @@ def test_a_selection_ring_does_not_own_the_thing_it_rings() -> None:
     cells = {(10 + dx, 10 + dy): 8 for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy}
     things = extract(grid_with(cells | {(10, 10): 2}))
     assert sorted(t.color for t in things) == [2, 8] and all(t.paint == () for t in things)
+
+
+def test_a_lone_decorated_sprite_keeps_its_parts_apart() -> None:
+    things = extract(grid_with(_piece(10, 10)))
+    assert sorted(t.color for t in things) == [1, 1, 1, 1, 14]
+
+
+def test_a_piece_look_seen_twice_stays_a_piece_when_alone() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with(_piece(10, 10) | _piece(30, 10)), frozenset())
+    assert [len(x.cells) for x in s0.things] == [16, 16]
+    s1, _ = t.update(grid_with(_piece(10, 10)), frozenset())
+    assert [len(x.cells) for x in s1.things] == [16]

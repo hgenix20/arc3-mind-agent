@@ -527,6 +527,8 @@ A thing joins a touching thing of another color (its host) when every cell of it
 
 Probe on each public game's first frame: lf52 gets its 5 pieces (16 cells, 4 painted), and six other games get pieces too (bp35 7, sk48 2, r11l, sc25, tn36 and tu93 1 each); the full A/B decides whether those hurt.
 
+**Recurrence (after the first A/B, 13 levels and 0.05):** a piece look must show at least `PIECE_REPEATS = 2` times in the frame, or be a look the tracker has seen twice this level. r11l's one piece had swallowed its mover (a c1 cell on a c15 sprite's rim), so the agent never planned the moves it wins with (15 to 91 moves). A decoration repeated on copies of a sprite is part of its look; one thing touching one sprite may be its own.
+
 ### Task 7.2: A selection shown by use
 
 A mark that appeared on a clicked thing also becomes a known selection marker when a later click on something else changes that thing (it moves, changes look or disappears) and the mark vanishes in the same transition: the click acted through the marked thing. lf52 never undoes a selection or moves it straight to another piece, so the two existing tests never fire there.
