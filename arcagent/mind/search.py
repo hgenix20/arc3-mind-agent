@@ -132,6 +132,20 @@ def _first_holding(goals: Sequence[Goal], scene: Scene) -> Goal | None:
     return next((g for g in goals if g.holds(scene)), None)
 
 
+def _pins(live: list[Goal], scene: Scene, mem: FactMemory) -> frozenset[int]:
+    """The match_thing references in ``scene`` that predictions hold still.
+
+    A reference whose look is a known mover is left to its facts: it doesn't hold a
+    picture in place, and pinning it hides every plan that moves it (in tn36 the
+    reference is one of the pieces each click moves, and no plan for ``clear`` was found).
+    """
+    refs = {g.n for g in live if g.kind == "match_thing" and g.n >= 0}
+    movers = mover_sigs(mem)
+    return frozenset(
+        t.id for t in scene.things if t.id in refs and t.sig not in movers and t.kind not in movers
+    )
+
+
 def is_trap(
     scene: Scene,
     actions: Callable[[Scene], list[Action]],
@@ -269,7 +283,7 @@ class _Run:
         kin: Kinematics | None = None,
     ) -> None:
         self.actions, self.mem, self.live, self.protect = actions, mem, live, protect
-        self.pinned = frozenset(g.n for g in live if g.kind == "match_thing" and g.n >= 0)
+        self.pinned: frozenset[int] = frozenset()  # set per run (``_pins``)
         self.goal_test, self.noop = goal_test, noop
         self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
         self.frontier: dict[tuple[str, str], None] = {}
@@ -325,6 +339,7 @@ class _Run:
         self, scene: Scene, clock: Callable[[], float], time_s: float, max_nodes: int
     ) -> SearchResult:
         start = clock()
+        self.pinned = _pins(self.live, scene, self.mem)
         self.root = _distances(self.live, scene, self.kin)
         self.unscored = [g for g in self.live if g not in self.root]
         hit = _first_holding(self.live, scene)

@@ -328,3 +328,11 @@ def test_search_never_plans_past_the_budget() -> None:
     assert search(s, simple_actions, mem, [goal], max_depth=5).stop == "found"
     short = search(s, simple_actions, mem, [goal], max_depth=4)
     assert short.stop != "found" and len(short.best) <= 4
+
+
+def test_a_reference_that_moves_is_not_held_still() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4})
+    me = next(t.id for t in s.things if t.sig == PSIG)
+    ref = Goal("match_thing", a="9", b=LSIG, n=me, region_b=(2, 2, 3, 3))
+    r = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG), ref])
+    assert r.stop == "found" and [x.action.id for x in r.plan] == [4, 4, 4]
