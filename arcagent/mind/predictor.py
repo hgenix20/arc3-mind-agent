@@ -166,11 +166,16 @@ class _Run:
             self._by_id = self.scene.by_id()
         return self._by_id
 
+    def kind_of(self, tid: int) -> str | None:
+        """The thing's kind for a fact lookup; None for the clicked thing (label facts)."""
+        return None if self.subject[tid] == "self" else self.by_id[tid].kind
+
     def still(self, tid: int) -> bool:
         """Whether a thing with no usable fact is assumed still (outside the protected sigs)."""
         if self.protect is None or tid == self.clicked:
             return False
-        return self.by_id[tid].sig not in self.protect
+        t = self.by_id[tid]
+        return t.sig not in self.protect and t.kind not in self.protect
 
     def open_pair(self, tid: int, pair: Pair) -> None:
         """Record a missing fact: ``assumed`` when the thing may be assumed still, else unknown."""
@@ -201,7 +206,7 @@ class _Run:
         here: ``_push_targets`` decides, since a box once blocked into a wall puts its
         color in the pusher's blockers.
         """
-        stop = self.mem.blockers.get(t.sig, ())
+        stop = _blockers(self.mem, t)
         owner = self.owner
         padding = self.scene.blocked
         terrain = self.scene.terrain
@@ -259,7 +264,7 @@ class _Run:
 
     def _pushed_fact(self, tid: int) -> Fact | None:
         subject = self.subject[tid]
-        found = self.mem.lookup(self.label, subject, "pushed")
+        found = self.mem.lookup(self.label, subject, "pushed", self.kind_of(tid))
         if found is None or found[0].key[2] != "pushed":
             return None
         if found[0].status == "broken":
@@ -284,7 +289,7 @@ def _base(run: _Run) -> dict[int, _Mover]:
     movers: dict[int, _Mover] = {}
     for t in run.scene.things:
         subject = run.subject[t.id]
-        found = run.mem.lookup(run.label, subject, "any")
+        found = run.mem.lookup(run.label, subject, "any", run.kind_of(t.id))
         if found is None or found[0].status == "broken":
             run.pending[t.id] = (run.label, subject)
             continue
@@ -351,7 +356,7 @@ def _push_targets(
             fact = run.pushed_fact(tid)
             if fact is not None:
                 targets[tid] = fact
-    pusher_stop = set[int]().union(*(run.mem.blockers.get(m.thing.sig, ()) for m in body))
+    pusher_stop = set[int]().union(*(_blockers(run.mem, m.thing) for m in body))
     for tid, fact in targets.items():
         t = by_id[tid]
         d = _displacement(t, fact.effects)
@@ -359,7 +364,7 @@ def _push_targets(
             if any(e.kind == "disappear" for e in fact.effects):
                 continue
             return None
-        stop = pusher_stop | run.mem.blockers.get(t.sig, set())
+        stop = pusher_stop | _blockers(run.mem, t)
         if run.stuck(_shifted(t.cells, *d), mates | {tid}, stop):
             return None
     return targets
@@ -370,6 +375,11 @@ def _block(run: _Run, body: list[_Mover]) -> None:
         tid = m.thing.id
         key = (run.label, run.subject[tid], "blocked")
         fact = run.mem.get(key)
+        kind = run.kind_of(tid)
+        if (fact is None or fact.status == "broken") and kind is not None:
+            fallback = run.mem.get((run.label, kind, "blocked"))
+            if fallback is not None and fallback.status != "broken":
+                key, fact = fallback.key, fallback
         if fact is None:
             run.effects[tid] = _NONE
             run.sources[tid] = key
@@ -489,7 +499,7 @@ def _deadly(run: _Run) -> bool:
         if skip:  # rare: a sprite or a push; drop the ignored things from the cell map
             owner = {c: v for c, v in owner.items() if v[0] not in skip}
         for ctx in touch_contexts(_shifted(t.cells, dx, dy), run.scene, tid, owner=owner):
-            fact = run.mem.get(("any", t.sig, ctx))
+            fact = run.mem.get(("any", t.sig, ctx)) or run.mem.get(("any", t.kind, ctx))
             if (
                 fact is not None
                 and fact.status != "broken"
@@ -498,6 +508,12 @@ def _deadly(run: _Run) -> bool:
                 run.use(fact)
                 dead = True
     return dead
+
+
+def _blockers(mem: FactMemory, t: Thing) -> set[int]:
+    """Colors that stopped this thing's look or its kind."""
+    own = mem.blockers.get(t.sig, set())
+    return own if t.kind == t.sig else own | mem.blockers.get(t.kind, set())
 
 
 def _apply(t: Thing, effects: tuple[Effect, ...], shift: tuple[int, int]) -> Thing | None:
@@ -515,7 +531,7 @@ def _apply(t: Thing, effects: tuple[Effect, ...], shift: tuple[int, int]) -> Thi
     if not (dx or dy) and sig == t.sig:
         return t
     cells = _shifted(t.cells, dx, dy) if dx or dy else t.cells
-    return Thing(t.id, color, shape, sig, t.x + dx, t.y + dy, cells)
+    return Thing(t.id, color, shape, sig, t.x + dx, t.y + dy, cells, t.kind)
 
 
 def predict(

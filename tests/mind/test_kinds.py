@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from arcagent.core.types import Grid
-from arcagent.mind.kinds import KIN_EVIDENCE, KindBook
+from arcagent.mind.kinds import KIN_EVIDENCE, KindBook, base_sig
 from arcagent.mind.objects import Scene, Tracker
 
 Cells = dict[tuple[int, int], int]
@@ -43,7 +43,8 @@ def test_turning_sprite_becomes_one_kind() -> None:
     scenes = run([FACE_R, FACE_L, FACE_R], book)
     a, b = sig_of(scenes[0]), sig_of(scenes[1])
     assert KIN_EVIDENCE == 2
-    assert book.kind_of(a) == book.kind_of(b) == a  # named by the first sig seen
+    assert book.kind_of(a) == book.kind_of(b) == "k" + a  # named by the first sig seen
+    assert base_sig(book.kind_of(b)) == a and base_sig(a) == a
 
 
 def test_one_observation_is_not_enough() -> None:
@@ -70,14 +71,14 @@ def test_recolor_in_place_twice_is_kin() -> None:
     book = KindBook()
     on, off = {(30, 30): 3, (31, 30): 3}, {(30, 30): 8, (31, 30): 8}
     scenes = run([on, off, on], book)
-    assert book.kind_of(sig_of(scenes[1])) == sig_of(scenes[0])
+    assert book.kind_of(sig_of(scenes[1])) == "k" + sig_of(scenes[0])
 
 
 def test_kinds_chain_and_label_fills_things() -> None:
     book = KindBook()
     third = {(10, 10): 9, (10, 11): 9, (11, 11): 9}
     scenes = run([FACE_R, FACE_L, FACE_R, FACE_L, third, FACE_L, third], book)
-    root = sig_of(scenes[0])
+    root = "k" + sig_of(scenes[0])
     assert book.kind_of(sig_of(scenes[4])) == root
     labeled = book.label(scenes[4])
     assert labeled.things[0].kind == root and labeled.things[0].sig == sig_of(scenes[4])

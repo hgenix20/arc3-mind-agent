@@ -21,6 +21,11 @@ Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``matc
 a plan depends on; search and the fluid agent protect them from the stillness assumption.
 Pure and deterministic; callers strip noise things from the scene before calling
 ``propose``.
+
+Kinds: a reach goal's ``a`` and ``b`` match a thing by its sig or its kind
+(``Thing.kind``), so a goal about a kind holds whatever look the thing shows. Mover and
+controlled sets include kinds that have move facts. ``propose`` uses a thing's kind in
+place of its sig when the two differ, so one sprite doesn't get a goal per look.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from typing import Literal
 
 from arcagent.core.types import GRID_SIZE, Grid
 from arcagent.mind.facts import Effect, FactMemory, clicked_sig
+from arcagent.mind.kinds import base_sig
 from arcagent.mind.objects import Scene, Thing
 
 GoalKind = Literal["reach", "clear", "match", "count"]
@@ -107,8 +113,8 @@ class Goal:
 
 
 def _reach_distance(scene: Scene, a: str, b: str) -> int | None:
-    mine = [t for t in scene.things if t.sig == a]
-    targets = [t for t in scene.things if t.sig == b]
+    mine = [t for t in scene.things if _is(t, a)]
+    targets = [t for t in scene.things if _is(t, b)]
     if not mine or not targets:
         return None
     if _reaches(scene, a, b):
@@ -142,10 +148,15 @@ def _bbox(t: Thing) -> tuple[int, int, int, int]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _is(t: Thing, name: str) -> bool:
+    """Whether ``t`` answers to ``name``: its sig or its kind."""
+    return name in (t.sig, t.kind)
+
+
 def _reaches(scene: Scene, a: str, b: str) -> bool:
     """Some ``a`` cell overlaps a ``b`` cell or is 4-adjacent to one (a ring is not its hole)."""
-    mine = [t for t in scene.things if t.sig == a]
-    for target in (t for t in scene.things if t.sig == b):
+    mine = [t for t in scene.things if _is(t, a)]
+    for target in (t for t in scene.things if _is(t, b)):
         reach = set(target.cells)
         for x, y in target.cells:
             reach.update(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
@@ -166,8 +177,8 @@ def _regions_equal(grid: Grid, ra: Region, rb: Region) -> bool:
 
 
 def _sig_color(sig: str) -> int | None:
-    """Color in ``c{color}:{shape}``; None for anything else."""
-    head, sep, _ = sig.partition(":")
+    """Color in ``c{color}:{shape}`` (or a kind, ``k`` plus one); None for anything else."""
+    head, sep, _ = base_sig(sig).partition(":")
     digits = head[1:]
     if not sep or not head.startswith("c") or not digits.isascii() or not digits.isdigit():
         return None
@@ -279,7 +290,9 @@ class GoalBook:
         cells first (ties by sig), and at most ``MAX_OPEN_GOALS`` goals are open at once.
         ``source`` is kept in ``sources`` for logging.
         """
-        present = {t.sig for t in scene.things}
+        present = {t.sig for t in scene.things} | {t.kind for t in scene.things}
+        shadowed = {t.sig for t in scene.things if t.kind != t.sig}  # their kind stands in
+        looks = {t.sig: t.kind for t in scene.things}  # never a target of its own kind
         size: dict[str, int] = {}
         for t in scene.things:
             if _is_target(t):
@@ -288,8 +301,8 @@ class GoalBook:
         guesses = [
             Goal("reach", a=a, b=b)
             for a in _mover_sigs(mem)
-            if a in present
-            for b in [g for g in ranked if g != a][:MAX_REACH_TARGETS]
+            if a in present and a not in shadowed
+            for b in [g for g in ranked if g != a and looks.get(g) != a][:MAX_REACH_TARGETS]
         ]
         guesses += [Goal("clear", color=c) for c in _clear_colors(mem)]
         added: list[Goal] = []

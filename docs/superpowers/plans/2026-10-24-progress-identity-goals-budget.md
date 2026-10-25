@@ -303,24 +303,11 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 - [x] Tests: `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin`, `test_a_growing_strip_is_not_kin`, `test_recolor_in_place_twice_is_kin`, `test_kinds_chain_and_label_fills_things`, `test_unlabeled_things_are_their_own_kind`.
 
-### Task 3.4: Facts and goals key on kind (spec change)
+### Task 3.4: Facts and goals read kinds (spec change)
 
-**Files:**
-- Modify: `arcagent/mind/facts.py`, `arcagent/mind/predictor.py`, `arcagent/mind/goals.py`, `arcagent/mind/tester.py`, `arcagent/mind/search.py`, `arcagent/mind/fluid.py`
-- Modify: `docs/superpowers/specs/2026-10-23-fluid-agent-design.md` (component 2: subjects are kinds; record Kameron's 2026-10-24 decision)
-- Test: `tests/mind/test_facts.py`, `tests/mind/test_predictor.py`, `tests/mind/test_search.py`, `tests/mind/test_fluid_agent.py`
+**As built (changed from the draft):** keying facts on kind alone would break state-relative looks: a toggle tile gets "click turns it off" from one look and "click turns it on" from the other, under one key. So facts stay keyed by look, and each observation of a thing whose kind differs from its sig is also recorded under the kind, with a move or look change normalized to "and its look becomes X" (the same fact from every look). `FactMemory.lookup(..., kind)` tries a usable look fact, then a usable kind fact, then a broken look fact; the predictor passes the kind (not for the clicked thing) and falls back to kind `blocked` and death facts the same way, reads blockers through both names, and keeps `kind` on predicted things. A kind of two or more looks is named `k` + its first sig (`kinds.KIND_PREFIX`, `base_sig`), so its facts never share a key with that look's. Goals match things by sig or kind and propose a kind in place of its looks (never a kind's own look as its target); search protects and keys by either; novelty counts `(kind, x, y)`, so turning back on a visited cell isn't new. The agent runs `KindBook` on every transition, logs `kind` events and labels its scenes. The spec's component 2 records the decision.
 
-**Interfaces:**
-- Consumes: `Thing.kind`, `KindBook`.
-- Produces: fact subjects, click labels, goal `a`/`b`, `mover_sigs`/`controlled_sigs` (renamed `mover_kinds`/`controlled_kinds`, old names kept as aliases for one task) all use kinds. An appearance change is a `reshape` effect to a sig within the kind; the predictor sets the predicted thing's `sig` and keeps its `kind`. `Scene.key()` stays on `(sig, x, y)`: appearance is state and can matter to a goal.
-
-- [ ] **Step 1: Failing tests.**
-  - `test_move_fact_survives_a_facing_change`: A1 moves the player right and turns it; A2 moves it left and turns it back. After two of each, assert both move facts are solid and keyed on one kind.
-  - `test_search_chains_moves_across_facing_changes`: a 3-step reach plan through two turns is found (today the player "disappears" in prediction).
-  - `test_goal_on_a_kind_holds_whatever_the_facing`.
-  - The full `tests/mind` suite passes after mechanical updates of fixtures that compare subjects.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.**
-- [ ] **Step 5: Commit** "Facts and goals key on kind" with the spec edit.
+- [x] Tests: `tests/mind/test_kind_facts.py` (learned under the kind with the new look; a kind fact predicts an unseen look; a look fact wins until it breaks; search chains moves across looks; a goal on a kind holds in either look; kinds are movers), `test_a_turning_player_becomes_one_kind_and_reaches_the_target`. On that game: 22 moves with kinds, 26 without (one plan held instead of six replans).
 
 **Section gate:** paired offline A/B. Watch tu93 (search timeouts were 200 of 448; fallback share near 50%), wa30 oscillation on moves 52 to 67, and prediction accuracy (must not fall below the current 0.89).
 

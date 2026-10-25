@@ -8,9 +8,11 @@ match (same color and size, close by), or a same-color overlap whose size change
 most ``objects.NEAR_SIZE``. A strip that grows, or a different thing appearing where one
 vanished (``appeared`` plus ``disappeared``), is never evidence.
 
-A kind is named by the first sig of its class that the book saw, so it is still a
-``c<color>:<shape>`` string. Kinds last for the whole game: the same sigs come back on
-later levels. Pure; one union-find over sigs.
+A sig never joined is its own kind. A class of two or more sigs is named ``k`` plus the
+first of its sigs the book saw (``KIND_PREFIX``), so a kind fact never shares a key with
+the facts of that first look; ``base_sig`` strips the prefix for code that reads a color
+from a subject. Kinds last for the whole game: the same sigs come back on later levels.
+Pure; one union-find over sigs.
 """
 
 from __future__ import annotations
@@ -22,7 +24,15 @@ from dataclasses import replace
 from arcagent.mind.objects import NEAR_SIZE, MatchHow, Scene, SceneDiff, Thing
 
 KIN_EVIDENCE = 2  # observations of one switch before two sigs become one kind
+KIND_PREFIX = "k"  # marks a kind of two or more sigs: "k" + its first-seen sig
 _SAME_OBJECT: frozenset[MatchHow] = frozenset({"prior", "recolor", "near"})
+
+
+def base_sig(subject: str) -> str:
+    """``subject`` without the kind prefix: the first-seen sig of a kind, else unchanged."""
+    if subject.startswith(KIND_PREFIX + "c"):
+        return subject[len(KIND_PREFIX) :]
+    return subject
 
 
 def _same_object(how: MatchHow | None, b: Thing, a: Thing) -> bool:
@@ -39,6 +49,7 @@ class KindBook:
         self._parent: dict[str, str] = {}
         self._order: dict[str, int] = {}
         self._evidence: Counter[tuple[str, str]] = Counter()
+        self._size: dict[str, int] = {}  # root sig -> sigs in its class
 
     def _see(self, sig: str) -> None:
         if sig not in self._order:
@@ -46,7 +57,12 @@ class KindBook:
             self._parent[sig] = sig
 
     def kind_of(self, sig: str) -> str:
-        """The kind of ``sig``: its class's first-seen sig; a sig never joined is its own."""
+        """The kind of ``sig``: ``k`` + its class's first-seen sig; a sig never joined is
+        its own kind."""
+        root = self._root(sig)
+        return KIND_PREFIX + root if self._size.get(root, 1) > 1 else sig
+
+    def _root(self, sig: str) -> str:
         root = sig
         while self._parent.get(root, root) != root:
             root = self._parent[root]
@@ -73,11 +89,12 @@ class KindBook:
         return joined
 
     def _union(self, x: str, y: str) -> bool:
-        rx, ry = self.kind_of(x), self.kind_of(y)
+        rx, ry = self._root(x), self._root(y)
         if rx == ry:
             return False
         first, second = sorted((rx, ry), key=self._order.__getitem__)
         self._parent[second] = first
+        self._size[first] = self._size.get(first, 1) + self._size.pop(second, 1)
         return True
 
     def label(self, scene: Scene) -> Scene:

@@ -1159,3 +1159,50 @@ def test_commit_probe_is_bounded(tmp_path: Path, monkeypatch: Any) -> None:
     assert 0 < len(probes) <= fluid.COMMIT_PROBES
     assert probes == list(range(probes[0], probes[0] + len(probes)))  # one run, no repeat
     assert agent.goals.status[fluid.Goal("reach", a=PSIG, b=TSIG)] == "excluded"
+
+
+class TurnGame:
+    """A three-cell player that faces where it last moved sideways: A3 moves it one cell
+    left and turns it left, A4 right and right, A1/A2 up/down without turning. Standing next
+    to the target (a dot) wins."""
+
+    RIGHT = ((0, 0), (1, 0), (0, 1))
+    LEFT = ((0, 0), (1, 0), (1, 1))
+
+    def __init__(self, target: tuple[int, int] = (30, 10)) -> None:
+        self.x, self.y, self.face = 10, 10, self.RIGHT
+        self.target = target
+        self.levels = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def cells(self) -> list[tuple[int, int]]:
+        return [(self.x + dx, self.y + dy) for dx, dy in self.face]
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        g[self.target[1], self.target[0]] = 4
+        for x, y in self.cells():
+            g[y, x] = 1
+        return Observation(g, self.phase, self.levels, 1, (0, 1, 2, 3, 4))
+
+    def step(self, action: Action) -> Observation:
+        moves = {1: (0, -1, None), 2: (0, 1, None), 3: (-1, 0, self.LEFT), 4: (1, 0, self.RIGHT)}
+        if action.id in moves and self.phase == Phase.NOT_FINISHED:
+            dx, dy, face = moves[action.id]
+            self.x, self.y = self.x + dx, self.y + dy
+            self.face = face or self.face
+            tx, ty = self.target
+            if any(abs(x - tx) + abs(y - ty) == 1 for x, y in self.cells()):
+                self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_a_turning_player_becomes_one_kind_and_reaches_the_target(tmp_path: Path) -> None:
+    game = TurnGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=150)
+    agent.close()
+    assert game.levels == 1
+    assert any(r["type"] == "kind" for r in records(tmp_path))
+    kinds = {agent._kinds.kind_of(t.sig) for t in agent._last_full.things if t.color == 1}  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+    assert all(k.startswith("k") for k in kinds)

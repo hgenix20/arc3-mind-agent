@@ -251,7 +251,7 @@ class _Run:
             sorted(
                 (t.sig, t.x, t.y)
                 for t in s.things
-                if t.sig in self.protect or t.color in self.colors
+                if t.sig in self.protect or t.kind in self.protect or t.color in self.colors
             )
         )
 

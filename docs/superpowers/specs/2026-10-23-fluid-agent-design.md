@@ -121,6 +121,15 @@ it is changed in place; the list says what is kept and what is replaced.
   (:515, :668). Reusable nodes: a tag node lists every fact sharing that
   behavior, so a new object that behaves like a known one is predicted from
   the node at once and confirmed with a single move.
+- Kinds (Kameron's decision, 2026-10-24: identity apart from look). A thing's
+  look (color and shape) is state; its kind is its identity, learned when one
+  tracked thing is seen switching between two looks twice. Facts stay keyed
+  by look, and every observation of a thing with a kind is also recorded
+  under the kind, with a move normalized to "and its look becomes X". The
+  predictor uses the kind fact when no usable look fact exists, so a sprite
+  seen moving while facing one way is predicted moving while facing another.
+  A state-relative look change (a tile that toggles) keeps its look facts and
+  its kind fact simply breaks. Goals, protection and novelty name kinds.
 - Facts live per game; sleep carries them across levels within the game.
   Nothing crosses games except the root-mechanic tag vocabulary.
 - The plain move log (every transition: frame hashes, action, object diff,

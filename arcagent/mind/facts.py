@@ -20,13 +20,20 @@ background or a terrain region, not only a thing. ``FactMemory.walkable`` holds,
 the colors its things have moved onto; a walkable color is never a blocker for that sig.
 Touch and near contexts stay thing colors only: terrain contacts are constant and would
 charge the safe sets every move.
+
+Kinds (``kinds.KindBook``, ``Thing.kind``): facts stay keyed by a thing's look (its sig).
+For a thing whose kind differs from its sig, ``learn`` also records each observation under
+the kind, with a move or a change of look normalized to "and its look becomes X" (so the
+same action gives the same kind fact from any look), records death facts under the kind
+too, and copies the look's blockers and walkable colors to the kind. ``lookup`` takes the
+kind: a usable look fact wins, then a usable kind fact, then a broken look fact.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Collection, Hashable, Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, Action
@@ -345,17 +352,32 @@ class FactMemory:
         """Sigs the same tracked thing carried before, newest first, without its own."""
         return tuple(s for s in reversed(self.kin.get(t.id, ())) if s != t.sig)
 
-    def lookup(self, label: str, subject: str, context: str) -> tuple[Fact, bool] | None:
+    def lookup(
+        self, label: str, subject: str, context: str, kind: str | None = None
+    ) -> tuple[Fact, bool] | None:
         """Most specific fact for a subject and whether it was borrowed from a sibling.
 
-        Order: exact key, the subject's ``any`` fact, a non-broken fact of a same-shape
-        subject (same context before ``any``; most hits, then lowest key), then the
-        action-wide ``(label, "any", "any")`` fact unless it is a spawn fact.
+        Order: exact key, the subject's ``any`` fact (with a ``kind`` other than the
+        subject, either only when not broken), the kind's exact then ``any`` fact when not
+        broken, a broken fact of the subject, a non-broken fact of a same-shape subject
+        (same context before ``any``; most hits, then lowest key), then the action-wide
+        ``(label, "any", "any")`` fact unless it is a spawn fact.
         """
-        for key in ((label, subject, context), (label, subject, "any")):
-            fact = self.facts.get(key)
-            if fact is not None:
-                return fact, False
+        own = [
+            f
+            for k in ((label, subject, context), (label, subject, "any"))
+            if (f := self.facts.get(k)) is not None
+        ]
+        if kind is not None and kind != subject:
+            usable = next((f for f in own if f.status != "broken"), None)
+            if usable is not None:
+                return usable, False
+            for key in ((label, kind, context), (label, kind, "any")):
+                fact = self.facts.get(key)
+                if fact is not None and fact.status != "broken":
+                    return fact, False
+        if own:
+            return own[0], False
         borrowed = self._borrow(label, subject, context)
         if borrowed is not None:
             return borrowed, True
@@ -941,6 +963,45 @@ def _record_appear(
     return [key]
 
 
+def _kind_observations(obs: list[_Obs], after: Scene | None) -> list[_Obs]:
+    """Each observation of a thing whose kind isn't its sig, again under the kind.
+
+    A move or a change of look becomes "moves (if it did) and its look becomes X", whatever
+    the look before, so the kind fact is the same from every look. Clicked things (subject
+    ``self``) are left out: their facts key on the click label.
+    """
+    now = after.by_id() if after is not None else {}
+    out: list[_Obs] = []
+    for o in obs:
+        t = o.thing
+        if o.subject == "self" or t.kind == t.sig:
+            continue
+        effects = o.effects
+        changed = any(e.kind in ("move", "reshape") for e in effects)
+        new = now.get(t.id)
+        if changed and new is not None:
+            kept = tuple(e for e in effects if e.kind != "reshape")
+            effects = (*kept, Effect("reshape", sig=new.sig))
+        k = replace(o, subject=t.kind, effects=effects)
+        k.mates, k.group_cells, k.group_dest = o.mates, o.group_cells, o.group_dest
+        out.append(k)
+    return out
+
+
+def _share_with_kinds(mem: FactMemory, obs: list[_Obs]) -> None:
+    """Copy each look's blockers and walkable colors to its kind (walkable wins)."""
+    for o in obs:
+        sig, kind = o.thing.sig, o.thing.kind
+        if kind == sig:
+            continue
+        if sig in mem.walkable:
+            mem.walkable.setdefault(kind, set()).update(mem.walkable[sig])
+        if sig in mem.blockers:
+            mem.blockers.setdefault(kind, set()).update(mem.blockers[sig])
+        if kind in mem.blockers:
+            mem.blockers[kind] -= mem.walkable.get(kind, set())
+
+
 def _learn_touch(mem: FactMemory, before: Scene, obs: list[_Obs], move: int) -> list[FactKey]:
     """Game over: each mover gets a death fact per likely deadly color at its destination.
 
@@ -959,10 +1020,12 @@ def _learn_touch(mem: FactMemory, before: Scene, obs: list[_Obs], move: int) -> 
             ("touch", over, mem.safe_touch) if over else ("near", near, mem.safe_near)
         )
         fresh = cands - safe.get(sig, set())
+        subjects = (sig,) if o.thing.kind == sig else (sig, o.thing.kind)
         for color in sorted(fresh or cands):
-            key = ("any", sig, f"{mode}:{color}")
-            if key not in keys:
-                keys.append(key)
+            for subject in subjects:
+                key = ("any", subject, f"{mode}:{color}")
+                if key not in keys:
+                    keys.append(key)
     for key in keys:
         mem.record(key, (Effect("game_over"),), move)
     return keys
@@ -1046,5 +1109,7 @@ def learn(
     _note_walkable(mem, room_before, obs)
     _mark_blocked(mem, label, room_before, obs)
     keys = _record_groups(mem, label, room_after, obs, move)
+    keys += _record_groups(mem, label, room_after, _kind_observations(obs, after), move)
+    _share_with_kinds(mem, obs)
     keys += _record_appear(mem, label, diff, after, move)
     return keys + _note_safe(mem, room_before.owner, room_after.owner, obs, move)

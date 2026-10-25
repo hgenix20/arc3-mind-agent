@@ -205,6 +205,7 @@ from arcagent.mind.goals import (
     goal_sigs,
     mover_sigs,
 )
+from arcagent.mind.kinds import KindBook
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
@@ -327,7 +328,7 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
     expect = pred.scene.by_id()
     now = after.by_id()
     for t in before.things:
-        if t.sig not in movers or t.id not in pred.effects:
+        if (t.sig not in movers and t.kind not in movers) or t.id not in pred.effects:
             continue
         e, a = expect.get(t.id), now.get(t.id)
         if (e is None) != (a is None) or (
@@ -492,7 +493,8 @@ class FluidAgent:
         self._tests_attempt = 0  # test moves since the level or attempt started
         self._vetoes_total = 0
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
-        self._seen_at: set[tuple[str, int, int]] = set()  # (sig, x, y) seen this level
+        self._seen_at: set[tuple[str, int, int]] = set()  # (kind, x, y) seen this level
+        self._kinds = KindBook()  # identity classes of looks, for the whole game
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -619,6 +621,7 @@ class FluidAgent:
         self._tracker.reset()
         self.mem.kin_reset()
         full, _ = self._tracker.update(obs.grid, self._noise.cells)
+        full = self._kinds.label(full)
         scene = _strip(full, self._noise.noisy_ids)
         self._keep(full, scene, obs.grid)
         self._fresh, self._pred = False, None
@@ -640,7 +643,7 @@ class FluidAgent:
     def _keep(self, full: Scene, scene: Scene, grid: Grid) -> None:
         self._last_full, self._last_scene = full, scene
         self.mem.note_kin(scene.things)
-        self._seen_at.update((t.sig, t.x, t.y) for t in scene.things)
+        self._seen_at.update((t.kind, t.x, t.y) for t in scene.things)
         self._history.setdefault(scene.key(), (scene, grid))
         self._scene_ok = True
 
@@ -661,6 +664,7 @@ class FluidAgent:
         prev_full, action = self._last_full, self._last_action
         if not self._fresh and prev_full is not None and action is not None:
             full, diff = self._tracker.update(obs.grid, self._noise.cells)
+            full = self._kinds.label(full)
             noisy = self._noise.noisy_ids
             if diff is not None:
                 before = _strip(prev_full, noisy)
@@ -720,6 +724,12 @@ class FluidAgent:
         prev_full = self._last_full
         prior = self._pred.scene if self._pred is not None else None
         full, diff = self._tracker.update(obs.grid, self._noise.cells, prior)
+        if diff is not None and prev_full is not None:
+            joined = self._kinds.observe(prev_full, full, diff, self._tracker.how)
+            if joined:
+                self._log.event("kind", step=move, kinds=joined)
+                prev_full = self._kinds.label(prev_full)
+        full = self._kinds.label(full)
         if diff is None or prev_full is None:  # cannot happen after a non-fresh frame
             scene = _strip(full, self._noise.noisy_ids)
             self._keep(full, scene, obs.grid)
@@ -1076,12 +1086,15 @@ class FluidAgent:
         Only the first step is taken; the next move searches again with the new cell seen.
         """
         movers = mover_sigs(self.mem) & controlled_sigs(self.mem)
-        if not any(t.sig in movers for t in scene.things):
+        if not any(t.sig in movers or t.kind in movers for t in scene.things):
             return None
         seen = self._seen_at
 
         def novel(s: Scene) -> bool:
-            return any(t.sig in movers and (t.sig, t.x, t.y) not in seen for t in s.things)
+            return any(
+                (t.sig in movers or t.kind in movers) and (t.kind, t.x, t.y) not in seen
+                for t in s.things
+            )
 
         res = self._search(scene, [], goal_test=novel, max_nodes=NOVEL_NODES, time_s=NOVEL_TIME_S)
         if res.stop != "found" or not res.plan:
