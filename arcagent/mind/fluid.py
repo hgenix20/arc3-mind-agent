@@ -58,7 +58,10 @@ Per ``choose(obs)``, in order:
    ``goals.open()``. A found plan starts (branch ``plan``, why ``goal <id>``). A goal
    that already holds at the root is treated as reached (``note_reached``) and the
    search runs once more without it. A first step that a veto refuses counts as a
-   failed attempt at that goal (see step 4).
+   failed attempt at that goal (see step 4). Search goals come from ``GoalBook.ranked``: the
+   confirmed forms, then the best twelve open goals by prior, salience and distance,
+   leaving out goals farther than the moves left this life, plus every goal the
+   executive named.
 6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question), unless this level attempt
    already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
@@ -1130,13 +1133,33 @@ class FluidAgent:
         return choice
 
     def _search_toward(self, scene: Scene, keep: Callable[[Goal], bool]) -> SearchResult:
-        """Search the open goals ``keep`` accepts; a goal holding at the root is reached."""
-        res = self._search(scene, [g for g in self.goals.open() if keep(g)])
+        """Search the ranked goals ``keep`` accepts; a goal holding at the root is reached."""
+        res = self._search(scene, [g for g in self._ranked(scene) if keep(g)])
         if res.stop == "found" and not res.plan and res.goal is not None:
             self._log_goals(self.goals.note_reached(scene, self._last_grid), "excluded")
-            rest = [g for g in self.goals.open() if g != res.goal and keep(g)]
+            rest = [g for g in self._ranked(scene) if g != res.goal and keep(g)]
             res = self._search(scene, rest)
         return res
+
+    def _ranked(self, scene: Scene) -> list[Goal]:
+        """``GoalBook.ranked`` for this move (salient: controlled things and things that
+        changed this level; the budget's moves left), plus every open goal the executive
+        named."""
+        changed = {s for t in scene.things if t.id in self._changed for s in (t.sig, t.kind)}
+        salient = frozenset(controlled_sigs(self.mem) | changed)
+        ranked = self.goals.ranked(
+            scene,
+            grid=self._last_grid,
+            kin=self._kin,
+            salient=salient,
+            budget=self._budget.remaining(),
+        )
+        named = [
+            g
+            for g in self.goals.open()
+            if self.goals.sources.get(g) == LLM_SOURCE and g not in ranked
+        ]
+        return ranked + named
 
     def _search(
         self,

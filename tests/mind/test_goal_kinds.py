@@ -9,7 +9,7 @@ import numpy as np
 from arcagent.core.types import COORD_ACTION_ID, Action, Grid
 from arcagent.mind.facts import Effect, FactMemory
 from arcagent.mind.goal_rules import GOAL_RULES, prior_of
-from arcagent.mind.goals import Goal, GoalBook, GoalKind
+from arcagent.mind.goals import SEARCH_GOALS, Goal, GoalBook, GoalKind
 from arcagent.mind.objects import Scene, Tracker, shape_of
 from arcagent.mind.search import search
 
@@ -92,3 +92,37 @@ def test_search_plans_toward_a_match_goal() -> None:
     r = search(scene, clicks, mem, [goal])
     assert r.stop == "found" and r.goal == goal
     assert [(x.action.x, x.action.y) for x in r.plan] == [(31, 11)]
+
+
+def ranked_book(scene: Scene) -> tuple[GoalBook, Goal, Goal]:
+    book = GoalBook()
+    near, far = Goal("reach", a=BOX, b=PAD), Goal("clear", color=9)
+    for g in (far, near):
+        book.status[g] = "open"
+    return book, near, far
+
+
+def test_ranked_puts_cheap_salient_goals_first() -> None:
+    scene, _ = scene_of({(10, 10): 3, (13, 10): 8, (40, 40): 9, (44, 40): 9, (48, 40): 9})
+    book, near, far = ranked_book(scene)
+    assert book.ranked(scene) == [near, far]  # distance 2 beats three things left
+    assert book.ranked(scene, salient=frozenset({f"c9:{DOT}"}))[0] == far  # salience doubles it
+    assert book.open() == [far, near]  # the open list keeps insertion order
+
+
+def test_goal_beyond_budget_is_left_out_this_life_only() -> None:
+    scene, _ = scene_of({(10, 10): 3, (30, 10): 8, (40, 40): 9})
+    book, near, far = ranked_book(scene)
+    assert near not in book.ranked(scene, budget=5)  # 19 cells away, 5 moves left
+    assert far in book.ranked(scene, budget=5) and book.status[near] == "open"
+
+
+def test_confirmed_form_stays_first_and_search_gets_at_most_twelve() -> None:
+    scene, _ = scene_of({(10, 10): 3, (13, 10): 8})
+    book = GoalBook()
+    form = Goal("clear", color=7)
+    book.confirmed_forms.append(form)
+    for c in range(20):
+        book.status[Goal("count", color=c, n=1)] = "open"
+    ranked = book.ranked(scene)
+    assert ranked[0] == form and len(ranked) == SEARCH_GOALS + 1 == 13

@@ -415,15 +415,9 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 ### Task 5.3: Rank goals instead of capping at 200
 
-**Files:**
-- Modify: `arcagent/mind/goals.py` (`GoalBook.propose`, `open`), `arcagent/mind/fluid.py`
-- Test: `tests/mind/test_goals.py`, `tests/mind/test_fluid_agent.py`
+**As built:** `GoalBook.ranked(scene, grid=, kin=, salient=, budget=)`: confirmed forms, then the best `SEARCH_GOALS = 12` open goals by `prior * salience / (1 + cost)` (`SALIENCE = 2.0` when a goal's sigs touch `salient`, `UNKNOWN_COST = 20` with no distance), leaving out goals farther than `budget` for that ranking only. The agent's searches use it (`_ranked`: salient = controlled things and things changed this level, budget = the reader's moves left) plus every goal the executive named. `open()` keeps its insertion order for everything else.
 
-**Interfaces:**
-- Produces: `GoalBook.ranked(scene, kin, budget: int | None) -> list[Goal]`: score `prior * salience / (1 + cost)`, where `salience` is 2 when the goal involves a controlled kind or a thing that changed this level, else 1, and `cost` is the goal's distance (or `UNKNOWN_COST = 20`). Goals whose distance exceeds `budget` are left out for this life (not excluded). Search gets the top `SEARCH_GOALS = 12`. Confirmed forms keep first place.
-
-- [ ] **Step 1: Failing tests.** `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_left_out_this_life_only`, `test_confirmed_form_stays_first`, `test_search_sees_at_most_twelve_goals`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Rank goals by prior, salience and cost".
+- [x] Tests: `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_is_left_out_this_life_only`, `test_confirmed_form_stays_first_and_search_gets_at_most_twelve`.
 
 **Section gate:** paired offline A/B. Watch ls20 (pattern against target), vc33 and wa30 (carry into the frame), and the goal count per game (was up to 202).
 
