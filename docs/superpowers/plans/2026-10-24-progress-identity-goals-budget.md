@@ -133,21 +133,18 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - [ ] **Step 3: Implement.** Keep the best node by `(distance, len(plan))`. At each slice boundary in `SEARCH_SLICES`, record `(best[0].action.key(), best_distance)`; stop with `"stable"` when it's unchanged for `STABLE_SLICES` boundaries in a row and the plan isn't found yet. `max_nodes` still caps everything.
 - [ ] **Step 4: Gates.** **Step 5: Commit** "Search returns its best partial plan and stops when the best is stable".
 
-### Task 1.3: Quiescence: don't end a plan in an unstable state
+### Task 1.3: Quiescence: don't end a plan in a trap
 
-**Unstable, for this world** (my call; the direction leaves the definition open): a predicted scene where (a) a protected thing sits 4-adjacent to a color with a non-broken death fact, (b) a slide fact for the mover would still move it under the plan's last action, or (c) a protected thing has an unknown pair for some action within one move. A leaf like that is extended by up to `QUIESCENCE_PLIES = 2` moves over the actions that resolve it; it's accepted only if a stable scene follows.
+**As built (changed from the first draft):** the draft defined "unstable" as (a) next to a death color, (b) mid-slide, or (c) an unknown pair one move away. (b) can't happen: the predictor resolves each slide to where it stops. (a) isn't dangerous by itself: the move back is usually safe and vetoes refuse deadly moves. (c) is uncertainty, not danger. What quiescence guards against here is a leaf where every next move is predicted to end the game: a trap.
 
 **Files:**
-- Modify: `arcagent/mind/search.py`
+- Modify: `arcagent/mind/search.py` (the loop moved into a `_Run` class to stay inside the lint limits; behavior otherwise unchanged)
 - Test: `tests/mind/test_search.py`
 
 **Interfaces:**
-- Produces: `unstable(scene: Scene, mem: FactMemory, protect: frozenset[str], last: Action) -> bool` in `search.py`; `QUIESCENCE_PLIES = 2`.
+- Produces: `is_trap(scene: Scene, actions: Callable[[Scene], list[Action]], mem: FactMemory, protect: frozenset[str]) -> bool`; `QUIESCENCE_PLIES = 2`. A found plan ending in a trap is held while the search looks for a safe plan at most `QUIESCENCE_PLIES` moves longer; the held plan is returned when none turns up or a bound stops the search. The best partial plan never ends in a trap. Applies to `goal_test` finds (novelty) too.
 
-- [ ] **Step 1: Failing tests.**
-  - `test_goal_next_to_death_is_not_accepted_unless_it_wins`: the goal cell is adjacent to a death color and the level-up isn't predicted. Assert the plan isn't returned as `found` when a safe plan of equal length exists, and is returned when it's the only one.
-  - `test_partial_plan_never_ends_mid_slide`: assert `result.best`'s last scene is not `unstable`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Search extends unstable leaves before accepting them".
+- [x] Tests: `test_plan_ending_in_a_trap_yields_to_a_safe_plan_a_little_longer`, `test_plan_ending_in_a_trap_is_returned_when_no_safe_plan_exists`, `test_safe_plan_too_much_longer_loses_to_the_trap_plan`, `test_best_partial_plan_never_ends_in_a_trap`.
 
 ### Task 1.4: Commit probe when a goal holds and no level-up came
 

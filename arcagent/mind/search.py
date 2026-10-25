@@ -37,6 +37,14 @@ notes the best plan's first action and distance; when that note is the same at
 ``STABLE_SLICES`` boundaries in a row, the search stops with ``"stable"``: searching on
 isn't changing its answer. A search with no best never stops this way.
 
+Quiescence: a scene where every action the caller offers is predicted to end the game is
+a trap (``is_trap``). A plan whose end scene is a trap isn't returned at once: the search
+keeps going for a plan whose end isn't a trap, at most ``QUIESCENCE_PLIES`` moves longer,
+and returns the trap plan only when none turns up (or a bound stops the search first). The
+best partial plan never ends in a trap. A leaf next to a death color isn't a trap by
+itself: the move back is usually safe, and vetoes refuse the deadly moves. Slides can't be
+caught mid-way: the predictor resolves each to where it stops.
+
 Bounded two ways. ``max_nodes`` expansions (``predict`` calls) is the main bound: every
 game runs as a thread of one process, so a wall-clock budget would buy less search the
 more games share the GIL. ``time_s`` of wall clock (read from ``clock`` before every
@@ -61,6 +69,7 @@ SEARCH_MAX_NODES = 3000  # the main bound: predict calls per search
 SEARCH_TIME_S = 1.0  # wall-clock safety cap; shared with other game threads under the GIL
 SEARCH_SLICES = (500, 1000, 2000)  # node counts where the best plan is noted
 STABLE_SLICES = 2  # boundaries in a row with the same best plan that end the search
+QUIESCENCE_PLIES = 2  # extra moves a safe plan may take over a plan ending in a trap
 
 Stop = Literal["found", "exhausted", "time", "nodes", "stable"]
 
@@ -108,10 +117,30 @@ def _first_holding(goals: Sequence[Goal], scene: Scene) -> Goal | None:
     return next((g for g in goals if g.holds(scene)), None)
 
 
+def is_trap(
+    scene: Scene,
+    actions: Callable[[Scene], list[Action]],
+    mem: FactMemory,
+    protect: frozenset[str],
+) -> bool:
+    """Every offered action from ``scene`` is predicted to end the game (and there is one).
+
+    An action with an unknown outcome isn't a death. Stops at the first survivable action.
+    """
+    offered = actions(scene)
+    return bool(offered) and all(
+        predict(scene, a, mem, assume_still=protect, spawns=False).game_over for a in offered
+    )
+
+
 @dataclass(slots=True)
 class _Best:
-    """The anytime answer so far: goal, distance, plan, and the gain over the root."""
+    """The anytime answer so far: goal, distance, plan, and the gain over the root.
 
+    ``trap`` says whether a scene is a trap; a trap is never the best.
+    """
+
+    trap: Callable[[Scene], bool]
     gain: int = 0
     goal: Goal | None = None
     distance: int | None = None
@@ -127,7 +156,8 @@ class _Best:
             if d == 0 and hit is None:
                 hit = g
             gain = r - d
-            if gain > self.gain or (gain == self.gain > 0 and len(plan) < len(self.plan)):
+            better = gain > self.gain or (gain == self.gain > 0 and len(plan) < len(self.plan))
+            if better and not self.trap(scene):
                 self.gain, self.goal, self.distance, self.plan = gain, g, d, plan
         return hit
 
@@ -177,81 +207,130 @@ def search(
     ``protected_sigs``. ``goal_test``, when given, is one more goal: the first scene where
     it holds (after no goal in ``goals`` did) ends the search as ``found``, goal None.
     """
-    start = clock()
     live = [g for g in goals if g.kind != "match"]
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
-    colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
+    run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop))
+    return run.run(scene, clock, time_s, max_nodes)
 
-    def key_of(s: Scene) -> tuple[tuple[str, int, int], ...]:
-        if not protect and not colors:
+
+Plan = tuple[PlanStep, ...]
+
+
+class _Run:
+    """One search's state; ``run`` is the loop, ``_expand`` one predicted child."""
+
+    def __init__(
+        self,
+        actions: Callable[[Scene], list[Action]],
+        mem: FactMemory,
+        live: list[Goal],
+        protect: frozenset[str],
+        *,
+        goal_test: Callable[[Scene], bool] | None,
+        noop: frozenset[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]],
+    ) -> None:
+        self.actions, self.mem, self.live, self.protect = actions, mem, live, protect
+        self.goal_test, self.noop = goal_test, noop
+        self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
+        self.frontier: dict[tuple[str, str], None] = {}
+        self.best = _Best(self.trap)
+        self.held: list[tuple[Goal | None, Plan]] = []  # a found plan ending in a trap
+        self.root: dict[Goal, int] = {}
+        self.unscored: list[Goal] = []
+        self.seen: set[tuple[tuple[str, int, int], ...]] = set()
+        self.nodes = 0
+        self.deepest = 0
+
+    def trap(self, s: Scene) -> bool:
+        return is_trap(s, self.actions, self.mem, self.protect)
+
+    def key_of(self, s: Scene) -> tuple[tuple[str, int, int], ...]:
+        if not self.protect and not self.colors:
             return s.key()
         return tuple(
-            sorted((t.sig, t.x, t.y) for t in s.things if t.sig in protect or t.color in colors)
+            sorted(
+                (t.sig, t.x, t.y)
+                for t in s.things
+                if t.sig in self.protect or t.color in self.colors
+            )
         )
 
-    frontier: dict[tuple[str, str], None] = {}
-    best = _Best()
-    root = _distances(live, scene)
-    unscored = [g for g in live if g not in root]
-
-    def done(
-        stop: Stop,
-        nodes: int,
-        depth: int,
-        goal: Goal | None = None,
-        plan: tuple[PlanStep, ...] = (),
-    ) -> SearchResult:
+    def done(self, stop: Stop, goal: Goal | None = None, plan: Plan = ()) -> SearchResult:
+        depth = len(plan) if stop == "found" else self.deepest
+        if stop != "found" and self.held:
+            (goal, plan), stop = self.held[0], "found"
+            depth = len(plan)
+        best = self.best
         return SearchResult(
             goal,
             plan,
-            tuple(frontier),
-            nodes,
+            tuple(self.frontier),
+            self.nodes,
             depth,
             stop,
-            len(protect),
+            len(self.protect),
             best.plan,
             best.goal,
             best.distance,
         )
 
-    hit = _first_holding(live, scene)
-    if hit is not None or (goal_test is not None and goal_test(scene)):
-        return done("found", 0, 0, hit)
+    def holds(self, s: Scene, goal: Goal | None) -> bool:
+        return goal is not None or (self.goal_test is not None and self.goal_test(s))
 
-    seen = {key_of(scene)}
-    queue: deque[tuple[Scene, tuple[PlanStep, ...]]] = deque([(scene, ())])
-    nodes = 0
-    deepest = 0
-    notes: list[_Note] = []
-    while queue:
-        current, plan = queue.popleft()
-        deepest = max(deepest, len(plan))
-        parent_key = key_of(current)
-        full_key = current.key() if noop else ()
-        for action in actions(current):
-            if noop and (full_key, action.key()) in noop:
-                continue
-            if clock() - start >= time_s:
-                return done("time", nodes, deepest)
-            if nodes >= max_nodes:
-                return done("nodes", nodes, deepest)
-            if _stable(notes, nodes, best):
-                return done("stable", nodes, deepest)
-            pred = predict(current, action, mem, assume_still=protect, spawns=False)
-            nodes += 1
-            if pred.scene is None:
-                for pair in pred.unknown:
-                    frontier.setdefault(pair, None)
-                continue
-            if pred.game_over:
-                continue
-            key = key_of(pred.scene)
-            if key == parent_key or key in seen:
-                continue
-            seen.add(key)
-            child = (*plan, PlanStep(action, pred))
-            goal = best.offer(root, pred.scene, child) or _first_holding(unscored, pred.scene)
-            if goal is not None or (goal_test is not None and goal_test(pred.scene)):
-                return done("found", nodes, len(child), goal, child)
+    def run(
+        self, scene: Scene, clock: Callable[[], float], time_s: float, max_nodes: int
+    ) -> SearchResult:
+        start = clock()
+        self.root = _distances(self.live, scene)
+        self.unscored = [g for g in self.live if g not in self.root]
+        hit = _first_holding(self.live, scene)
+        if self.holds(scene, hit):
+            return self.done("found", hit)
+        self.seen.add(self.key_of(scene))
+        queue: deque[tuple[Scene, Plan]] = deque([(scene, ())])
+        notes: list[_Note] = []
+        while queue:
+            current, plan = queue.popleft()
+            if self.held and len(plan) >= len(self.held[0][1]) + QUIESCENCE_PLIES:
+                break  # no safe plan within the extra plies: ``done`` returns the held one
+            self.deepest = max(self.deepest, len(plan))
+            full_key = current.key() if self.noop else ()
+            for action in self.actions(current):
+                if self.noop and (full_key, action.key()) in self.noop:
+                    continue
+                if clock() - start >= time_s:
+                    return self.done("time")
+                if self.nodes >= max_nodes:
+                    return self.done("nodes")
+                if _stable(notes, self.nodes, self.best):
+                    return self.done("stable")
+                found = self._expand(current, plan, action, queue)
+                if found is not None:
+                    return found
+        return self.done("exhausted")
+
+    def _expand(
+        self, current: Scene, plan: Plan, action: Action, queue: deque[tuple[Scene, Plan]]
+    ) -> SearchResult | None:
+        """Predict one child; queue it, hold it (a trap goal), or return it as found."""
+        pred = predict(current, action, self.mem, assume_still=self.protect, spawns=False)
+        self.nodes += 1
+        if pred.scene is None:
+            for pair in pred.unknown:
+                self.frontier.setdefault(pair, None)
+            return None
+        key = self.key_of(pred.scene)
+        if pred.game_over or key == self.key_of(current) or key in self.seen:
+            return None
+        self.seen.add(key)
+        child = (*plan, PlanStep(action, pred))
+        goal = self.best.offer(self.root, pred.scene, child) or _first_holding(
+            self.unscored, pred.scene
+        )
+        if not self.holds(pred.scene, goal):
             queue.append((pred.scene, child))
-    return done("exhausted", nodes, deepest)
+        elif not self.trap(pred.scene):
+            return self.done("found", goal, child)
+        elif not self.held:
+            self.held.append((goal, child))
+        return None
