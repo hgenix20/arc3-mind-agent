@@ -21,9 +21,10 @@ Per ``choose(obs)``, in order:
    the real Transfer) and goal statuses stay. The new screen teaches nothing. ``close``
    sleeps once more over the current level's keys (game end). ``FactMemory.level``
    follows ``levels_completed`` so each new fact records the level it was made on.
-3. Otherwise update tracker and noise, strip noisy things from both scenes and the
-   diff, ``learn`` from the transition and ``check`` the previous prediction (its
-   misses feed only the log and the plan stop; ``learn`` charges facts itself). Then
+3. Otherwise update tracker (the last prediction's scene is its prior) and noise,
+   strip noisy things from both scenes and the diff, ``learn`` from the transition and
+   ``check`` the previous prediction (its misses feed only the log and the plan stop;
+   ``learn`` charges facts itself). Then
    ``goals.note_reached`` on the new scene. Just before, if the goal of the plan being
    followed (a found or a partial plan) is open and holds with no level-up, it is set
    ``probing`` instead of excluded, the plan ends, and a commit probe starts: while the
@@ -717,7 +718,8 @@ class FluidAgent:
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
         prev_full = self._last_full
-        full, diff = self._tracker.update(obs.grid, self._noise.cells)
+        prior = self._pred.scene if self._pred is not None else None
+        full, diff = self._tracker.update(obs.grid, self._noise.cells, prior)
         if diff is None or prev_full is None:  # cannot happen after a non-fresh frame
             scene = _strip(full, self._noise.noisy_ids)
             self._keep(full, scene, obs.grid)

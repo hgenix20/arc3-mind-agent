@@ -286,7 +286,9 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
   - `test_two_same_sig_things_crossing_keep_their_ids` (the prior says they swapped sides).
   - Every existing `test_objects.py` case passes with `prior=None`.
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Run it on the scratchpad's `obs/tu93.npz` and `obs/wa30.npz` before and after. Expected: churn on the player falls to zero on moves where it only turned.
+- [x] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Result on all 25 recordings, old tracker against new (no prior in a replay, so this is the matching rules alone): no game worse; total churn per move 20.5 to 17.6; tu93 0.52 to 0.09, lp85 0.38 to 0.01, dc22 0.92 to 0.47, cn04 0.26 to 0.14, wa30 0.38 to 0.18.
+
+**As built:** the cost adds `KIND_COST` per match kind (prior and sig 0, recolor 20, reshape 40, near 60), so the kind outranks distance; without it a player stepping onto a same-shape lava dot lost its id to the lava "recoloring" in place (caught by `test_game_over_prefers_the_overlapped_color`). Cross-color pairs without overlap or a prediction are never candidates. The gate is the candidate tests themselves (radius 16), so `MATCH_GATE` isn't needed; the relational term was left out, since with stationary anchors it equals the distance term. `Tracker.how` records each id's match kind for Task 3.3.
 - [ ] **Step 5: Gates.** **Step 6: Commit** "Tracker matches against the predicted scene".
 
 ### Task 3.3: Kinds: identity classes across appearances

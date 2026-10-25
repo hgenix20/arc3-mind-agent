@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 from arcagent.core.types import Grid
-from arcagent.mind.objects import Tracker, color_at, extract
+from arcagent.mind.objects import Scene, Thing, Tracker, color_at, extract, shape_of
 
 
 def grid_with(cells: dict[tuple[int, int], int], bg: int = 0) -> Grid:
@@ -233,3 +233,75 @@ def test_terrain_split_by_a_thing_stays_terrain() -> None:
     assert [x.color for x in s.things] == [1]
     assert s.terrain[11, 55] == 3 and s.terrain[11, 50] == 3
     assert d is not None and [c.kind for c in d.changes] == ["appeared"]
+
+
+def _placed(
+    scene: Scene, tid: int, x: int, y: int, *, cells: set[tuple[int, int]], color: int
+) -> Scene:
+    """``scene`` with thing ``tid`` predicted at top-left (x, y) with ``cells`` and ``color``."""
+    shape = shape_of(cells)
+    things = tuple(
+        Thing(t.id, color, shape, f"c{color}:{shape}", x, y, frozenset(cells)) if t.id == tid else t
+        for t in scene.things
+    )
+    return Scene(things, scene.background, scene.blocked)
+
+
+def test_turned_sprite_that_moved_keeps_the_id() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(10, 10): 9, (11, 10): 9, (10, 11): 9}), frozenset())
+    s1, d = t.update(grid_with({(13, 10): 9, (14, 10): 9, (14, 11): 9}), frozenset())
+    assert d is not None and [c.kind for c in d.changes] == ["reshaped"]
+    assert s1.things[0].id == s0.things[0].id
+    assert t.how[s0.things[0].id] == "near"
+
+
+def test_recolor_and_move_keeps_the_id_only_with_a_prior() -> None:
+    cells0 = {(5, 5): 2, (6, 5): 2}
+    after = grid_with({(8, 5): 3, (9, 5): 3})
+    plain = Tracker()
+    plain.update(grid_with(cells0), frozenset())
+    _, d = plain.update(after, frozenset())
+    assert d is not None and sorted(c.kind for c in d.changes) == ["appeared", "disappeared"]
+    t = Tracker()
+    s0, _ = t.update(grid_with(cells0), frozenset())
+    tid = s0.things[0].id
+    prior = _placed(s0, tid, 8, 5, cells={(8, 5), (9, 5)}, color=3)
+    s1, d = t.update(after, frozenset(), prior=prior)
+    assert d is not None and [c.kind for c in d.changes] == ["recolored"]
+    assert s1.things[0].id == tid and t.how[tid] == "prior"
+
+
+def test_predicted_teleport_keeps_the_id() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(5, 5): 2}), frozenset())
+    tid = s0.things[0].id
+    prior = _placed(s0, tid, 50, 40, cells={(50, 40)}, color=2)
+    s1, d = t.update(grid_with({(50, 40): 2}), frozenset(), prior=prior)
+    assert d is not None and [(c.kind, c.dx, c.dy) for c in d.changes] == [("moved", 45, 35)]
+    assert s1.things[0].id == tid
+
+
+def test_two_same_sig_things_crossing_keep_their_ids_with_a_prior() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(10, 5): 2, (14, 5): 2}), frozenset())
+    left, right = sorted(s0.things, key=lambda th: th.x)
+    prior = _placed(s0, left.id, 13, 5, cells={(13, 5)}, color=2)
+    prior = _placed(prior, right.id, 11, 5, cells={(11, 5)}, color=2)
+    s1, _ = t.update(grid_with({(11, 5): 2, (13, 5): 2}), frozenset(), prior=prior)
+    assert s1.by_id()[left.id].x == 13 and s1.by_id()[right.id].x == 11
+
+
+def test_new_thing_on_a_vacated_spot_is_not_a_reshape() -> None:
+    t = Tracker()
+    t.update(grid_with({(5, 5): 2, (6, 5): 2}), frozenset())
+    _, d = t.update(grid_with({(5, 5): 6, (5, 6): 6, (6, 6): 6}), frozenset())
+    assert d is not None and sorted(c.kind for c in d.changes) == ["appeared", "disappeared"]
+
+
+def test_how_records_still_and_same_sig_matches() -> None:
+    t = Tracker()
+    s0, _ = t.update(grid_with({(5, 5): 2, (30, 30): 4}), frozenset())
+    t.update(grid_with({(7, 5): 2, (30, 30): 4}), frozenset())
+    by_color = {th.color: th.id for th in s0.things}
+    assert t.how[by_color[4]] == "still" and t.how[by_color[2]] == "sig"
