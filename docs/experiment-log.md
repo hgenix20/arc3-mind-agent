@@ -380,6 +380,9 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 | 2026-10-24 | 8265321 | same, plus a bound of 3 tests per (label, subject) per level | 8 | 0.35 | lost bp35 and m0r0; reverted |
 | 2026-10-25 | c2a7001 | main, offline FLUID, 25 games, 240 s per game, 2 workers, run twice | 11 | 0.37 | ar25, bp35, cd82, ft09, g50t, lf52, lp85, m0r0, r11l, tn36, vc33 (601 actions); both runs identical |
 | 2026-10-25 | e175744 | counter mask, refuse seen no-ops, counters kept across lives; same, run twice | 8 | 0.49 | merged: ls20 (116), su15 (373), lp85 x2, lf52 (35), r11l (14), tn36 (14), vc33 (265); lost ar25, bp35, cd82, ft09, g50t, m0r0; both runs identical |
+| 2026-10-25 | 2e16328 | forced-move branch (forced moves, anytime and best-first search, commit probe, kinds, mode, progress, budget, goal kinds and rule-book, doomed-life RESET, routes); same, one run | 7 | 0.39 | not merged: prediction accuracy 0.92, but lf52 35 to 298 actions, vc33 265 to 1,519, lost ls20 and su15, gained cd82 |
+| 2026-10-25 | ef4c9ca | forced-move without the doomed-life RESET and without the budget filter on goal ranking; same | 9 | 0.39 | lf52 298, ls20 lost; the twelve-goal cut still on |
+| 2026-10-25 | 9b0c53a | same, and search gets every open goal instead of the best twelve | 10 | 0.63 | merged (c2c71f1): cd82 (62), lf52 (19), lp85 (26), ls20 (60), r11l (15), sp80 (827), su15 (434), tn36 (15), vc33 x2 (117, 195); lost lp85's second level |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
@@ -390,6 +393,17 @@ come from the LLM configuration). e175744 is merged under the rule (higher score
 fewer levels, but wins are faster (r11l 53 to 14 actions, tn36 102 to 14, vc33 601 to
 265) and ls20 and su15 are new. Four of the six lost levels were won by the explorer
 fallback or novelty moves on main. Logs: scratchpad `ab2/`.
+The forced-move branch lost to main, so it was bisected on the five games that moved
+(lf52, vc33, ls20, su15, lp85) at each section boundary. Two commits did the damage.
+The doomed-life RESET compared moves left against goal distances, which estimate moves
+and run high when one click slides a piece many cells: su15 reset 1,678 times and
+ls20 and su15 lost their level. Goal ranking cut search to the best twelve goals and
+dropped goals that looked beyond the budget, which took ls20 from 60 actions to 335.
+Both are removed; 9b0c53a is merged under the rule (more levels and a higher score).
+One caveat on determinism: the same commit gives the same result for the same game
+set, but main on the five-game set won vc33 in 78 actions against 265 in the full run,
+so a game's result depends on which games run beside it. Compare full runs only.
+Logs: scratchpad `bisect/` and `full3/`.
 The split and merge half of cd9007e changed nothing on the dc22 probe (303
 tests either way). The leak that remained was in the click label: it carries
 the clicked thing's sig, so a click on a region that keeps changing shape
