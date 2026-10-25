@@ -47,9 +47,10 @@ from arcagent.mind.objects import Scene, Thing
 from arcagent.mind.regions import twin_regions
 from arcagent.mind.route import route
 
-GoalKind = Literal["reach", "clear", "match", "count", "cover"]
+GoalKind = Literal["reach", "clear", "match", "count", "cover", "sequence"]
 GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled", "probing"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
+Box = tuple[int, int, int, int]  # (x, y, w, h): one slot of a progress indicator
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
 MAX_REACH_TARGETS = 20  # per mover, fewest-cell sigs first
@@ -68,6 +69,8 @@ class Goal:
     ``reach`` and ``cover``: ``a``, ``b`` are sigs or kinds. ``clear``: ``color``.
     ``count``: ``color`` and ``n``.
     ``match``: two grid regions ``(x0, y0, x1, y1)``, end exclusive.
+    ``sequence``: ``b`` the indicator's boxes (``encode_boxes``), ``a`` their looks at
+    level start (``box_look`` per box, joined by ``|``); every box changed is the goal.
     """
 
     kind: GoalKind
@@ -91,6 +94,8 @@ class Goal:
                 return f"match {self.region_a}={self.region_b}"
             case "cover":
                 return f"cover {self.a}>{self.b}"
+            case "sequence":
+                return f"sequence {self.b}"
 
     def holds(self, scene: Scene, grid: Grid | None = None) -> bool:
         """Whether the predicate is true in ``scene``. ``match`` is False without a grid."""
@@ -105,6 +110,8 @@ class Goal:
                 return grid is not None and _regions_equal(grid, self.region_a, self.region_b)
             case "cover":
                 return _cover_cost(scene, self.a, self.b) == 0
+            case "sequence":
+                return grid is not None and _unlit(grid, self.a, self.b) == 0
 
     def distance(
         self, scene: Scene, grid: Grid | None = None, kin: Kinematics | None = None
@@ -123,7 +130,9 @@ class Goal:
         each pair's cell gap less one
         (0 when they touch), plus ``GRID_SIZE`` per target left without a mover; 0 when no
         target is visible (all covered); None when targets show and no mover does. Cell gaps
-        ignore walls and step sizes: a ranking of scenes, not a move count.
+        ignore walls and step sizes: a ranking of scenes, not a move count. ``sequence``: the
+        boxes still showing their level-start look; None without a grid or with a box off
+        the board.
         """
         match self.kind:
             case "reach":
@@ -136,6 +145,8 @@ class Goal:
                 return None if grid is None else _mismatched(grid, self.region_a, self.region_b)
             case "cover":
                 return _cover_cost(scene, self.a, self.b)
+            case "sequence":
+                return None if grid is None else _unlit(grid, self.a, self.b)
 
 
 def _clear_cost(scene: Scene, color: int, kin: Kinematics | None) -> int:
@@ -213,6 +224,37 @@ def _mismatched(grid: Grid, ra: Region, rb: Region) -> int | None:
     if (ax1 - ax0, ay1 - ay0) != (bx1 - bx0, by1 - by0):
         return None
     return int((grid[ay0:ay1, ax0:ax1] != grid[by0:by1, bx0:bx1]).sum())
+
+
+def encode_boxes(boxes: Sequence[Box]) -> str:
+    """``x,y,w,h`` per box, joined by ``;``: the ``b`` of a sequence goal."""
+    return ";".join(",".join(str(v) for v in box) for box in boxes)
+
+
+def decode_boxes(text: str) -> list[Box]:
+    """The boxes ``encode_boxes`` wrote."""
+    out: list[Box] = []
+    for part in text.split(";"):
+        x, y, w, h = (int(v) for v in part.split(","))
+        out.append((x, y, w, h))
+    return out
+
+
+def box_look(grid: Grid, box: Box) -> str | None:
+    """The box's cells as hex digits, row by row; None when it leaves the board."""
+    x, y, w, h = box
+    if x < 0 or y < 0 or x + w > grid.shape[1] or y + h > grid.shape[0]:
+        return None
+    return "".join(f"{int(v) & 0xF:x}" for v in grid[y : y + h, x : x + w].ravel())
+
+
+def _unlit(grid: Grid, looks: str, boxes: str) -> int | None:
+    """Boxes still showing their level-start look; None when one leaves the board."""
+    seen = [box_look(grid, box) for box in decode_boxes(boxes)]
+    base = looks.split("|")
+    if len(seen) != len(base) or any(s is None for s in seen):
+        return None
+    return sum(1 for s, b in zip(seen, base, strict=True) if s == b)
 
 
 def _bbox(t: Thing) -> tuple[int, int, int, int]:
@@ -301,14 +343,15 @@ def goal_sigs(goal: Goal, scene: Scene, *, targets: bool = True) -> frozenset[st
     """The sigs a goal is about.
 
     ``reach`` and ``cover``: ``a``, plus ``b`` when ``targets``. ``clear`` and ``count``:
-    the sigs of the things in ``scene`` with the goal's color. ``match``: none.
+    the sigs of the things in ``scene`` with the goal's color. ``match`` and ``sequence``:
+    none.
     """
     match goal.kind:
         case "reach" | "cover":
             return frozenset({goal.a, goal.b} if targets else {goal.a})
         case "clear" | "count":
             return frozenset(t.sig for t in scene.things if t.color == goal.color)
-        case "match":
+        case "match" | "sequence":
             return frozenset()
 
 

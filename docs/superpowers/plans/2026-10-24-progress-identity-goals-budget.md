@@ -419,6 +419,29 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 A random probe rarely makes progress, so 120 moves can't rule an indicator out. Still, nothing in the public traces would let a detector be checked. The toggle and glyph rows are evidence for a different kind: set a row of slots to a target pattern. That's close to `match` when a template is on screen, and close to `match_thing` otherwise.
 
+### Task 5.4: Sequence goal and progress indicator
+
+Kameron's call (2026-10-25): build it anyway, generically, with no public game as its template.
+
+**Idea:** a progress indicator is a row of three or more equal boxes whose looks change one box at a time when something right happens, and fall back when something wrong happens. The goal is every box lit. The agent learns, for each count of lit boxes, what it touched or clicked when the count went up (the next step) and when it fell back (a wrong step), and pursues the next step directly.
+
+**Files:**
+- Create: `arcagent/mind/indicator.py`, `tests/mind/test_indicator.py`
+- Modify: `arcagent/mind/goals.py` (kind `sequence`), `arcagent/mind/goal_rules.py` (prior 1.5, proposed), `arcagent/mind/fluid.py`
+- Test: `tests/mind/test_fluid_agent.py` (`SequenceGame`)
+
+**Interfaces:**
+- `Box = tuple[int, int, int, int]` (x, y, w, h). `SlotRow(boxes: tuple[Box, ...], base: str)`: `base` is each box's cells at level start as hex digits, boxes joined by `|`.
+- `slot_rows(scene, grid) -> list[SlotRow]`: things of at most `SLOT_MAX_CELLS = 64` cells with one shape, on one row (same y) or column (same x), evenly spaced, at least `SLOT_MIN = 3` in a run. Colors may differ.
+- `lit(row, grid) -> int`: boxes whose cells differ from `base`.
+- `SequenceTracker`: `start_level(scene, grid)`, `start_life(grid)`, `observe(grid, trigger: frozenset[str], clicked: Cell | None) -> Literal["up", "reset", "none"]`, `row`, `by_click`, `next_kinds() -> frozenset[str]`, `avoid() -> frozenset[str]`, `goal() -> Goal | None`. A candidate row becomes the indicator the first time its lit count rises by one on a move that didn't click inside it; a row a click lands in is an input row and is dropped. On `up`, the trigger at the old count is the next step (intersected with what was seen before, when that leaves something). On `reset`, the trigger goes into that count's wrong set. A new life rereads the count without an event.
+- `Goal("sequence", a=base, b="x,y,w,h;...")`: holds when every box differs from `base`; distance is the boxes still at `base`; None without a grid.
+- Agent: trigger per move is the clicked thing's kind for a click, else the kinds touching a controlled thing after the move. The sequence goal joins the book once the indicator is found. `_ranked` puts reach goals toward the next step's kinds first (or toward kinds not yet ruled out at this count, nearest first, at most `SEQ_TRIES = 4`). When the indicator rose on a click, `_sequence_choice` clicks a thing of the next step's kind (or an untried candidate) before tests.
+
+- [ ] Tests: `test_slot_rows_finds_three_equal_boxes_in_a_row`, `test_slot_rows_skips_pairs_and_mixed_shapes`, `test_tracker_learns_the_next_step_and_a_wrong_one`, `test_a_clicked_row_is_an_input_not_an_indicator`, `test_sequence_goal_holds_when_every_box_is_lit`, `test_the_agent_finishes_a_hidden_order_sequence`.
+
+**Gate:** full offline run against main (10 levels, 0.626).
+
 - [x] Tests: `tests/mind/test_regions.py` (6), `tests/mind/test_goal_kinds.py` (5: rule-book kinds, cover holds and distance, cover with one side missing, cover and match proposed, search plans toward a match goal).
 
 ### Task 5.3: Rank goals instead of capping at 200
