@@ -73,7 +73,11 @@ Cell = tuple[int, int]
 
 @dataclass(frozen=True, slots=True)
 class Thing:
-    """A single-color component. ``x, y`` is the bbox top-left; ``cells`` are absolute (x, y)."""
+    """A single-color component. ``x, y`` is the bbox top-left; ``cells`` are absolute (x, y).
+
+    ``kind`` is the thing's identity class across looks (``kinds.KindBook``): the first sig
+    its class was seen with. Left empty it is the thing's own sig.
+    """
 
     id: int
     color: int
@@ -82,6 +86,11 @@ class Thing:
     x: int
     y: int
     cells: frozenset[Cell]
+    kind: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.kind:
+            object.__setattr__(self, "kind", self.sig)
 
 
 _UNSET: Grid = np.zeros((0, 0), dtype=np.int8)

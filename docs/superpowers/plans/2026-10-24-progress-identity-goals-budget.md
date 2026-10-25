@@ -293,17 +293,15 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 ### Task 3.3: Kinds: identity classes across appearances
 
-**Files:**
-- Create: `arcagent/mind/kinds.py`
-- Modify: `arcagent/mind/objects.py` (`Thing.kind: str`, default the sig)
-- Test: `tests/mind/test_kinds.py`
+**As built:** `arcagent/mind/kinds.py` (`KindBook`, `KIN_EVIDENCE = 2`) and `Thing.kind` (defaults to the sig). Changes from the draft, my calls:
+- A kind is named by the first sig of its class (still a `c<color>:<shape>` string), so every parser of subject colors keeps working when facts key on kinds.
+- Evidence: one track switching between two sigs, matched by `prior`, `recolor`, `near`, or a same-color overlap with size change within `NEAR_SIZE`. Growth and appear-plus-disappear never count.
+- Dropped the "two sigs on screen together never join" rule: it would keep on/off tiles apart forever, and the tracking evidence already guards false joins.
+- Unions last the whole game (no next-level confirmation): the same sigs recur on later levels, and the extra rule bought little.
 
-**Interfaces:**
-- Consumes: `Tracker.via_prior`, `SceneDiff`, `FactMemory.kin` (track sig histories).
-- Produces: `class KindBook`: `observe(before: Scene, after: Scene, diff: SceneDiff, via_prior: frozenset[int]) -> None`; `kind_of(sig: str) -> str`; `label(scene: Scene) -> Scene` (things with `kind` filled); `new_level()`. A union of two sigs needs `KIN_EVIDENCE = 2` observations of one track changing between them while matched by position or by the prior (never by the reshape-overlap fallback alone). Kind name: `k` + the first sig of the class in order seen. Unions persist across levels; a union whose evidence came only from one level is dropped if the next level never confirms it (my call: false merges would poison facts across levels).
+`KindBook.observe(before, after, diff, how) -> list[str]` (kinds joined), `kind_of(sig) -> str`, `label(scene) -> Scene`.
 
-- [ ] **Step 1: Failing tests.** `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin` (a thing disappears and a different-color thing appears on its cells in the same move, with no prior: no union), `test_different_kinds_keep_apart_when_both_present` (two sigs seen on screen at once in the same frame are never unioned), `test_level_change_drops_unconfirmed_unions`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (union-find with evidence counts). **Step 4: Gates.** **Step 5: Commit** "Kinds: identity classes across appearances".
+- [x] Tests: `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin`, `test_a_growing_strip_is_not_kin`, `test_recolor_in_place_twice_is_kin`, `test_kinds_chain_and_label_fills_things`, `test_unlabeled_things_are_their_own_kind`.
 
 ### Task 3.4: Facts and goals key on kind (spec change)
 
