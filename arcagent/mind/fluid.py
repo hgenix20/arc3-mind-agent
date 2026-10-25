@@ -58,7 +58,11 @@ Per ``choose(obs)``, in order:
    ``goals.open()``. A found plan starts (branch ``plan``, why ``goal <id>``). A goal
    that already holds at the root is treated as reached (``note_reached``) and the
    search runs once more without it. A first step that a veto refuses counts as a
-   failed attempt at that goal (see step 4). Search goals come from ``GoalBook.ranked``: the
+   failed attempt at that goal (see step 4). When search finds no plan, the route lock
+   (``_route_choice``) may: a walk through everything an open ``clear`` goal has left, in
+   the shortest order (``Kinematics.tour``), each step predicted, when the agent knows its
+   one mover and the walk fits the moves left (branch ``plan``, why ``route <goal id>``,
+   event ``route``). Search goals come from ``GoalBook.ranked``: the
    confirmed forms, then every open goal ordered by prior, salience and distance, plus
    every goal the executive named.
 6. Else, when the budget is tight (``budget_tight``: the best partial plan's goal is
@@ -223,13 +227,21 @@ from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.progress import ProgressMonitor, Verdict
 from arcagent.mind.runlog import RunLog
-from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
+from arcagent.mind.search import (
+    SEARCH_MAX_NODES,
+    SEARCH_TIME_S,
+    PlanStep,
+    SearchResult,
+    protected_sigs,
+    search,
+)
 from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, tried_key
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
 
 STALL_AFTER = 2  # failed attempts at one goal in one level before it is set aside
+ROUTE_GOALS = 5  # open goals the route lock looks through for a clear goal
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 SEEN_NO_EFFECT = "seen no effect here"  # this action changed nothing on this very scene
@@ -355,6 +367,12 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
         ):
             return True
     return False
+
+
+def _closer(goal: Goal, before: Scene, after: Scene) -> bool:
+    """Whether ``goal``'s distance without walks or grids fell from ``before`` to ``after``."""
+    was, now = goal.distance(before), goal.distance(after)
+    return was is not None and now is not None and now < was
 
 
 def budget_tight(*, remaining: int | None, distance: int) -> bool:
@@ -853,14 +871,17 @@ class FluidAgent:
     def _check_plan(
         self, pred: Prediction, before: Scene, after: Scene, keys: list[FactKey], grid: Grid
     ) -> None:
-        """Stop a plan on a miss that matters; note the miss or a finished plan for waking."""
+        """Stop a plan on a miss that matters; note the miss or a finished plan for waking.
+        A broken plan counts as a failed attempt at its goal unless the goal now holds or
+        got closer (its distance without walks fell: a thing it wanted gone went early,
+        say), which is progress the prediction missed."""
         goal = self._plan_goal
         if goal is not None:
             movers, protected = self._protected(before)
             if plan_breaks(pred, before, after, keys, movers, protected):
                 self._plan = []
                 self._notes.add("miss that matters")
-                if not goal.holds(after, grid):
+                if not goal.holds(after, grid) and not _closer(goal, before, after):
                     self.note_failed(goal)
             elif not self._plan:
                 self._notes.add("plan finished")
@@ -1024,7 +1045,7 @@ class FluidAgent:
         self._frontier = res.frontier
         if res.stop != "found" or not res.plan or res.goal is None:
             self._partial = res if res.best and res.best_goal is not None else None
-            return None
+            return self._route_choice(scene)
         first, *rest_steps = res.plan
         self._plan = list(rest_steps)
         self._plan_goal = res.goal
@@ -1127,6 +1148,56 @@ class FluidAgent:
             d = g.distance(scene, None, self._kin)
             if d is not None and d < best:
                 self._closest[g] = d
+
+    def _route_choice(self, scene: Scene) -> _Choice | None:
+        """When search found no plan: lock a walk through every thing an open ``clear``
+        goal has left as the plan (``Kinematics.tour``: shortest order, then each leg's
+        moves), when the agent knows its one mover, there are at least two things, and
+        the walk fits the moves left this life. Steps are predicted one after another
+        and the plan ends before the first step with no prediction or a predicted game
+        over; with no predicted step at all, nothing is locked."""
+        mover = self._kin.mover
+        if mover is None:
+            return None
+        left = self._budget.remaining()
+        for goal in self.goals.open()[:ROUTE_GOALS]:
+            if goal.kind != "clear":
+                continue
+            stops = [t.cells for t in scene.things if t.color == goal.color]
+            if len(stops) < 2:
+                continue
+            found = self._kin.tour(scene, mover, stops)
+            if found is None or (left is not None and len(found[0]) > left):
+                continue
+            steps = self._predicted_steps(scene, goal, [g.action for g in found[0]])
+            if not steps:
+                continue
+            self._plan = steps[1:]
+            self._plan_goal = goal
+            self._log.event(
+                "route", goal=goal.id(), stops=len(stops), moves=len(found[0]), steps=len(steps)
+            )
+            why = f"route {goal.id()}"
+            return self._offer(scene, steps[0].action, "plan", why, False, plan=True)
+        return None
+
+    def _predicted_steps(self, scene: Scene, goal: Goal, labels: list[str]) -> list[PlanStep]:
+        """Plan steps for simple-action ``labels`` from ``scene``, each with its
+        prediction (search's protected sigs), up to the first one that can't be predicted
+        or is predicted to end the game."""
+        protect = protected_sigs(self.mem, [goal], scene)
+        steps: list[PlanStep] = []
+        here = scene
+        for label in labels:
+            if not label[1:].isdigit():
+                break
+            action = Action(int(label[1:]))
+            pred = predict(here, action, self.mem, assume_still=protect, spawns=False)
+            if pred.scene is None or pred.game_over:
+                break
+            steps.append(PlanStep(action, pred))
+            here = pred.scene
+        return steps
 
     def _tight_choice(self, scene: Scene) -> _Choice | None:
         """The partial plan's step ahead of tests, when its goal just fits the moves left

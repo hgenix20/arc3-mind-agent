@@ -7,7 +7,7 @@ import numpy as np
 from arcagent.core.types import Grid
 from arcagent.mind.facts import Effect, FactMemory
 from arcagent.mind.goals import Goal
-from arcagent.mind.kinematics import KIN_LIMIT, Gait, Kinematics
+from arcagent.mind.kinematics import KIN_LIMIT, Gait, Kinematics, _path  # pyright: ignore[reportPrivateUsage]
 from arcagent.mind.objects import Scene, Tracker, shape_of
 
 Cells = dict[tuple[int, int], int]
@@ -108,3 +108,31 @@ def test_clear_distance_with_a_mover_adds_the_route_through_what_is_left() -> No
     kin.mover = PSIG
     assert goal.distance(s, None, kin) == 2 + 4 + 6  # plus the cells walked: 10 to 14 to 20
     assert goal.distance(scene_of({(10, 10): 1}), None, kin) == 0
+
+
+def test_tree_gives_a_fewest_moves_path_around_a_wall() -> None:
+    s = scene_of({(10, 10): 1, (20, 10): 4} | wall_column(15, gap=30))
+    kin = Kinematics(walker())
+    links = kin.tree(s, PSIG)
+    steps = kin.steps_to(s, PSIG, frozenset({(20, 10)}))
+    assert (19, 10) in links and steps is not None
+    path = _path(links, (19, 10))
+    assert len(path) == steps  # (19, 10) is beside the target: the touching distance
+    x, y = 10, 10
+    for g in path:
+        x, y = x + g.dx, y + g.dy
+    assert (x, y) == (19, 10)
+
+
+def test_tour_visits_every_stop_in_the_shortest_order() -> None:
+    # Stops at x = 8, 14, 16 on one row: going left first (2 + 6 + 2 = 10 moves after the
+    # first leg of 2) beats going right first (4 + 2 + 8).
+    s = scene_of({(10, 10): 1, (8, 10): 4, (14, 10): 4, (16, 10): 4})
+    kin = Kinematics(walker())
+    stops = [frozenset({(8, 10)}), frozenset({(14, 10)}), frozenset({(16, 10)})]
+    found = kin.tour(s, PSIG, stops)
+    assert found is not None
+    gaits, order = found
+    assert order == [0, 1, 2] and len(gaits) == 2 + 6 + 2
+    assert kin.tour(s, PSIG, [frozenset({(70, 70)})]) is None  # off the board
+    assert kin.tour(scene_of({(8, 10): 4}), PSIG, stops) is None  # no walker on screen
