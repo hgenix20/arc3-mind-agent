@@ -1037,3 +1037,339 @@ def test_counter_cells_survive_game_over(tmp_path: Path) -> None:
     agent.choose(_bar_frame(20, levels=1))  # a level-up drops the counter cells
     assert (0, 63) not in noise.cells
     agent.close()
+
+
+def test_single_unvetoed_action_is_taken_without_search(tmp_path: Path, monkeypatch: Any) -> None:
+    game = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    first = agent.choose(obs)
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    others = [Action(i) for i in (1, 2, 3, 4) if i != first.id]
+    for b in others[:2]:  # seen to do nothing here; ``first`` joins them on the next frame
+        agent._noop.add((scene.key(), b.key()))  # pyright: ignore[reportPrivateUsage]
+
+    def no_search(*_a: object, **_k: object) -> object:
+        raise AssertionError("a forced move must not search")
+
+    monkeypatch.setattr(fluid, "search", no_search)
+    forced = agent.choose(obs)  # the same frame back: ``first`` changed nothing either
+    assert forced.key() == others[2].key()
+    agent.close()
+    last = [r for r in records(tmp_path) if r.get("type") == "action"][-1]
+    assert last["branch"] == "forced"
+
+
+def test_settled_actions_do_not_make_a_move_forced(tmp_path: Path) -> None:
+    game = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    agent.choose(obs)
+    obs = game.step(Action(1))
+    agent.choose(obs)
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    agent._tried.update((scene.key(), Action(i).key()) for i in (1, 2, 3, 4))  # pyright: ignore[reportPrivateUsage]
+    assert agent._forced(scene) is None  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+
+
+def test_search_cap_falls_back_to_the_best_partial_plan(tmp_path: Path, monkeypatch: Any) -> None:
+    real = fluid.search
+
+    def breadth_first(*a: Any, **k: Any) -> Any:  # best-first would find the whole plan
+        return real(*a, **{**k, "weight": 0.0})
+
+    monkeypatch.setattr(fluid, "search", breadth_first)
+    game = FakeGame(player=(2, 2), target=(60, 60), walls=[], lava=[], win_levels=1)
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=200)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert any(r["why"].startswith("toward reach") for r in acts)
+    assert game.levels == 1
+    assert not any(r["why"] == fluid.NOVEL_WHY for r in acts)
+
+
+class CommitGame(FakeGame):
+    """Standing next to the target doesn't win; A5 there does (A5 elsewhere does nothing).
+
+    ``commits=False`` makes A5 do nothing anywhere."""
+
+    def __init__(self, *, commits: bool = True) -> None:
+        super().__init__(player=(2, 2), target=(6, 2), walls=[], lava=[], win_levels=1)
+        self.commits = commits
+
+    def observe(self) -> Observation:
+        return replace(super().observe(), available_actions=(0, 1, 2, 3, 4, 5, 6))
+
+    def _next_to_target(self) -> bool:
+        return abs(self.player[0] - self.target[0]) + abs(self.player[1] - self.target[1]) == 1
+
+    def step(self, action: Action) -> Observation:
+        if action.id == 5 and self.commits and self._next_to_target():
+            self.steps += 1
+            self.levels = 1
+            self.phase = Phase.WIN
+            return self.observe()
+        if action.id in (1, 2, 3, 4):
+            dx, dy = {1: (0, -1), 2: (0, 1), 3: (-1, 0), 4: (1, 0)}[action.id]
+            nxt = (self.player[0] + dx, self.player[1] + dy)
+            if nxt != self.target and 0 <= nxt[0] < 64 and 0 <= nxt[1] < 64:
+                self.steps += 1
+                self.player = nxt
+                return self.observe()
+        self.steps += 1
+        return self.observe()
+
+
+def a5_does_nothing(agent: fluid.FluidAgent) -> None:
+    """Solid facts that A5 changes nothing: the usual state of a commit action that only
+    works in the winning state, which the agent learned elsewhere."""
+    for sig in (PSIG, TSIG):
+        for move in range(5):
+            agent.mem.record(("A5", sig, "any"), (Effect("none"),), move)
+
+
+def test_goal_holding_without_level_up_triggers_commit_probe(tmp_path: Path) -> None:
+    game = CommitGame()
+    agent = make_agent(tmp_path)
+    a5_does_nothing(agent)
+    play(game, agent, max_steps=120)
+    agent.choose(game.observe())  # the winning frame: the agent sees the level-up
+    agent.close()
+    assert game.levels == 1
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    win = acts[-2]  # the last action is the reply to the winning frame
+    assert win["branch"] == "commit" and win["action"][0] == 5
+    assert any(r["type"] == "commit_probe" for r in records(tmp_path))
+    goal = fluid.Goal("reach", a=PSIG, b=TSIG)
+    assert agent.goals.status[goal] == "confirmed"
+
+
+def test_commit_probe_is_bounded(tmp_path: Path, monkeypatch: Any) -> None:
+    game = CommitGame(commits=False)
+    agent = make_agent(tmp_path)
+    a5_does_nothing(agent)
+    clicks = [Action(6, 40 + i, 40) for i in range(10)]  # empty cells: nothing changes
+
+    def many(_scene: Scene) -> list[Action]:
+        return [Action(5), *clicks]
+
+    monkeypatch.setattr(agent, "_commit_candidates", many)
+    play(game, agent, max_steps=80)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    probes = [i for i, r in enumerate(acts) if r["branch"] == "commit"]
+    assert 0 < len(probes) <= fluid.COMMIT_PROBES
+    assert probes == list(range(probes[0], probes[0] + len(probes)))  # one run, no repeat
+    assert agent.goals.status[fluid.Goal("reach", a=PSIG, b=TSIG)] == "excluded"
+
+
+class TurnGame:
+    """A three-cell player that faces where it last moved sideways: A3 moves it one cell
+    left and turns it left, A4 right and right, A1/A2 up/down without turning. Standing next
+    to the target (a dot) wins."""
+
+    RIGHT = ((0, 0), (1, 0), (0, 1))
+    LEFT = ((0, 0), (1, 0), (1, 1))
+
+    def __init__(self, target: tuple[int, int] = (30, 10)) -> None:
+        self.x, self.y, self.face = 10, 10, self.RIGHT
+        self.target = target
+        self.levels = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def cells(self) -> list[tuple[int, int]]:
+        return [(self.x + dx, self.y + dy) for dx, dy in self.face]
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        g[self.target[1], self.target[0]] = 4
+        for x, y in self.cells():
+            g[y, x] = 1
+        return Observation(g, self.phase, self.levels, 1, (0, 1, 2, 3, 4))
+
+    def step(self, action: Action) -> Observation:
+        moves = {1: (0, -1, None), 2: (0, 1, None), 3: (-1, 0, self.LEFT), 4: (1, 0, self.RIGHT)}
+        if action.id in moves and self.phase == Phase.NOT_FINISHED:
+            dx, dy, face = moves[action.id]
+            self.x, self.y = self.x + dx, self.y + dy
+            self.face = face or self.face
+            tx, ty = self.target
+            if any(abs(x - tx) + abs(y - ty) == 1 for x, y in self.cells()):
+                self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_a_turning_player_becomes_one_kind_and_reaches_the_target(tmp_path: Path) -> None:
+    game = TurnGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=150)
+    agent.close()
+    assert game.levels == 1
+    assert any(r["type"] == "kind" for r in records(tmp_path))
+    kinds = {agent._kinds.kind_of(t.sig) for t in agent._last_full.things if t.color == 1}  # pyright: ignore[reportPrivateUsage, reportOptionalMemberAccess]
+    assert all(k.startswith("k") for k in kinds)
+
+
+class PegGame:
+    """Pegs (color 2) and holes (color 3) in a row two cells apart. Clicking a peg selects it
+    (an outline, color 8, around it); clicking a hole two slots from the selected peg with a
+    peg between makes it jump, emptying both; any other click clears the selection. One peg
+    left wins."""
+
+    def __init__(self) -> None:
+        self.slots = {10: 2, 12: 2, 14: 3, 16: 2, 18: 3}
+        self.y = 20
+        self.sel: int | None = None
+        self.levels = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        for x, c in self.slots.items():
+            g[self.y, x] = c
+        if self.sel is not None:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    if dx or dy:
+                        g[self.y + dy, self.sel + dx] = 8
+        return Observation(g, self.phase, self.levels, 1, (0, 6))
+
+    def step(self, action: Action) -> Observation:
+        x = action.x if action.id == 6 and action.y == self.y else None
+        kind = self.slots.get(x) if x is not None else None
+        if x is not None and kind == 2:
+            self.sel = x
+        elif x is not None and kind == 3 and self.sel is not None and abs(x - self.sel) == 4:
+            mid = (x + self.sel) // 2
+            if self.slots.get(mid) == 2:
+                self.slots[self.sel], self.slots[mid], self.slots[x] = 3, 3, 2
+            self.sel = None
+        else:
+            self.sel = None
+        if sum(1 for c in self.slots.values() if c == 2) == 1:
+            self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_the_agent_learns_a_selection_marker_and_files_clicks_under_it(tmp_path: Path) -> None:
+    game = PegGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=60)
+    agent.close()
+    assert agent._modes.known  # pyright: ignore[reportPrivateUsage]
+    assert f"c2:{DOT}" in agent.mem.selectable
+    assert any(k[2].startswith(("selected:", "sel:")) for k in agent.mem.facts)
+
+
+def _peg_scenes() -> tuple[Scene, Scene, Any]:
+    """The peg row after a jump, and the start row: a two-thing change back to the start."""
+    start = {(10, 20): 2, (12, 20): 2, (14, 20): 3, (5, 20): 6}
+    jumped = {(10, 20): 3, (12, 20): 3, (14, 20): 2, (5, 20): 6}
+    t = Tracker()
+    first, _ = t.update(fake_grid(start), frozenset())
+    after_jump, _ = t.update(fake_grid(jumped), frozenset())
+    back, diff = t.update(fake_grid(start), frozenset())
+    return first, after_jump, (back, diff)
+
+
+def fake_grid(cells: dict[tuple[int, int], int]) -> Grid:
+    g = np.zeros((64, 64), dtype=np.int8)
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def test_a_return_to_the_start_picture_is_learned_as_a_level_reset(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    first, jumped, (back, diff) = _peg_scenes()
+    agent._start_key = first.key()  # pyright: ignore[reportPrivateUsage]
+    button = Action(6, 5, 20)
+    agent._note_reset(jumped, button, back, diff, 7)  # pyright: ignore[reportPrivateUsage]
+    fact = agent.mem.get((fluid.action_label(button, jumped), fluid.LEVEL, "any"))
+    assert fact is not None and fact.effects == (Effect("reset_level"),)
+    agent.close()
+
+
+def test_one_thing_stepping_back_to_the_start_is_not_a_reset(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    t = Tracker()
+    start, _ = t.update(fake_grid({(10, 10): 1}), frozenset())
+    moved, _ = t.update(fake_grid({(11, 10): 1}), frozenset())
+    back, diff = t.update(fake_grid({(10, 10): 1}), frozenset())
+    assert diff is not None
+    agent._start_key = start.key()  # pyright: ignore[reportPrivateUsage]
+    agent._note_reset(moved, Action(3), back, diff, 2)  # pyright: ignore[reportPrivateUsage]
+    assert agent.mem.get(("A3", fluid.LEVEL, "any")) is None
+    agent.close()
+
+
+def test_a_known_reset_is_refused_only_while_this_life_has_progress(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    _, jumped, _ = _peg_scenes()
+    button = Action(6, 5, 20)
+    agent.mem.record(
+        (fluid.action_label(button, jumped), fluid.LEVEL, "any"), (Effect("reset_level"),), 0
+    )
+    assert agent._veto(jumped, button) != fluid.UNDOES_PROGRESS  # pyright: ignore[reportPrivateUsage]
+    goal = fluid.Goal("clear", color=2)
+    monitor = agent._progress  # pyright: ignore[reportPrivateUsage]
+    monitor.observe(("a",), {goal: 2}, active=goal)
+    monitor.observe(("b",), {goal: 1}, active=goal)
+    assert agent._veto(jumped, button) == fluid.UNDOES_PROGRESS  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+
+
+class BudgetGame(FakeGame):
+    """The move-to-the-target game with a 30-move budget: a bar along the top row loses a
+    share of its 64 cells on every move, and the life ends when it is spent."""
+
+    BUDGET = 30
+
+    def __init__(self) -> None:
+        super().__init__(player=(10, 10), target=(60, 60), walls=[], lava=[], win_levels=1)
+        self.used = 0
+
+    def observe(self) -> Observation:
+        obs = super().observe()
+        g = obs.grid.copy()
+        g[0, :] = 0
+        g[0, : round(64 * (self.BUDGET - self.used) / self.BUDGET)] = 7
+        return replace(obs, grid=g)
+
+    def step(self, action: Action) -> Observation:
+        if action.id == 0:
+            self.used = 0
+            return super().step(action)
+        super().step(action)
+        self.used += 1
+        if self.used >= self.BUDGET and self.phase == Phase.NOT_FINISHED:
+            self.phase = Phase.GAME_OVER
+            self.game_overs += 1
+        return self.observe()
+
+
+def test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death(
+    tmp_path: Path,
+) -> None:
+    game = BudgetGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=50, until=lambda: game.game_overs >= 1 and game.used >= 8)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert game.game_overs == 1
+    assert any(r["budget"] is not None for r in acts[:30])  # read during the first life
+    last = acts[-1]
+    assert last["budget"] == BudgetGame.BUDGET - game.used + 1  # exact: before its own move
+
+
+def test_a_tight_budget_puts_a_fitting_partial_plan_before_tests() -> None:
+    assert fluid.budget_tight(remaining=6, distance=5)
+    assert fluid.budget_tight(remaining=7, distance=5)
+    assert not fluid.budget_tight(remaining=8, distance=5)  # room for a test
+    assert not fluid.budget_tight(remaining=4, distance=5)  # doesn't fit at all
+    assert not fluid.budget_tight(remaining=None, distance=5)
+    assert fluid.TEST_RESERVE == 2

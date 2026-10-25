@@ -21,7 +21,7 @@ EventKind = Literal[
     "belief_empty",
     "transfer_failed",
 ]
-Branch = Literal["follow", "plan", "learn", "fallback", "reset"]
+Branch = Literal["follow", "plan", "learn", "fallback", "reset", "forced", "commit"]
 ActionKey = tuple[int, int, int]
 
 

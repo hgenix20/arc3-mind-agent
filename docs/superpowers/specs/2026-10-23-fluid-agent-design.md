@@ -121,6 +121,15 @@ it is changed in place; the list says what is kept and what is replaced.
   (:515, :668). Reusable nodes: a tag node lists every fact sharing that
   behavior, so a new object that behaves like a known one is predicted from
   the node at once and confirmed with a single move.
+- Kinds (Kameron's decision, 2026-10-24: identity apart from look). A thing's
+  look (color and shape) is state; its kind is its identity, learned when one
+  tracked thing is seen switching between two looks twice. Facts stay keyed
+  by look, and every observation of a thing with a kind is also recorded
+  under the kind, with a move normalized to "and its look becomes X". The
+  predictor uses the kind fact when no usable look fact exists, so a sprite
+  seen moving while facing one way is predicted moving while facing another.
+  A state-relative look change (a tile that toggles) keeps its look facts and
+  its kind fact simply breaks. Goals, protection and novelty name kinds.
 - Facts live per game; sleep carries them across levels within the game.
   Nothing crosses games except the root-mechanic tag vocabulary.
 - The plain move log (every transition: frame hashes, action, object diff,
@@ -146,6 +155,15 @@ it is changed in place; the list says what is kept and what is replaced.
 - Goal guesses are predicates over objects: reach (object A on object B),
   clear (no objects of a kind left), match (a region equals a template
   region), count (n objects of a kind), and compositions of two.
+- Goal kinds (Kameron's decision, 2026-10-24: a deterministic parser of screen
+  primitives feeding a symbolic rule-book, no LLM in the loop). The rule-book
+  (`arcagent/mind/goal_rules.py`) lists generic kinds with a prior and whether
+  each is proposed; it never encodes what a particular game needs. Proposed
+  now: reach, clear, match (two equal-size framed regions, from
+  `regions.twin_regions`; search checks it on rendered predicted scenes) and
+  cover (every target of one kind has its own mover or pushable on or beside
+  it, matched one to one). Not built yet: a sequence in order (needs a
+  detector for progress indicators); "hold then submit" is the commit probe.
 - Guesses come from the LLM's reading of the screen and from signs of
   progress (a HUD or progress region that changes, a level-up event).
 - A guess the move log already rules out is thrown out: if its predicate was
@@ -223,6 +241,18 @@ bounded.
   direction, touching a color, inside a region, selected. The LLM may add a
   context as a predicate over objects (sandboxed); it is then computed like
   the built-in ones.
+- Hidden mode (Kameron's decision, 2026-10-24: tags on tracked things, no
+  global mode slot, no LLM). A selection marker is learned from clicks (a mark
+  that follows the clicked thing or goes away on a second click), and the
+  active controller is the one controlled thing that answered a non-click
+  action when two or more are on screen. Both live on the scene and in its
+  key. A click made while a thing is selected gives contexts relative to the
+  selection: `selected:dx,dy` for the selected thing, `between:dx,dy` for
+  things on the cells between it and the click, `sel:dx,dy` for the clicked
+  thing (offsets past 8 cells are `far`); the active thing's facts for
+  non-click actions use context `active`. The predictor predicts the next
+  selection: a click on a kind seen selected selects it, any other click
+  clears it.
 
 ### 12. The paper's four modules (Claude's call)
 

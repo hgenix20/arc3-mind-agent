@@ -1,0 +1,271 @@
+"""Hidden mode state as tags on tracked things: which thing is selected, which is active.
+
+Nothing on screen says "selected". ``ModeTracker`` infers it from what clicks change. After
+a click on a thing T, a non-move change confined to T's bbox grown by ``MARK_RING`` cells is
+a candidate mark: a thing that appears there (an outline), described by its color and
+shape, or T itself recoloring, described by the new color. A candidate becomes a known
+selection marker when a later transition shows it was a selection: the same mark appears
+on another clicked thing while it vanishes from the one it was on, or a second click on the
+thing it is on makes it vanish (an undo). From then on, a thing showing a known mark is
+selected, and stops being selected when the mark vanishes from it.
+
+A mark vanishes when the thing that drew it disappears, or when its owner recolors away
+from the mark color. A drawn mark can also move (the tracker keeps one outline's id as it
+jumps to another piece): moving to surround the clicked thing is the same as vanishing
+from the old owner and appearing on the clicked one; moving anywhere else is vanishing.
+Changes on ``masked`` cells (counters, noise) are never marks, and the clicked thing's own
+move is never a mark.
+
+Active controller: after a transition caused by a non-click action in which exactly one
+thing whose sig or kind is in ``controlled`` (the agent's ``goals.controlled_sigs``) moved,
+that thing is active, provided two or more controlled things are on screen (with one,
+there is no choice to track, and its facts stay in context ``any``). It stays active
+through transitions where no controlled thing moved or several did, and loses the tag
+only when another controlled thing alone answers. Action
+numbers carry no meaning here: which thing a direction drives is learned, not assumed.
+Pure apart from the tracker's own state; ids are the object tracker's.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from arcagent.core.types import COORD_ACTION_ID, Action
+from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, click_cell
+
+MARK_RING = 2  # a mark lies within the clicked thing's bbox grown by this many cells
+SEL_RANGE = 8  # selection offsets beyond this many cells on an axis share the "far" context
+
+Mark = tuple[str, int, str]  # ("appear", color, shape) or ("recolor", color, "")
+
+
+@dataclass(frozen=True, slots=True)
+class Mode:
+    """Selected track ids and the active controller's track id (None when unknown)."""
+
+    selected: frozenset[int] = frozenset()
+    active: int | None = None
+
+
+def _box(t: Thing, grow: int) -> tuple[int, int, int, int]:
+    xs = [x for x, _ in t.cells]
+    ys = [y for _, y in t.cells]
+    return min(xs) - grow, min(ys) - grow, max(xs) + grow, max(ys) + grow
+
+
+def _inside(cells: frozenset[Cell], box: tuple[int, int, int, int]) -> bool:
+    x0, y0, x1, y1 = box
+    return all(x0 <= x <= x1 and y0 <= y <= y1 for x, y in cells)
+
+
+def clicked_thing(scene: Scene, action: Action) -> Thing | None:
+    """The thing under a click, or None (not a click, or empty space)."""
+    if action.id != COORD_ACTION_ID:
+        return None
+    point = (action.x, action.y)
+    return next((t for t in scene.things if point in t.cells), None)
+
+
+def _sign(v: int) -> int:
+    return (v > 0) - (v < 0)
+
+
+def mode_contexts(scene: Scene, action: Action) -> dict[int, str]:
+    """Fact contexts the mode gives things for ``action`` (others keep ``any``).
+
+    A click while something is selected: ``selection_contexts``. Any other action while a
+    thing is active: ``"active"`` for that thing.
+    """
+    if action.id == COORD_ACTION_ID:
+        return selection_contexts(scene, action)
+    if scene.active is not None and any(t.id == scene.active for t in scene.things):
+        return {scene.active: "active"}
+    return {}
+
+
+def selection_contexts(scene: Scene, action: Action) -> dict[int, str]:
+    """Contexts of a click made while a thing is selected (the lowest id if several).
+
+    With (dx, dy) the click point less the selected thing's click cell (``far`` past
+    ``SEL_RANGE``): the selected thing gets ``selected:dx,dy``, the clicked thing
+    ``sel:dx,dy``, and things on the cells strictly between the two along a row, column or
+    diagonal ``between:dx,dy``. Empty when nothing is selected or the action isn't a click.
+    """
+    if action.id != COORD_ACTION_ID or not scene.selected:
+        return {}
+    by_id = scene.by_id()
+    sid = min(scene.selected)
+    sel = by_id.get(sid)
+    if sel is None:
+        return {}
+    sx, sy = click_cell(sel)
+    dx, dy = action.x - sx, action.y - sy
+    near = max(abs(dx), abs(dy)) <= SEL_RANGE
+    tag = f"{dx},{dy}" if near else "far"
+    out = {sid: f"selected:{tag}"}
+    clicked = clicked_thing(scene, action)
+    if clicked is not None and clicked.id != sid:
+        out[clicked.id] = f"sel:{tag}"
+    if near and (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
+        ux, uy = _sign(dx), _sign(dy)
+        between = {(sx + ux * i, sy + uy * i) for i in range(1, max(abs(dx), abs(dy)))}
+        for t in scene.things:
+            if t.id not in out and not t.cells.isdisjoint(between):
+                out[t.id] = f"between:{tag}"
+    return out
+
+
+def predicted_mode(
+    scene: Scene, action: Action, survivors: frozenset[int], selectable: set[str]
+) -> tuple[frozenset[int], int | None]:
+    """The mode after ``action``: a click on a thing of a selectable sig or kind selects it
+    alone; any other click clears the selection; other actions keep it. The active thing
+    stays active while it exists. ``survivors`` are the ids still present after."""
+    selected = scene.selected & survivors
+    if action.id == COORD_ACTION_ID:
+        clicked = clicked_thing(scene, action)
+        pick = (
+            clicked is not None
+            and clicked.id in survivors
+            and (clicked.sig in selectable or clicked.kind in selectable)
+        )
+        selected = frozenset({clicked.id}) if pick and clicked is not None else frozenset()
+    active = scene.active if scene.active in survivors else None
+    return selected, active
+
+
+class ModeTracker:
+    """Selection inferred from clicks (module docstring)."""
+
+    def __init__(self) -> None:
+        self.known: set[Mark] = set()
+        self._drawn: dict[int, tuple[Mark, int]] = {}  # mark thing id -> (mark, owner id)
+        self._tinted: dict[int, Mark] = {}  # owner id -> recolor mark it shows
+        self._last_on: dict[Mark, int] = {}  # mark -> owner it last appeared on
+        self._selected: set[int] = set()
+        self._active: int | None = None
+
+    def reset(self) -> None:
+        """Forget marks, selection and the active thing (a new level or attempt)."""
+        self.__init__()
+
+    @property
+    def mode(self) -> Mode:
+        return Mode(frozenset(self._selected), self._active)
+
+    def observe(
+        self,
+        before: Scene,
+        action: Action,
+        after: Scene,
+        diff: SceneDiff,
+        masked: frozenset[Cell] = frozenset(),
+        *,
+        controlled: frozenset[str] = frozenset(),
+    ) -> Mode:
+        """Update from one transition; return the mode after it."""
+        self._note_active(before, action, after, diff, controlled)
+        clicked = clicked_thing(before, action)
+        vanished, fresh = self._moved(clicked, after, diff)
+        vanished += self._vanished(diff)
+        if clicked is not None:
+            fresh += self._fresh(clicked, after, diff, masked)
+        for mark, owner in vanished:
+            if clicked is not None and owner == clicked.id and self._last_on.get(mark) == owner:
+                self.known.add(mark)  # a second click on it took it away: an undo
+        for mark in fresh:
+            assert clicked is not None
+            prev = self._last_on.get(mark)
+            if prev is not None and prev != clicked.id and (mark, prev) in vanished:
+                self.known.add(mark)  # it moved from one clicked thing to another
+            self._last_on[mark] = clicked.id
+        for mark, owner in vanished:
+            if mark in self.known:
+                self._selected.discard(owner)
+        if clicked is not None and any(m in self.known for m in fresh):
+            self._selected.add(clicked.id)
+        alive = {t.id for t in after.things}
+        self._selected &= alive
+        if self._active not in alive:
+            self._active = None
+        return self.mode
+
+    def _note_active(
+        self,
+        before: Scene,
+        action: Action,
+        after: Scene,
+        diff: SceneDiff,
+        controlled: frozenset[str],
+    ) -> None:
+        """The one controlled thing that moved under a non-click action becomes active."""
+        if action.id == COORD_ACTION_ID or not controlled:
+            return
+        olds, news = before.by_id(), after.by_id()
+        present = [t for t in after.things if t.sig in controlled or t.kind in controlled]
+        if len(present) < 2:
+            self._active = None
+            return
+        moved = [
+            c.id
+            for c in diff.changes
+            if (c.dx or c.dy)
+            and c.id in news
+            and (t := olds.get(c.id)) is not None
+            and (t.sig in controlled or t.kind in controlled)
+        ]
+        if len(moved) == 1:
+            self._active = moved[0]
+
+    def _moved(
+        self, clicked: Thing | None, after: Scene, diff: SceneDiff
+    ) -> tuple[list[tuple[Mark, int]], list[Mark]]:
+        """Drawn marks that moved: each leaves its owner; one now around ``clicked`` lands
+        on it. Returns (vanished, fresh)."""
+        now = after.by_id()
+        box = _box(clicked, MARK_RING) if clicked is not None else None
+        gone: list[tuple[Mark, int]] = []
+        landed: list[Mark] = []
+        for c in diff.changes:
+            if c.kind not in ("moved", "reshaped") or c.id not in self._drawn:
+                continue
+            mark, owner = self._drawn.pop(c.id)
+            gone.append((mark, owner))
+            t = now.get(c.id)
+            if clicked is not None and box is not None and t is not None and _inside(t.cells, box):
+                self._drawn[c.id] = (mark, clicked.id)
+                landed.append(mark)
+        return gone, landed
+
+    def _vanished(self, diff: SceneDiff) -> list[tuple[Mark, int]]:
+        """Marks gone in this transition, with the owner each was on."""
+        out: list[tuple[Mark, int]] = []
+        for c in diff.changes:
+            if c.kind == "disappeared" and c.id in self._drawn:
+                out.append(self._drawn.pop(c.id))
+            elif c.kind == "recolored" and c.id in self._tinted:
+                mark = self._tinted[c.id]
+                if c.color != mark[1]:
+                    out.append((self._tinted.pop(c.id), c.id))
+        return out
+
+    def _fresh(
+        self, clicked: Thing, after: Scene, diff: SceneDiff, masked: frozenset[Cell]
+    ) -> list[Mark]:
+        """Marks this click put on ``clicked``: things appearing around it, or its recolor."""
+        box = _box(clicked, MARK_RING)
+        now = after.by_id()
+        out: list[Mark] = []
+        for c in diff.changes:
+            if c.kind == "appeared":
+                t = now.get(c.id)
+                if t is None or t.cells <= masked or not _inside(t.cells, box):
+                    continue
+                mark: Mark = ("appear", t.color, t.shape)
+                self._drawn[t.id] = (mark, clicked.id)
+                out.append(mark)
+            elif c.kind == "recolored" and c.id == clicked.id and not clicked.cells <= masked:
+                mark = ("recolor", c.color, "")
+                self._tinted[clicked.id] = mark
+                out.append(mark)
+        return out

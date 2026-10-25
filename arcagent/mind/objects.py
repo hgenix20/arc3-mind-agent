@@ -18,22 +18,53 @@ with a cell remembered as terrain of its color is terrain, whatever its size. Te
 not keyed or diffed: ``Scene.key()`` and ``SceneDiff`` ignore it, and it is excluded from
 ``Scene`` equality and hashing.
 ``color_at`` reads a cell's color: the covering thing's, else the terrain's.
+
+Matching (``Tracker.update``): a thing with the same sig at the same top-left keeps its id
+first. The rest go to one global assignment (``assign.assign``) over the pairs that pass
+one of these tests, in this order of preference for ``Tracker.how``: ``prior`` (the caller's
+predicted scene puts this id at a top-left within ``MATCH_RADIUS`` with this sig), ``sig``
+(same sig within ``MATCH_RADIUS``), ``recolor`` (same shape, same top-left), ``reshape``
+(same color, overlapping cells), ``near`` (same color, sizes within ``NEAR_SIZE``, within
+``MATCH_RADIUS``: a sprite that turned while it moved). A pair of different colors with
+no overlap and no prediction is never matched, so a thing vanishing as another appears
+isn't a reshape. Cost: top-left distance from the anchor (the predicted thing, else the
+old one), plus ``KIND_COST`` of the test that passed (so the order above wins over
+distance), ``W_OVERLAP`` times (1 - cell IoU with the anchor), ``W_SIZE`` times relative size
+change, ``W_COLOR`` for a color change and ``W_SHAPE`` for a shape change against the
+anchor. With more than ``ASSIGN_MAX`` leftovers on a side, the greedy passes run instead
+(same sig nearest first, then recolor, then reshape).
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
 import numpy as np
 
 from arcagent.core.types import GRID_SIZE, Grid
+from arcagent.mind.assign import ASSIGN_MAX, assign
 from arcagent.synth.trace import background_color, components
 
 MATCH_RADIUS = 16  # Manhattan distance between top-left corners for a same-sig match
+NEAR_SIZE = 0.25  # a "near" match changes the cell count by at most this fraction
+W_OVERLAP = 4.0  # match cost weights; the distance term weighs 1 per cell
+W_SIZE = 2.0
+W_COLOR = 3.0
+W_SHAPE = 1.0
+# Added per match kind, 20 apart so the kind outranks any distance: a thing that keeps its
+# look and moves beats a different thing "recoloring" in place (a player on lava).
+KIND_COST: dict[str, float] = {
+    "prior": 0.0,
+    "sig": 0.0,
+    "recolor": 20.0,
+    "reshape": 40.0,
+    "near": 60.0,
+}
 TERRAIN_MIN_CELLS = 128  # a component this large is terrain, never a Thing
 _NO_MEMORY = -2  # terrain memory value for a cell never seen uncovered (-1 is padding)
 
@@ -42,7 +73,11 @@ Cell = tuple[int, int]
 
 @dataclass(frozen=True, slots=True)
 class Thing:
-    """A single-color component. ``x, y`` is the bbox top-left; ``cells`` are absolute (x, y)."""
+    """A single-color component. ``x, y`` is the bbox top-left; ``cells`` are absolute (x, y).
+
+    ``kind`` is the thing's identity class across looks (``kinds.KindBook``): the first sig
+    its class was seen with. Left empty it is the thing's own sig.
+    """
 
     id: int
     color: int
@@ -51,6 +86,11 @@ class Thing:
     x: int
     y: int
     cells: frozenset[Cell]
+    kind: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.kind:
+            object.__setattr__(self, "kind", self.sig)
 
 
 _UNSET: Grid = np.zeros((0, 0), dtype=np.int8)
@@ -63,12 +103,17 @@ class Scene:
     ``terrain`` is a (64, 64) int8 grid of the color under the things (see the module
     docstring); read-only by convention and left out of equality and hashing. A scene
     built without one gets the background everywhere and -1 on ``blocked`` cells.
+
+    ``selected`` and ``active`` are the hidden mode (``modes.ModeTracker``): the ids of
+    selected things and of the active controller. Both are part of ``key()``.
     """
 
     things: tuple[Thing, ...]
     background: int
     blocked: frozenset[Cell]
     terrain: Grid = field(default_factory=lambda: _UNSET, compare=False)
+    selected: frozenset[int] = frozenset()
+    active: int | None = None
 
     def __post_init__(self) -> None:
         if self.terrain.size == 0:
@@ -79,8 +124,16 @@ class Scene:
             object.__setattr__(self, "terrain", plain)
 
     def key(self) -> tuple[tuple[str, int, int], ...]:
-        """Sorted (sig, x, y); ids are ignored so equal layouts dedupe."""
-        return tuple(sorted((t.sig, t.x, t.y) for t in self.things))
+        """Sorted (sig, x, y), plus ("sel:" + sig, x, y) for each selected thing and
+        ("active:" + sig, x, y) for the active one; ids are ignored so equal layouts dedupe."""
+        out = [(t.sig, t.x, t.y) for t in self.things]
+        if self.selected or self.active is not None:
+            for t in self.things:
+                if t.id in self.selected:
+                    out.append(("sel:" + t.sig, t.x, t.y))
+                if t.id == self.active:
+                    out.append(("active:" + t.sig, t.x, t.y))
+        return tuple(sorted(out))
 
     def by_id(self) -> dict[int, Thing]:
         return {t.id: t for t in self.things}
@@ -222,6 +275,7 @@ def _with_id(t: Thing, tid: int) -> Thing:
 
 
 Pairs = dict[int, int]
+MatchHow = Literal["still", "sig", "recolor", "reshape", "near", "prior"]
 
 
 def _match_same_sig(before: list[Thing], after: list[Thing], pairs: Pairs, used: set[int]) -> None:
@@ -285,14 +339,92 @@ def _take(cands: list[tuple[int, int, int]], pairs: Pairs, used: set[int]) -> No
             used.add(j)
 
 
-def _match(before: list[Thing], after: list[Thing]) -> Pairs:
-    """Map index in ``before`` to index in ``after``: same sig, then recolor, then reshape."""
+def _match(
+    before: list[Thing], after: list[Thing], prior: Mapping[int, Thing] | None = None
+) -> tuple[Pairs, dict[int, MatchHow]]:
+    """Map index in ``before`` to index in ``after``, and how each ``before`` id matched."""
     pairs: Pairs = {}
     used: set[int] = set()
-    _match_same_sig(before, after, pairs, used)
-    _match_recolor(before, after, pairs, used)
-    _match_reshape(before, after, pairs, used)
-    return pairs
+    how: dict[int, MatchHow] = {}
+    here = {(a.sig, a.x, a.y): j for j, a in enumerate(after)}
+    for i, b in enumerate(before):
+        j = here.get((b.sig, b.x, b.y))
+        if j is not None and j not in used:
+            pairs[i] = j
+            used.add(j)
+            how[b.id] = "still"
+    rows = [i for i in range(len(before)) if i not in pairs]
+    cols = [j for j in range(len(after)) if j not in used]
+    if not rows or not cols:
+        return pairs, how
+    if len(rows) > ASSIGN_MAX or len(cols) > ASSIGN_MAX:
+        _greedy(before, after, pairs, used, how)
+        return pairs, how
+    prior = prior or {}
+    scored = [
+        [_pair_cost(before[i], after[j], prior.get(before[i].id)) for j in cols] for i in rows
+    ]
+    cost = [[c[0] for c in row] for row in scored]
+    for r, c in assign(cost, math.inf):
+        i, j = rows[r], cols[c]
+        pairs[i] = j
+        how[before[i].id] = scored[r][c][1]
+    return pairs, how
+
+
+def _overlap(a: frozenset[Cell], b: frozenset[Cell]) -> float:
+    inter = len(a & b)
+    return inter / (len(a) + len(b) - inter) if inter else 0.0
+
+
+def _pair_cost(b: Thing, a: Thing, p: Thing | None) -> tuple[float, MatchHow]:
+    """Cost and kind of matching ``b`` (before) to ``a`` (after); ``p`` is ``b`` predicted.
+
+    Infinite cost when no test passes (the module docstring lists them).
+    """
+    dist_b = abs(a.x - b.x) + abs(a.y - b.y)
+    small, large = sorted((len(a.cells), len(b.cells)))
+    kind: MatchHow | None = None
+    if p is not None and a.sig == p.sig and abs(a.x - p.x) + abs(a.y - p.y) <= MATCH_RADIUS:
+        kind = "prior"
+    elif a.sig == b.sig and dist_b <= MATCH_RADIUS:
+        kind = "sig"
+    elif a.shape == b.shape and dist_b == 0:
+        kind = "recolor"
+    elif a.color == b.color and not a.cells.isdisjoint(b.cells):
+        kind = "reshape"
+    elif a.color == b.color and dist_b <= MATCH_RADIUS and large - small <= NEAR_SIZE * large:
+        kind = "near"
+    if kind is None:
+        return math.inf, "near"
+    anchor = p if p is not None else b
+    cost = (
+        KIND_COST[kind]
+        + abs(a.x - anchor.x)
+        + abs(a.y - anchor.y)
+        + W_OVERLAP * (1.0 - _overlap(a.cells, anchor.cells))
+        + W_SIZE * (large - small) / large
+        + W_COLOR * (a.color != anchor.color)
+        + W_SHAPE * (a.shape != anchor.shape)
+    )
+    return cost, kind
+
+
+def _greedy(
+    before: list[Thing], after: list[Thing], pairs: Pairs, used: set[int], how: dict[int, MatchHow]
+) -> None:
+    """The fallback for big leftovers: same sig, then recolor, then reshape, greedily."""
+    passes: tuple[tuple[Callable[[list[Thing], list[Thing], Pairs, set[int]], None], MatchHow], ...]
+    passes = (
+        (_match_same_sig, "sig"),
+        (_match_recolor, "recolor"),
+        (_match_reshape, "reshape"),
+    )
+    for step, kind in passes:
+        known = set(pairs)
+        step(before, after, pairs, used)
+        for i in set(pairs) - known:
+            how[before[i].id] = kind
 
 
 def _classify(b: Thing, a: Thing) -> Change:
@@ -317,6 +449,7 @@ class Tracker:
         self._scene: Scene | None = None
         self._grid: Grid | None = None
         self._memory: Grid | None = None
+        self.how: dict[int, MatchHow] = {}  # how each id kept its track on the last update
 
     def reset(self) -> None:
         """Forget the previous frame and the terrain memory; restart ids at 1."""
@@ -324,13 +457,21 @@ class Tracker:
         self._scene = None
         self._grid = None
         self._memory = None
+        self.how = {}
 
     def _terrain_of(self, visible: Grid, things: Iterable[Thing], bg: int) -> Grid:
         if self._memory is None or self._memory.shape != visible.shape:
             self._memory = np.full(visible.shape, _NO_MEMORY, dtype=np.int8)
         return _terrain(visible, things, self._memory, bg)
 
-    def update(self, grid: Grid, mask: frozenset[Cell]) -> tuple[Scene, SceneDiff | None]:
+    def update(
+        self, grid: Grid, mask: frozenset[Cell], prior: Scene | None = None
+    ) -> tuple[Scene, SceneDiff | None]:
+        """The new scene and its diff from the last one (None right after ``reset``).
+
+        ``prior`` is the caller's predicted scene for this frame, ids as in the last
+        scene; it lets a thing keep its id through a predicted change of look or a jump.
+        """
         visible, bg = _visible(grid, mask)
         memory = (
             self._memory if self._memory is not None and self._memory.shape == grid.shape else None
@@ -345,7 +486,8 @@ class Tracker:
             self._scene, self._grid = scene, grid.copy()
             return scene, None
 
-        pairs = _match(list(prev.things), fresh)
+        expected = {t.id: t for t in prior.things} if prior is not None else None
+        pairs, self.how = _match(list(prev.things), fresh, expected)
         matched_after = set(pairs.values())
         things: list[Thing] = []
         changes: list[Change] = []

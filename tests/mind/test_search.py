@@ -10,7 +10,7 @@ from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import SPAWN, Effect, FactMemory, learn
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Tracker, shape_of
-from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, search
+from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, is_trap, search
 
 Cells = dict[tuple[int, int], int]
 
@@ -228,3 +228,103 @@ def test_seen_noop_pairs_are_not_expanded() -> None:
     noop = {(s.key(), Action(4).key())}  # A4 was seen to do nothing here (a wall)
     r = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], noop=noop)
     assert r.stop == "found" and r.plan[0].action.id != 4
+
+
+def test_cap_returns_best_partial_plan() -> None:
+    s = scene_of({(2, 2): 1, (40, 2): 4})
+    goal = reach(PSIG, TSIG)
+    r = search(s, simple_actions, moves((1, 2, 3, 4)), [goal], max_nodes=40)
+    assert r.stop == "nodes" and r.best and r.best_goal == goal
+    root = goal.distance(s)
+    assert root is not None and r.best_distance is not None and r.best_distance < root
+    end = r.best[-1].expect.scene
+    assert end is not None and goal.distance(end) == r.best_distance
+
+
+def test_stable_best_stops_early() -> None:
+    ring = {(x, y): 3 for x in range(28, 33) for y in (28, 32)}
+    ring |= {(x, y): 3 for x in (28, 32) for y in range(28, 33)}
+    s = scene_of({(20, 30): 1, (30, 30): 4} | ring)
+    mem = moves((1, 2, 3, 4))
+    mem.blockers[PSIG] = {3}
+    r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
+    assert r.stop == "stable" and r.nodes < SEARCH_MAX_NODES
+    assert r.best and r.best_distance == 2
+
+
+def test_no_progress_means_empty_best() -> None:
+    s = scene_of({(20, 2): 1, (40, 2): 4})
+    r = search(s, simple_actions, moves((3,)), [reach(PSIG, TSIG)], max_nodes=40)
+    assert r.best == () and r.best_goal is None and r.best_distance is None
+
+
+def down_right(_scene: Scene) -> list[Action]:
+    return [Action(2), Action(4)]
+
+
+def lava_memory() -> FactMemory:
+    mem = moves((2, 4))
+    for i in (2, 4):  # without these, lava dots borrow the player's move fact
+        mem.record((f"A{i}", LSIG, "any"), (Effect("none"),), 0)
+    mem.record(("any", PSIG, "touch:9"), (Effect("game_over"),), 0)
+    return mem
+
+
+# Player at (2, 2) moves only down or right. The target above (5, 2) is three moves
+# right, but at (5, 2) both moves step on lava: a trap. A second target sits by (2, 6).
+TRAP = {(2, 2): 1, (5, 1): 4, (6, 2): 9, (5, 3): 9}
+
+
+def test_plan_ending_in_a_trap_yields_to_a_safe_plan_a_little_longer() -> None:
+    s = scene_of(TRAP | {(1, 6): 4})
+    r = search(s, down_right, lava_memory(), [reach(PSIG, TSIG)])
+    assert r.stop == "found" and [x.action.id for x in r.plan] == [2, 2, 2, 2]
+
+
+def test_plan_ending_in_a_trap_is_returned_when_no_safe_plan_exists() -> None:
+    s = scene_of(TRAP)
+    r = search(s, down_right, lava_memory(), [reach(PSIG, TSIG)])
+    assert r.stop == "found" and [x.action.id for x in r.plan] == [4, 4, 4]
+
+
+def test_safe_plan_too_much_longer_loses_to_the_trap_plan() -> None:
+    s = scene_of(TRAP | {(1, 9): 4})  # seven moves down: more than two past the trap plan
+    r = search(s, down_right, lava_memory(), [reach(PSIG, TSIG)])
+    assert [x.action.id for x in r.plan] == [4, 4, 4]
+
+
+def test_best_partial_plan_never_ends_in_a_trap() -> None:
+    lava = {(6, y): 9 for y in range(2, 64)} | {(5, 3): 9}
+    s = scene_of({(2, 2): 1, (40, 2): 4} | lava)
+    mem = lava_memory()
+    r = search(s, down_right, mem, [reach(PSIG, TSIG)], max_nodes=200)
+    end = r.best[-1].expect.scene
+    assert end is not None
+    player = next(t for t in end.things if t.sig == PSIG)
+    assert (player.x, player.y) == (4, 2)
+    assert not is_trap(end, down_right, mem, frozenset({PSIG, TSIG}))
+
+
+def test_best_first_finds_a_far_target_that_breadth_first_runs_out_on() -> None:
+    s = scene_of({(2, 2): 1, (40, 40): 4})
+    mem, goal = moves((1, 2, 3, 4)), reach(PSIG, TSIG)
+    wide = search(s, simple_actions, mem, [goal], weight=0.0)  # breadth-first order
+    assert wide.stop != "found"
+    deep = search(s, simple_actions, mem, [goal])
+    assert deep.stop == "found" and deep.nodes < SEARCH_MAX_NODES
+    assert len(deep.plan) == 38 + 37  # the plan is still a shortest one here
+
+
+def test_without_distances_search_is_breadth_first() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4})
+    a = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], weight=0.0)
+    b = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)])
+    assert [x.action.id for x in a.plan] == [x.action.id for x in b.plan] == [4, 4, 4]
+
+
+def test_search_never_plans_past_the_budget() -> None:
+    s = scene_of({(2, 2): 1, (8, 2): 4})  # five moves to touch the target
+    mem, goal = moves((1, 2, 3, 4)), reach(PSIG, TSIG)
+    assert search(s, simple_actions, mem, [goal], max_depth=5).stop == "found"
+    short = search(s, simple_actions, mem, [goal], max_depth=4)
+    assert short.stop != "found" and len(short.best) <= 4

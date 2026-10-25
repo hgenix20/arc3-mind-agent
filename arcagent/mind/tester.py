@@ -5,8 +5,15 @@
 click answers its clicked sig). Ties break by: an action touching a broken fact, then a
 thin one, then the earliest ``frontier`` pair it answers, then ``toward`` (the first step
 of the best partial plan), then the lowest ``Action.key()``. An action whose
-``(scene.key(), action.key())`` is in ``tried`` is never chosen, and neither is one
-predicted to end the game. ``None`` means nothing is open.
+``tried_key(scene, action)`` is in ``tried`` is never chosen, and neither is one
+predicted to end the game.
+
+``tried_key``: a simple action keys on the whole scene, ``(scene.key(), action.key())``. A
+click keys on what a click can see: the clicked thing's sig, the colors of the cells within
+``modes.MARK_RING`` of its bbox (of the click point on empty space), and each selected
+thing's sig and offset from the click. Moving something far away then doesn't reopen a
+click test, a change of selection does, and one click test settles every click with the
+same local view. ``None`` means nothing is open.
 
 For a click, the things whose prediction was borrowed from a same-shape sibling
 (``Prediction.lent``) count as open pairs too: each click label (clicked sig and ring)
@@ -28,15 +35,48 @@ Pure; one ``predict`` per action.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Container, Hashable, Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import COORD_ACTION_ID, Action
-from arcagent.mind.facts import FactMemory, action_label, clicked_sig
-from arcagent.mind.objects import Scene
+from arcagent.mind.facts import FactMemory, action_label, cell_owner, clicked_sig
+from arcagent.mind.modes import MARK_RING, clicked_thing
+from arcagent.mind.objects import Scene, click_cell, color_at
 from arcagent.mind.predictor import Prediction, predict
 
-Tried = set[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]]
+Tried = set[Hashable]  # tried_key values of the actions taken this level
+TriedView = Container[Hashable]  # what the tester reads: membership only
+Noop = set[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]]  # (scene key, action key)
+
+
+def tried_key(scene: Scene, action: Action) -> Hashable:
+    """The key under which ``action`` counts as tried in ``scene`` (module docstring)."""
+    if action.id != COORD_ACTION_ID:
+        return (scene.key(), action.key())
+    clicked = clicked_thing(scene, action)
+    if clicked is None:
+        x0 = x1 = action.x
+        y0 = y1 = action.y
+    else:
+        xs = [x for x, _ in clicked.cells]
+        ys = [y for _, y in clicked.cells]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    owner = cell_owner(scene)
+    view = tuple(
+        color_at(scene, owner, (x, y))
+        for y in range(y0 - MARK_RING, y1 + MARK_RING + 1)
+        for x in range(x0 - MARK_RING, x1 + MARK_RING + 1)
+    )
+    by_id = scene.by_id()
+    picked = tuple(
+        sorted(
+            (t.sig, *(c - p for c, p in zip(click_cell(t), (action.x, action.y), strict=True)))
+            for sid in scene.selected
+            if (t := by_id.get(sid)) is not None
+        )
+    )
+    return ("click", clicked.sig if clicked is not None else "", view, picked)
+
 
 SETTLED = "settled test"
 NO_EFFECT = "known no effect here"
@@ -150,15 +190,14 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     actions: list[Action],
     mem: FactMemory,
     frontier: Sequence[tuple[str, str]],
-    tried: Tried,
+    tried: TriedView,
     toward: Action | None,
 ) -> Test | None:
     """The one action that answers the most open questions, or None."""
     order = {pair: i for i, pair in reversed(list(enumerate(frontier)))}
-    skey = scene.key()
     best: tuple[tuple[int, int, int, int, tuple[int, int, int]], Test] | None = None
     for action in actions:
-        if (skey, action.key()) in tried:
+        if tried_key(scene, action) in tried:
             continue
         pred = predict(scene, action, mem)
         pairs = open_pairs(scene, action, pred, mem)
@@ -177,14 +216,14 @@ def choose_test(  # noqa: PLR0917  # the six-argument signature is the Task 7 co
     return None if best is None else best[1]
 
 
-def veto(scene: Scene, action: Action, mem: FactMemory, tried: Tried) -> str | None:
+def veto(scene: Scene, action: Action, mem: FactMemory, tried: TriedView) -> str | None:
     """Why to refuse ``action`` here, or None."""
     pred = predict(scene, action, mem)
     if pred.game_over:
         return GAME_OVER
     if open_pairs(scene, action, pred, mem):
         return None
-    if (scene.key(), action.key()) in tried:
+    if tried_key(scene, action) in tried:
         return SETTLED
     fresh = pred.scene
     if fresh is not None and fresh.key() == scene.key():

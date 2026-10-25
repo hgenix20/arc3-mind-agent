@@ -107,7 +107,8 @@ def test_edge_bar_shrinking_under_one_action_is_a_counter() -> None:
     m = NoiseMask()
     flagged = [m.observe(_bar(n, y=0), 6, _shrink(n)) for n in (8, 7, 6)]
     assert flagged == [[], [], [7]]
-    assert m.cells == frozenset((x, 0) for x in range(4, 10))
+    assert m.cells == frozenset((x, 0) for x in range(64))  # the whole row: a bar's band
+    assert [(c.axis, c.lines, c.shrinks) for c in m.counters] == [("row", frozenset({0}), True)]
 
 
 def test_counter_rule_needs_the_board_edge() -> None:
@@ -135,7 +136,8 @@ def test_new_attempt_keeps_only_counter_cells() -> None:
     assert m.noisy_ids == {1, 7}
     m.new_attempt()
     assert m.noisy_ids == frozenset()
-    assert m.cells == frozenset((x, 0) for x in range(4, 10))
+    assert m.cells == frozenset((x, 0) for x in range(64))
+    assert m.counters  # kept through the new attempt
     m.reset_tracks()
     assert m.cells == frozenset()
 

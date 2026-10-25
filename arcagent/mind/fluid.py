@@ -21,10 +21,21 @@ Per ``choose(obs)``, in order:
    the real Transfer) and goal statuses stay. The new screen teaches nothing. ``close``
    sleeps once more over the current level's keys (game end). ``FactMemory.level``
    follows ``levels_completed`` so each new fact records the level it was made on.
-3. Otherwise update tracker and noise, strip noisy things from both scenes and the
-   diff, ``learn`` from the transition and ``check`` the previous prediction (its
-   misses feed only the log and the plan stop; ``learn`` charges facts itself). Then
-   ``goals.note_reached`` on the new scene.
+3. Otherwise update tracker (the last prediction's scene is its prior), kinds
+   (``kinds.KindBook``), the mode (``modes.ModeTracker``: selection and the active thing,
+   stored on the scene) and noise,
+   strip noisy things from both scenes and the diff, ``learn`` from the transition and
+   ``check`` the previous prediction (its misses feed only the log and the plan stop;
+   ``learn`` charges facts itself). Then
+   ``goals.note_reached`` on the new scene. Just before, if the goal of the plan being
+   followed (a found or a partial plan) is open and holds with no level-up, it is set
+   ``probing`` instead of excluded, the plan ends, and a commit probe starts: while the
+   scene stays the same, the next moves (branch ``commit``, event ``commit_probe``) try
+   A5, then clicks on small non-mover things whose color is unique on screen, each once,
+   at most ``COMMIT_PROBES``. They skip the ``known no effect`` veto, since a commit shows
+   nothing until the winning state, but honor a predicted game over and a no-op seen on
+   this scene. A level-up confirms the goal; a probe that ends any other way (the scene
+   changed, no candidate left, game over) excludes it.
 4. A plan stops only on a miss that matters (``plan_breaks``): a missed or newly broken
    fact about a mover sig or one of the plan goal's sigs (``self`` and ``any`` subjects
    count; spawn and other side objects don't), or a mover that ended somewhere other
@@ -39,17 +50,29 @@ Per ``choose(obs)``, in order:
    Each search logs a ``search`` event (``step, stop, nodes, depth, goals, frontier,
    protected, novel``). Plan steps are predicted with ``assume_still`` set to the
    mover sigs plus the goal's sigs, so the check covers what the plan relies on.
-5. Else ``goals.propose`` and ``search``: first over the open goals the executive named
+5. Else, when exactly one of search's actions survives the plan vetoes (``settled
+   test`` doesn't count: a settled action can still be a plan step), it's taken with
+   no search (branch ``forced``, why ``only move left``). Else ``goals.propose`` and
+   ``search``: first over the open goals the executive named
    (source ``llm``) alone, then, only if that finds no plan, over all of
    ``goals.open()``. A found plan starts (branch ``plan``, why ``goal <id>``). A goal
    that already holds at the root is treated as reached (``note_reached``) and the
    search runs once more without it. A first step that a veto refuses counts as a
-   failed attempt at that goal (see step 4).
-6. Else the Voi module's test (``tester.choose_test`` when real) with the search's
+   failed attempt at that goal (see step 4). Search goals come from ``GoalBook.ranked``: the
+   confirmed forms, then every open goal ordered by prior, salience and distance, plus
+   every goal the executive named.
+6. Else, when the budget is tight (``budget_tight``: the best partial plan's goal is
+   within the moves left with at most ``TEST_RESERVE`` to spare), that plan's step.
+   Else the Voi module's test (``tester.choose_test`` when real) with the search's
    frontier (branch ``learn``, why the test's question), unless this level attempt
    already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
    change and on game over); then Voi is skipped.
-7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
+7. Else the goal search's best partial plan (``SearchResult.best``), when that search
+   found no plan: its first step is taken and the rest held as a plan toward its goal
+   (branch ``plan``, why ``toward <goal id>``), but only when it ends closer to the goal
+   than any real frame of this life has been, so walking back to a spot already reached
+   doesn't count. A refused step isn't a failed attempt.
+   Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    controlled mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held; controlled per
    ``goals.controlled_sigs``, so an enemy that moves whatever the action doesn't
@@ -167,13 +190,16 @@ from arcagent.core.types import (
 )
 from arcagent.mind.agent import MAX_ERROR_CHARS, SYNTH_CUTOFF_FRACTION
 from arcagent.mind.baseline import Baseline
+from arcagent.mind.budget import BudgetReader
 from arcagent.mind.config import MindConfig
 from arcagent.mind.contract import PlanItem, Reply
 from arcagent.mind.facts import (
     SPAWN,
+    Effect,
     FactKey,
     FactMemory,
     Status,
+    action_label,
     cell_owner,
     clicked_sig,
     learn,
@@ -188,13 +214,17 @@ from arcagent.mind.goals import (
     goal_sigs,
     mover_sigs,
 )
+from arcagent.mind.kinds import KindBook
+from arcagent.mind.kinematics import Kinematics
+from arcagent.mind.modes import ModeTracker
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
+from arcagent.mind.progress import ProgressMonitor, Verdict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
-from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, question
+from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, tried_key
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
@@ -203,11 +233,22 @@ STALL_AFTER = 2  # failed attempts at one goal in one level before it is set asi
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 SEEN_NO_EFFECT = "seen no effect here"  # this action changed nothing on this very scene
-_PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT, SEEN_NO_EFFECT})  # reasons a plan step honors
+UNDOES_PROGRESS = "undoes progress"  # a known level reset while this life has progress
+_PLAN_VETOES = frozenset(
+    {GAME_OVER, NO_EFFECT, SEEN_NO_EFFECT, UNDOES_PROGRESS}
+)  # reasons a plan step honors
 MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skipped
 NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
 NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
+PARTIAL_WHY = "toward"  # why prefix of a best-partial-plan step: ``toward <goal id>``
+MOTION_CUT = 3  # motion verdicts in a row after which novelty yields
+PROGRESS_GOALS = 20  # goals the progress monitor measures per move (pursued and forms first)
+LEVEL = "level"  # subject of a reset-level fact: (action label, LEVEL, "any")
+TEST_RESERVE = 2  # moves to spare that still leave room for a test before a fitting plan
+COMMIT_PROBES = 4  # most commit-probe moves on one reached goal
+COMMIT_MAX_CELLS = 16  # a commit-probe click target has at most this many cells
+FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
 TURN_DEADLINE_S = 30.0  # the longest a move waits for its turn
@@ -306,7 +347,7 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
     expect = pred.scene.by_id()
     now = after.by_id()
     for t in before.things:
-        if t.sig not in movers or t.id not in pred.effects:
+        if (t.sig not in movers and t.kind not in movers) or t.id not in pred.effects:
             continue
         e, a = expect.get(t.id), now.get(t.id)
         if (e is None) != (a is None) or (
@@ -314,6 +355,12 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
         ):
             return True
     return False
+
+
+def budget_tight(*, remaining: int | None, distance: int) -> bool:
+    """Whether a plan ``distance`` moves long fits the moves left with under
+    ``TEST_RESERVE`` + 1 to spare: no room for a test first."""
+    return remaining is not None and distance <= remaining <= distance + TEST_RESERVE
 
 
 def wake_reason(notes: Collection[str]) -> str | None:
@@ -377,6 +424,15 @@ def _run_turn(chat: VisionChat, inp: TurnInput, seed: int) -> tuple[Reply, float
     t0 = time.perf_counter()
     reply = take_turn(chat, inp, seed=seed)
     return reply, time.perf_counter() - t0
+
+
+@dataclass(slots=True)
+class _Probe:
+    """Commit probing of a reached goal: the scene key it holds on, the actions tried."""
+
+    goal: Goal
+    key: tuple[tuple[str, int, int], ...]
+    tried: set[tuple[int, int, int]]
 
 
 class _Clicks:
@@ -447,11 +503,20 @@ class FluidAgent:
         self._pred: Prediction | None = None
         self._plan: list[PlanStep] = []
         self._plan_goal: Goal | None = None
+        self._partial: SearchResult | None = None  # this move's best partial plan, if any
+        self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
+        self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
+        self._budget = BudgetReader()  # moves left this life, from a counter bar
+        self._progress = ProgressMonitor()  # progress or motion, per life
+        self._verdict: Verdict = "none"  # this move's progress verdict
+        self._motion = 0  # motion verdicts in a row
+        self._start_key: tuple[tuple[str, int, int], ...] = ()  # the attempt's first scene
+        self._closest: dict[Goal, int] = {}  # lowest real distance per partial-plan goal, this life
         self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         # one (scene, raw grid) per distinct scene key this level
         self._history: dict[tuple[tuple[str, int, int], ...], tuple[Scene, Grid]] = {}
         self._tried: Tried = set()
-        self._noop: Tried = set()  # (scene key, action key) seen to change nothing, this level
+        self._noop: Noop = set()  # (scene key, action key) seen to change nothing, this level
         self._frontier: tuple[tuple[str, str], ...] = ()
         self._simple: list[Action] = []
         self._can_click = False
@@ -459,7 +524,9 @@ class FluidAgent:
         self._tests_attempt = 0  # test moves since the level or attempt started
         self._vetoes_total = 0
         self._used_level: set[FactKey] = set()  # fact keys the executed moves relied on
-        self._seen_at: set[tuple[str, int, int]] = set()  # (sig, x, y) seen this level
+        self._seen_at: set[tuple[str, int, int]] = set()  # (kind, x, y) seen this level
+        self._kinds = KindBook()  # identity classes of looks, for the whole game
+        self._modes = ModeTracker()  # selection and the active thing, per attempt
         self._closed = False
         # Executive turn state (unused without a chat).
         self._calls = 0
@@ -530,6 +597,8 @@ class FluidAgent:
             entropy=len(self._frontier),
             wake=self._wake,
             active=None,
+            progress=self._verdict,
+            budget=self._budget.remaining(),
         )
         self._last_action = a
         if a.id == RESET_ID:
@@ -545,6 +614,7 @@ class FluidAgent:
         """
         self._tracker.reset()
         self.mem.kin_reset()
+        self._modes.reset()
         if new_attempt:
             self._noise.new_attempt()
         else:
@@ -554,6 +624,7 @@ class FluidAgent:
         self._llm_plan, self._llm_test, self._llm_step = [], None, False
         self._changed.clear()
         self._last_grid = None
+        self._closest.clear()
 
     def _mind_step(self, obs: Observation) -> _Choice:
         move = self._action_no - 1  # index of the move that produced obs
@@ -585,8 +656,11 @@ class FluidAgent:
         self._tracker.reset()
         self.mem.kin_reset()
         full, _ = self._tracker.update(obs.grid, self._noise.cells)
+        full = self._kinds.label(full)
         scene = _strip(full, self._noise.noisy_ids)
         self._keep(full, scene, obs.grid)
+        self._start_key = scene.key()
+        self._budget.start_life(obs.grid)
         self._fresh, self._pred = False, None
         self._prev_grid = None
         self._attempt_from = self._action_no
@@ -606,7 +680,7 @@ class FluidAgent:
     def _keep(self, full: Scene, scene: Scene, grid: Grid) -> None:
         self._last_full, self._last_scene = full, scene
         self.mem.note_kin(scene.things)
-        self._seen_at.update((t.sig, t.x, t.y) for t in scene.things)
+        self._seen_at.update((t.kind, t.x, t.y) for t in scene.things)
         self._history.setdefault(scene.key(), (scene, grid))
         self._scene_ok = True
 
@@ -623,9 +697,15 @@ class FluidAgent:
 
     def _game_over(self, obs: Observation, move: int) -> None:
         self._tests_attempt = 0  # a new attempt gets its own test budget
+        self._end_probe()
+        self._budget.observe(obs.grid)  # the last move drained the bar too
+        self._budget.game_over()
+        self._progress.reset_life()
+        self._motion = 0
         prev_full, action = self._last_full, self._last_action
         if not self._fresh and prev_full is not None and action is not None:
             full, diff = self._tracker.update(obs.grid, self._noise.cells)
+            full = self._kinds.label(full)
             noisy = self._noise.noisy_ids
             if diff is not None:
                 before = _strip(prev_full, noisy)
@@ -658,6 +738,10 @@ class FluidAgent:
         self._log_facts(keys, snap, move)
         after = self._pred.scene if self._pred is not None else None
         self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
+        self._end_probe()  # a probing goal true before the win was just confirmed
+        self._progress.reset_level()
+        self._budget.new_level()
+        self._motion = 0
         self._log.event("level_up", step=move, level=obs.levels_completed)
         self._moves.append(f"{move} {_action_name(action, before)} -> level up")
         self._new_epoch()
@@ -682,7 +766,16 @@ class FluidAgent:
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
         prev_full = self._last_full
-        full, diff = self._tracker.update(obs.grid, self._noise.cells)
+        prior = self._pred.scene if self._pred is not None else None
+        full, diff = self._tracker.update(obs.grid, self._noise.cells, prior)
+        if diff is not None and prev_full is not None:
+            joined = self._kinds.observe(prev_full, full, diff, self._tracker.how)
+            if joined:
+                self._log.event("kind", step=move, kinds=joined)
+                prev_full = self._kinds.label(prev_full)
+        full = self._kinds.label(full)
+        if diff is not None and prev_full is not None:
+            full = self._note_mode(prev_full, action, full, diff)
         if diff is None or prev_full is None:  # cannot happen after a non-fresh frame
             scene = _strip(full, self._noise.noisy_ids)
             self._keep(full, scene, obs.grid)
@@ -695,6 +788,7 @@ class FluidAgent:
         after = _strip(full, noisy)
         if _strip_diff(diff, noisy).empty:
             self._noop.add((before_s.key(), action.key()))
+        self._read_budget(obs.grid, changed=not _strip_diff(diff, noisy).empty)
         self._keep(full, after, obs.grid)
         snap = self._statuses()
         keys = learn(
@@ -710,6 +804,7 @@ class FluidAgent:
         broke = self._log_facts(keys, snap, move)
         if broke:
             self._notes.add("fact broken")
+        self._note_reset(before, action, after, _strip_diff(diff, noisy), move)
         self._changed.update(c.id for c in diff.changes if c.kind != "same")
         pred = self._pred
         hit = False
@@ -722,8 +817,38 @@ class FluidAgent:
             tag = "predicted" if hit else "unpredicted"
             what = _outcome(_strip_diff(diff, noisy), before_s)
             self._moves.append(f"{move} {_action_name(action, before_s)} -> {what} ({tag})")
+        self._start_probe(after, obs.grid)
         self._log_goals(self.goals.note_reached(after, obs.grid), "excluded")
         return after
+
+    def _start_probe(self, after: Scene, grid: Grid) -> None:
+        """The pursued goal holds with no level-up: set it probing (instead of excluded)."""
+        goal = self._plan_goal
+        if goal is None or self.goals.status.get(goal) != "open" or not goal.holds(after, grid):
+            return
+        self._end_probe()
+        self.goals.start_probe(goal)
+        self._probe = _Probe(goal, after.key(), set())
+        self._plan = []
+        self._log_goals([goal], "probing")
+
+    def _end_probe(self) -> None:
+        """Stop probing; a goal still probing is excluded."""
+        self._probe = None
+        self._log_goals(self.goals.end_probe(), "excluded")
+
+    def _note_mode(self, before: Scene, action: Action, after: Scene, diff: SceneDiff) -> Scene:
+        """Run the mode tracker; ``after`` with its selection and active thing. Things seen
+        selected make their sig and kind selectable for predictions."""
+        mode = self._modes.observe(
+            before, action, after, diff, self._noise.cells, controlled=controlled_sigs(self.mem)
+        )
+        by_id = after.by_id()
+        for sid in mode.selected:
+            t = by_id.get(sid)
+            if t is not None:
+                self.mem.selectable.update((t.sig, t.kind))
+        return replace(after, selected=mode.selected, active=mode.active)
 
     def _check_plan(
         self, pred: Prediction, before: Scene, after: Scene, keys: list[FactKey], grid: Grid
@@ -751,6 +876,15 @@ class FluidAgent:
     # -- deciding ------------------------------------------------------------
 
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
+        self._partial = None
+        self._kin = Kinematics(self.mem, self._lone_mover(scene))  # this move's walks
+        self._note_closest(scene)
+        self._note_progress(scene)
+        probe = self._probe_choice(scene)
+        return self._commit(scene, probe) if probe is not None else self._choose(obs, scene)
+
+    def _choose(self, obs: Observation, scene: Scene) -> _Choice:
+        """Every branch but a commit probe, in the order of the module docstring."""
         late = self._clock() >= self._deadline
         if self._plan and self._plan_goal not in self.goals.open():
             self._plan = []  # its goal was ruled out, excluded or stalled
@@ -759,11 +893,17 @@ class FluidAgent:
             step = self._plan.pop(0)
             choice = self._offer(scene, step.action, "follow", "plan step", late, plan=True)
         if choice is None and not late:
-            choice = self._plan_choice(scene)
-        if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
-            choice = self._test_choice(obs, scene)
+            choice = self._forced(scene) or self._plan_choice(scene)
         if choice is None and not late:
-            choice = self._novel_choice(scene)
+            choice = self._tight_choice(scene) or (
+                self._test_choice(obs, scene)
+                if self._tests_attempt < MAX_TESTS_PER_ATTEMPT
+                else None
+            )
+        if choice is None and not late:
+            choice = self._partial_choice(scene) or (
+                self._novel_choice(scene) if self._motion < MOTION_CUT else None
+            )
         if choice is None:
             if not late:
                 self._exclude_vetoed(obs, scene)
@@ -772,7 +912,7 @@ class FluidAgent:
             choice = _Choice(action, "fallback", "deadline passed" if late else "b0")
         if self._chat is not None:
             choice, llm_step = self._maybe_turn(obs, scene, choice, llm_step, late)
-        self._tried.add((scene.key(), choice.action.key()))
+        self._tried.add(tried_key(scene, choice.action))
         if choice.test is not None:
             self._tests += 1
             self._tests_attempt += 1
@@ -831,9 +971,16 @@ class FluidAgent:
         the Inhibition module's veto. The null module (an ablation) refuses nothing."""
         if (scene.key(), action.key()) in self._known_noop():
             return SEEN_NO_EFFECT
+        if self._resets(scene, action) and self._progress.progressed():
+            return UNDOES_PROGRESS
         return self.modules.inhibition.veto(scene, action, self.mem, self._tried)
 
-    def _known_noop(self) -> Tried:
+    def _resets(self, scene: Scene, action: Action) -> bool:
+        """Whether a non-broken fact says ``action`` puts the level back as it started."""
+        fact = self.mem.get((action_label(action, scene), LEVEL, "any"))
+        return fact is not None and fact.status != "broken"
+
+    def _known_noop(self) -> Noop:
         """The no-op pairs vetoes and search use: none under the null Inhibition module."""
         return set() if isinstance(self.modules.inhibition, NullFluidInhibition) else self._noop
 
@@ -844,8 +991,20 @@ class FluidAgent:
             "veto", step=self._action_no, action=[action.id, action.x, action.y], reason=reason
         )
 
+    def _forced(self, scene: Scene) -> _Choice | None:
+        """The one action no plan veto refuses, as a choice; None when there are more or
+        none. Stops at the second survivor, so a usual move costs two vetoes."""
+        alive: Action | None = None
+        for action in self._actions(scene):
+            if self._veto(scene, action) in _PLAN_VETOES:
+                continue
+            if alive is not None:
+                return None
+            alive = action
+        return None if alive is None else _Choice(alive, "forced", FORCED_WHY)
+
     def _plan_choice(self, scene: Scene) -> _Choice | None:
-        added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE)
+        added = self.goals.propose(scene, self.mem, source=GOAL_SOURCE, grid=self._last_grid)
         if added:
             self._log_goals(added, "open")
             self._log_goals(self._rule_out(added), "ruled_out")
@@ -864,6 +1023,7 @@ class FluidAgent:
             res = self._search_toward(scene, lambda _g: True)
         self._frontier = res.frontier
         if res.stop != "found" or not res.plan or res.goal is None:
+            self._partial = res if res.best and res.best_goal is not None else None
             return None
         first, *rest_steps = res.plan
         self._plan = list(rest_steps)
@@ -874,14 +1034,159 @@ class FluidAgent:
             self.note_failed(res.goal)  # a vetoed first step is a failed attempt
         return choice
 
+    def _probe_choice(self, scene: Scene) -> _Choice | None:
+        """The next commit-probe action, or None (ending any probe that is over).
+
+        A probe is over when the scene moved off the goal state, ``COMMIT_PROBES`` moves
+        were spent, or no candidate is left. Candidates skip the ``known no effect`` veto
+        (a commit action shows nothing until the winning state) but not a predicted game
+        over or a no-op seen on this very scene.
+        """
+        probe = self._probe
+        if probe is None:
+            return None
+        if scene.key() == probe.key and len(probe.tried) < COMMIT_PROBES:
+            for action in self._commit_candidates(scene):
+                if action.key() in probe.tried:
+                    continue
+                if self._veto(scene, action) in (GAME_OVER, SEEN_NO_EFFECT):
+                    continue
+                probe.tried.add(action.key())
+                return _Choice(action, "commit", f"commit probe {probe.goal.id()}")
+        self._end_probe()
+        return None
+
+    def _commit(self, scene: Scene, choice: _Choice) -> _Choice:
+        """Take a commit-probe move: logged, tried, predicted like a test."""
+        a = choice.action
+        self._log.event("commit_probe", step=self._action_no, action=[a.id, a.x, a.y])
+        self._tried.add(tried_key(scene, a))
+        self._plan_goal, self._llm_step = None, False
+        self._pred = predict(scene, a, self.mem)
+        self._used_level.update(self._pred.used)
+        return choice
+
+    def _commit_candidates(self, scene: Scene) -> list[Action]:
+        """A5 when offered, then clicks on small non-mover things whose color no other thing
+        on screen has, fewest cells first."""
+        out = [a for a in self._simple if a.id == 5]
+        if self._can_click:
+            movers = mover_sigs(self.mem)
+            colors = Counter(t.color for t in scene.things)
+            small = [
+                t
+                for t in scene.things
+                if len(t.cells) <= COMMIT_MAX_CELLS and t.sig not in movers and colors[t.color] == 1
+            ]
+            for t in sorted(small, key=lambda t: (len(t.cells), t.id)):
+                x, y = self._clicks.cell(t)
+                out.append(Action(COORD_ACTION_ID, x, y))
+        return out
+
+    def _read_budget(self, grid: Grid, *, changed: bool) -> None:
+        """Feed the budget reader one frame, picking up a counter the noise mask flagged
+        (the first shrinking one, else the first)."""
+        counters = self._noise.counters
+        if counters and self._budget.counter is None:
+            self._budget.set_counter(next((c for c in counters if c.shrinks), counters[0]))
+        self._budget.observe(grid, changed=changed)
+
+    def _lone_mover(self, scene: Scene) -> str | None:
+        """The kind of the one controlled thing on screen, or None (none, or several)."""
+        controlled = controlled_sigs(self.mem)
+        mine = [t for t in scene.things if t.sig in controlled or t.kind in controlled]
+        return mine[0].kind if len(mine) == 1 else None
+
+    def _note_progress(self, scene: Scene) -> None:
+        """Name this move with the progress monitor, over the pursued goal, the confirmed
+        forms and the first open goals (``PROGRESS_GOALS`` in all)."""
+        pursued = [self._plan_goal] if self._plan_goal is not None else []
+        goals = list(dict.fromkeys([*pursued, *self.goals.open()]))[:PROGRESS_GOALS]
+        dists = {g: g.distance(scene, self._last_grid, self._kin) for g in goals}
+        self._verdict = self._progress.observe(scene.key(), dists, active=self._plan_goal)
+        self._motion = self._motion + 1 if self._verdict == "motion" else 0
+
+    def _note_reset(
+        self, before: Scene, action: Action, after: Scene, diff: SceneDiff, move: int
+    ) -> None:
+        """An action that changed two or more things and left the scene exactly as this
+        attempt started puts the level back: record it (one thing moving back is a step)."""
+        changed = sum(1 for c in diff.changes if c.kind != "same")
+        if changed < 2 or not self._start_key or after.key() != self._start_key:
+            return
+        if before.key() == self._start_key:
+            return
+        key = (action_label(action, before), LEVEL, "any")
+        snap = self._statuses()
+        self.mem.record(key, (Effect("reset_level"),), move)
+        self._log_facts([key], snap, move)
+
+    def _note_closest(self, scene: Scene) -> None:
+        """Lower each partial-plan goal's closest distance this life to the real frame's."""
+        for g, best in self._closest.items():
+            d = g.distance(scene, None, self._kin)
+            if d is not None and d < best:
+                self._closest[g] = d
+
+    def _tight_choice(self, scene: Scene) -> _Choice | None:
+        """The partial plan's step ahead of tests, when its goal just fits the moves left
+        (``budget_tight``)."""
+        res = self._partial
+        if res is None or res.best_distance is None:
+            return None
+        if not budget_tight(remaining=self._budget.remaining(), distance=res.best_distance):
+            return None
+        return self._partial_choice(scene)
+
+    def _partial_choice(self, scene: Scene) -> _Choice | None:
+        """The first step of this move's best partial plan (``SearchResult.best``), held as a
+        plan toward its goal. None without one, when it ends no closer to its goal than some
+        real frame of this life already was (motion, not progress), or when a plan veto
+        refuses the step; a refused step isn't a failed attempt at the goal."""
+        res = self._partial
+        goal, end = (None, None) if res is None else (res.best_goal, res.best_distance)
+        if res is None or goal is None or end is None or not res.best:
+            return None
+        now = goal.distance(scene, None, self._kin)
+        if now is not None:
+            self._closest[goal] = min(self._closest.get(goal, now), now)
+        if end >= self._closest.get(goal, end + 1):
+            return None
+        first, *rest = res.best
+        self._plan, self._plan_goal = list(rest), goal
+        choice = self._offer(
+            scene, first.action, "plan", f"{PARTIAL_WHY} {goal.id()}", False, plan=True
+        )
+        if choice is None:
+            self._plan, self._plan_goal = [], None
+        return choice
+
     def _search_toward(self, scene: Scene, keep: Callable[[Goal], bool]) -> SearchResult:
-        """Search the open goals ``keep`` accepts; a goal holding at the root is reached."""
-        res = self._search(scene, [g for g in self.goals.open() if keep(g)])
+        """Search the ranked goals ``keep`` accepts; a goal holding at the root is reached."""
+        res = self._search(scene, [g for g in self._ranked(scene) if keep(g)])
         if res.stop == "found" and not res.plan and res.goal is not None:
             self._log_goals(self.goals.note_reached(scene, self._last_grid), "excluded")
-            rest = [g for g in self.goals.open() if g != res.goal and keep(g)]
+            rest = [g for g in self._ranked(scene) if g != res.goal and keep(g)]
             res = self._search(scene, rest)
         return res
+
+    def _ranked(self, scene: Scene) -> list[Goal]:
+        """``GoalBook.ranked`` for this move (salient: controlled things and things that
+        changed this level), plus every open goal the executive named."""
+        changed = {s for t in scene.things if t.id in self._changed for s in (t.sig, t.kind)}
+        salient = frozenset(controlled_sigs(self.mem) | changed)
+        ranked = self.goals.ranked(
+            scene,
+            grid=self._last_grid,
+            kin=self._kin,
+            salient=salient,
+        )
+        named = [
+            g
+            for g in self.goals.open()
+            if self.goals.sources.get(g) == LLM_SOURCE and g not in ranked
+        ]
+        return ranked + named
 
     def _search(
         self,
@@ -901,6 +1206,8 @@ class FluidAgent:
             max_nodes=max_nodes,
             time_s=time_s,
             noop=self._known_noop(),
+            kin=self._kin,
+            max_depth=self._budget.remaining(),
         )
         self._log.event(
             "search",
@@ -923,12 +1230,15 @@ class FluidAgent:
         Only the first step is taken; the next move searches again with the new cell seen.
         """
         movers = mover_sigs(self.mem) & controlled_sigs(self.mem)
-        if not any(t.sig in movers for t in scene.things):
+        if not any(t.sig in movers or t.kind in movers for t in scene.things):
             return None
         seen = self._seen_at
 
         def novel(s: Scene) -> bool:
-            return any(t.sig in movers and (t.sig, t.x, t.y) not in seen for t in s.things)
+            return any(
+                (t.sig in movers or t.kind in movers) and (t.kind, t.x, t.y) not in seen
+                for t in s.things
+            )
 
         res = self._search(scene, [], goal_test=novel, max_nodes=NOVEL_NODES, time_s=NOVEL_TIME_S)
         if res.stop != "found" or not res.plan:

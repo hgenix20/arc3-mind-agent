@@ -133,38 +133,31 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - [ ] **Step 3: Implement.** Keep the best node by `(distance, len(plan))`. At each slice boundary in `SEARCH_SLICES`, record `(best[0].action.key(), best_distance)`; stop with `"stable"` when it's unchanged for `STABLE_SLICES` boundaries in a row and the plan isn't found yet. `max_nodes` still caps everything.
 - [ ] **Step 4: Gates.** **Step 5: Commit** "Search returns its best partial plan and stops when the best is stable".
 
-### Task 1.3: Quiescence: don't end a plan in an unstable state
+### Task 1.3: Quiescence: don't end a plan in a trap
 
-**Unstable, for this world** (my call; the direction leaves the definition open): a predicted scene where (a) a protected thing sits 4-adjacent to a color with a non-broken death fact, (b) a slide fact for the mover would still move it under the plan's last action, or (c) a protected thing has an unknown pair for some action within one move. A leaf like that is extended by up to `QUIESCENCE_PLIES = 2` moves over the actions that resolve it; it's accepted only if a stable scene follows.
+**As built (changed from the first draft):** the draft defined "unstable" as (a) next to a death color, (b) mid-slide, or (c) an unknown pair one move away. (b) can't happen: the predictor resolves each slide to where it stops. (a) isn't dangerous by itself: the move back is usually safe and vetoes refuse deadly moves. (c) is uncertainty, not danger. What quiescence guards against here is a leaf where every next move is predicted to end the game: a trap.
 
 **Files:**
-- Modify: `arcagent/mind/search.py`
+- Modify: `arcagent/mind/search.py` (the loop moved into a `_Run` class to stay inside the lint limits; behavior otherwise unchanged)
 - Test: `tests/mind/test_search.py`
 
 **Interfaces:**
-- Produces: `unstable(scene: Scene, mem: FactMemory, protect: frozenset[str], last: Action) -> bool` in `search.py`; `QUIESCENCE_PLIES = 2`.
+- Produces: `is_trap(scene: Scene, actions: Callable[[Scene], list[Action]], mem: FactMemory, protect: frozenset[str]) -> bool`; `QUIESCENCE_PLIES = 2`. A found plan ending in a trap is held while the search looks for a safe plan at most `QUIESCENCE_PLIES` moves longer; the held plan is returned when none turns up or a bound stops the search. The best partial plan never ends in a trap. Applies to `goal_test` finds (novelty) too.
 
-- [ ] **Step 1: Failing tests.**
-  - `test_goal_next_to_death_is_not_accepted_unless_it_wins`: the goal cell is adjacent to a death color and the level-up isn't predicted. Assert the plan isn't returned as `found` when a safe plan of equal length exists, and is returned when it's the only one.
-  - `test_partial_plan_never_ends_mid_slide`: assert `result.best`'s last scene is not `unstable`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Search extends unstable leaves before accepting them".
+- [x] Tests: `test_plan_ending_in_a_trap_yields_to_a_safe_plan_a_little_longer`, `test_plan_ending_in_a_trap_is_returned_when_no_safe_plan_exists`, `test_safe_plan_too_much_longer_loses_to_the_trap_plan`, `test_best_partial_plan_never_ends_in_a_trap`.
 
 ### Task 1.4: Commit probe when a goal holds and no level-up came
 
+**As built:** the draft read `ProgressMonitor.settled()` (Task 2.3, not built yet). The trigger is the event itself: the goal of the plan being followed (found or partial) is open and holds on a real frame with no level-up. Only the pursued goal triggers it; a reach guess that becomes true by accident doesn't, or probes would cost moves all the time.
+
 **Files:**
-- Modify: `arcagent/mind/fluid.py`, `arcagent/mind/goals.py`
-- Test: `tests/mind/test_fluid_agent.py`
+- Modify: `arcagent/mind/fluid.py` (`_start_probe`, `_probe_choice`, `_commit`, `_commit_candidates`, `_end_probe`; `_decide` split into `_decide` and `_choose`), `arcagent/mind/goals.py` (status `probing`, `start_probe`, `end_probe`; `level_up` confirms probing goals), `arcagent/mind/types.py` (branch `commit`)
+- Test: `tests/mind/test_fluid_agent.py`, `tests/mind/test_goals.py`
 
 **Interfaces:**
-- Consumes: `ProgressMonitor.settled() -> bool` (Task 2.3).
-- Produces: `GoalBook.probe_commit(goal) -> None` status path: a goal that holds without a level-up goes to a new status `"probing"` before `"excluded"`; constants `COMMIT_PROBES = 4`. Log event `commit_probe` with the action and outcome.
+- Produces: `COMMIT_PROBES = 4`, `COMMIT_MAX_CELLS = 16`; branch `commit`, event `commit_probe`, goal event status `probing`. Candidates: A5 when offered, then clicks on small non-mover things whose color is unique on screen, fewest cells first, each once. Probes skip the `known no effect` veto (a commit shows nothing until the winning state) and honor `predicted game_over` and `seen no effect here`. A level-up confirms the goal; any other end (scene changed, candidates spent, game over) excludes it.
 
-- [ ] **Step 1: Failing tests.**
-  - `test_goal_holding_without_level_up_triggers_commit_probe`: a fake game whose level needs A5 after the target state. Assert the agent's next action is A5 (branch `commit`) and the level completes.
-  - `test_commit_probe_is_bounded`: no commit action works. Assert at most `COMMIT_PROBES` probe moves, then the goal is `excluded` as today.
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.** Candidates, cheapest first: A5 when available; then clicks on small things that never moved, that no fact explains and that aren't masked (the paper's high-salience tier: few cells, isolated, a color unique on screen). Each candidate once per state. A probe that changes the state without a level-up ends the probe.
-- [ ] **Step 4: Gates.** **Step 5: Commit** "Probe commit actions when a goal holds without a level-up".
+- [x] Tests: `test_goal_holding_without_level_up_triggers_commit_probe` (A5 known to do nothing, wins only next to the target), `test_commit_probe_is_bounded`, `test_probing_goal_leaves_open_and_is_confirmed_or_excluded`.
 
 **Section gate:** paired offline A/B against the section-2 result. Watch tn36 (should win earlier) and the `forced`/`stable` counts in the logs.
 
@@ -181,68 +174,23 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - **Completion criteria against a rule set:** carries over as `Goal.distance == 0` plus the rule-book of section 5.
 - **CNN/YOLO object identity:** already exact on this board (see "What the research changed").
 
-### Task 2.1: A distance for every goal kind
+### Tasks 2.1 and 2.2: goal distances and the kinematic model
 
-**Files:**
-- Modify: `arcagent/mind/goals.py`
-- Test: `tests/mind/test_goals.py`
+**As built:** `Goal.distance(scene, grid=None, kin=None)` (0 exactly when the goal holds; None for no estimate): reach is the bbox cell gap less one, or with `kin` the moves from `kin.field`; clear is things left; count is `abs(n - count)`; match is mismatched cells. `arcagent/mind/kinematics.py`: `Gait`, `Kinematics.gaits` (move and slide facts in context `any`, simple actions only), `reachable` (forward walk, slides included), `steps_to`, and `field` (backward walk from every top-left touching the target, fixed-step gaits only, cached per (subject, target)). Bounds: `KIN_LIMIT = 4096` top-lefts per walk, `KIN_FIELDS = 8` fields per object; the agent builds one `Kinematics` per move and passes it to its searches, so search distances and the partial-plan guard use the same metric.
 
-**Interfaces:**
-- Consumes: `Kinematics.steps_to(scene, kind, target_cells) -> int | None` (Task 2.2).
-- Produces: `Goal.distance(scene: Scene, grid: Grid | None, kin: Kinematics | None) -> int | None`. `reach`: kinematic steps from the nearest `a` to a cell overlapping or 4-adjacent to the nearest `b`, falling back to the Manhattan distance between bboxes over the mover's step size when `kin` is None. `clear`: things of that color left. `count`: `abs(n - count)`. `match`: mismatched cells (None without a grid). None means "no estimate". `distance == 0` exactly when `holds` is true (a property test).
-
-- [ ] **Step 1: Failing tests.** `test_reach_distance_counts_steps_around_a_wall`, `test_clear_distance_is_things_left`, `test_count_distance`, `test_match_distance_is_mismatched_cells`, `test_distance_zero_iff_holds` (loop over the existing `holds` fixtures).
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Goals report a distance".
-
-### Task 2.2: Kinematic model of the controlled things
-
-**Files:**
-- Create: `arcagent/mind/kinematics.py`
-- Test: `tests/mind/test_kinematics.py`
-
-**Interfaces:**
-- Consumes: `FactMemory` (move/slide facts, `blockers`, `walkable`), `goals.controlled_sigs`.
-- Produces:
-  - `@dataclass(frozen=True) class Gait: action: ActionKey; dx: int; dy: int; slides: bool`
-  - `class Kinematics: def __init__(self, mem: FactMemory) -> None`; `gaits(kind: str) -> tuple[Gait, ...]`; `reachable(scene: Scene, kind: str, *, limit: int = KIN_LIMIT) -> dict[Cell, int]` (top-left cell to moves, breadth-first over gaits, blocked by edge, padding and blocker colors, never by things that facts say get pushed); `steps_to(scene, kind, target_cells) -> int | None`.
-  - `KIN_LIMIT = 4096` cells visited per call.
-  - Kinds per section 3; before section 3 lands, `kind` is the sig.
-
-- [ ] **Step 1: Failing tests.** `test_gaits_come_from_move_facts`, `test_reachable_stops_at_blocker_colors`, `test_slide_gait_stops_where_it_would_be_blocked`, `test_unreachable_target_is_none`, `test_limit_bounds_the_walk`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (pure Python, a deque, the same blocking rule as `predictor` for single bodies). **Step 4: Gates.** **Step 5: Commit** "Kinematic model of controlled things".
+- [x] Tests: `tests/mind/test_kinematics.py` (gaits, blockers, slides, around a wall, unreachable, the walk limit, the field, goal distance in moves around a wall) and the distance tests in `tests/mind/test_goals.py`.
 
 ### Task 2.3: Progress monitor
 
-**Files:**
-- Create: `arcagent/mind/progress.py`
-- Modify: `arcagent/mind/fluid.py` (feed it each transition; log `progress` fields on the action record)
-- Test: `tests/mind/test_progress.py`
+**As built:** `arcagent/mind/progress.py` `ProgressMonitor` (verdicts `milestone`, `progress`, `regress`, `motion`, `none`; `progressed()`, `settled(goal)`, `best(goal)`, `reset_life`, `reset_level`; `MOTION_WINDOW = 12`, `SETTLE_MOVES = 6`, `REGRESS_SLACK = 2`). Bests are per life: a new attempt has to make its own progress. The agent measures the pursued goal, the confirmed forms and the first open goals (`PROGRESS_GOALS = 20`) each move, logs the verdict as `progress` on the action record, and lets novelty run only while fewer than `MOTION_CUT = 3` motion verdicts came in a row. A transition that changed two or more things and left the scene exactly as the attempt started records `(label, "level", "any") -> reset_level` (one thing stepping back is a step, not a reset); `_veto` refuses such an action with `undoes progress` while `progressed()`, and plan steps honor it.
 
-**Interfaces:**
-- Produces:
-  - `class ProgressMonitor`: `observe(key: SceneKey, distances: Mapping[Goal, int | None], level_up: bool) -> Verdict`; `reset_life()`; `reset_level()`; `best(goal) -> int | None` (lowest distance this level); `settled() -> bool` (the active goal's distance is 0, or `SETTLE_MOVES` moves changed nothing).
-  - `Verdict = Literal["progress", "motion", "regress", "milestone", "none"]`. `progress`: some open goal's distance fell below its best this life. `milestone`: a clear/count goal's remaining things fell and never came back within the level, or a level-up. `motion`: the scene key repeated within `MOTION_WINDOW` moves with no distance improved. `regress`: the active goal's distance rose by more than `REGRESS_SLACK`.
-  - `MOTION_WINDOW = 12`, `SETTLE_MOVES = 6`, `REGRESS_SLACK = 2`.
-
-- [ ] **Step 1: Failing tests.** `test_back_and_forth_is_motion`, `test_closer_to_target_is_progress`, `test_fewer_things_of_clear_color_is_milestone`, `test_level_reset_by_an_action_is_regress`, `test_settled_after_quiet_moves`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Wire into `fluid.py`.** Two uses: (a) novelty moves stop after `motion` verdicts on 3 moves in a row (the novelty branch then yields to tests or fallback); (b) a new effect kind `reset_level` in `facts.py`, learned when an action returns the scene to the level's start key; `_veto` refuses an action with a solid `reset_level` fact while `ProgressMonitor.best(active) < root distance`, reason `"undoes progress"`. Test `test_reset_button_is_refused_after_progress` (a fake game with a reset button and a two-step goal).
-- [ ] **Step 5: Gates.** **Step 6: Commit** "Progress monitor; refuse actions that undo progress".
+- [x] Tests: `tests/mind/test_progress.py` (6), `test_a_return_to_the_start_picture_is_learned_as_a_level_reset`, `test_one_thing_stepping_back_to_the_start_is_not_a_reset`, `test_a_known_reset_is_refused_only_while_this_life_has_progress`.
 
 ### Task 2.4: Best-first search on goal distance
 
-**Files:**
-- Modify: `arcagent/mind/search.py`
-- Test: `tests/mind/test_search.py`
+**As built:** the queue is a heap ordered by `len(plan) + weight * h` (`h` the lowest goal distance in the scene, 0 when none), ties to the lower `h`, then queue order; `HEURISTIC_WEIGHT = 1.0`, `search(..., weight=)`. The tie to lower `h` matters: with an exact distance, about 1,400 scenes tie on priority for a far target, and queue order alone explores them breadth-first. With `weight=0` or no distances the search goes level by level as before. A scene too long to beat a held trap plan is skipped instead of ending the search.
 
-**Interfaces:**
-- Consumes: `Goal.distance`, `Kinematics`.
-- Produces: `search(..., kin: Kinematics | None = None, weight: float = HEURISTIC_WEIGHT)`. Priority `len(plan) + weight * h`, `h` = min distance over live goals, ties by insertion order. `HEURISTIC_WEIGHT = 1.0` (admissible enough for reach, where steps are exact; clear counts are under-estimates). With every `h` None, the order is breadth-first and results equal today's.
-
-- [ ] **Step 1: Failing tests.**
-  - `test_best_first_finds_deep_clear_plan_within_cap`: a click board with 50 targets where clearing takes 6 clicks, each click removing one thing. With `max_nodes=3000`, breadth-first doesn't find it (assert on the old path with `kin=None` and goals without distance), best-first does.
-  - `test_without_distance_search_is_breadth_first`: every existing `test_search.py` case passes unchanged, and a case with `distance` returning None gives the same plan as before.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** with `heapq` and a counter tiebreak. **Step 4: Gates.** **Step 5: Commit** "Best-first search on goal distance".
+- [x] Tests: `test_best_first_finds_a_far_target_that_breadth_first_runs_out_on` (75 moves found under the cap; breadth-first order runs out), `test_without_distances_search_is_breadth_first`; `test_search_cap_falls_back_to_the_best_partial_plan` now forces breadth-first order, since best-first finds that plan whole.
 
 **Section gate:** paired offline A/B. Watch lf52 level 2 (`search` events should show `found` again after move 40), novelty share on wa30 and ls20, and `undoes progress` vetoes.
 
@@ -268,7 +216,7 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - Test: `tests/mind/test_assign.py`
 
 **Interfaces:**
-- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`: minimum-total-cost pairs of row and column indices for a rectangular matrix, leaving out every pair whose cost exceeds `gate`. `ASSIGN_MAX = 40`; a matrix with a side above it raises `ValueError` (callers fall back).
+- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`, pairs sorted by row: among assignments that use only pairs with cost at most `gate` (and finite), the one with the most pairs, then the least total cost (as built: a tracker would rather explain two things with two plausible matches than one cheap match and an unexplained appearance). `ASSIGN_MAX = 40`; a matrix with a side above it, or ragged rows, raises `ValueError` (callers fall back). Measured: 1.4 ms for 40×40, 0.08 ms for 10×10.
 
 - [ ] **Step 1: Failing tests.** `test_square_matrix_optimum` (a 3×3 case where greedy is wrong: `[[1,2,9],[2,9,9],[9,9,1]]` gives `{(0,1),(1,0),(2,2)}`), `test_rectangular_leaves_extra_unmatched`, `test_gate_drops_expensive_pairs`, `test_empty_matrix`, `test_size_cap_raises`, `test_matches_brute_force_on_random_5x5` (100 seeded matrices against `itertools.permutations`).
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (Kuhn-Munkres with potentials, pure Python). **Step 4: Gates.** **Step 5: Commit** "Hungarian assignment".
@@ -293,41 +241,28 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
   - `test_two_same_sig_things_crossing_keep_their_ids` (the prior says they swapped sides).
   - Every existing `test_objects.py` case passes with `prior=None`.
 - [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Run it on the scratchpad's `obs/tu93.npz` and `obs/wa30.npz` before and after. Expected: churn on the player falls to zero on moves where it only turned.
+- [x] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Result on all 25 recordings, old tracker against new (no prior in a replay, so this is the matching rules alone): no game worse; total churn per move 20.5 to 17.6; tu93 0.52 to 0.09, lp85 0.38 to 0.01, dc22 0.92 to 0.47, cn04 0.26 to 0.14, wa30 0.38 to 0.18.
+
+**As built:** the cost adds `KIND_COST` per match kind (prior and sig 0, recolor 20, reshape 40, near 60), so the kind outranks distance; without it a player stepping onto a same-shape lava dot lost its id to the lava "recoloring" in place (caught by `test_game_over_prefers_the_overlapped_color`). Cross-color pairs without overlap or a prediction are never candidates. The gate is the candidate tests themselves (radius 16), so `MATCH_GATE` isn't needed; the relational term was left out, since with stationary anchors it equals the distance term. `Tracker.how` records each id's match kind for Task 3.3.
 - [ ] **Step 5: Gates.** **Step 6: Commit** "Tracker matches against the predicted scene".
 
 ### Task 3.3: Kinds: identity classes across appearances
 
-**Files:**
-- Create: `arcagent/mind/kinds.py`
-- Modify: `arcagent/mind/objects.py` (`Thing.kind: str`, default the sig)
-- Test: `tests/mind/test_kinds.py`
+**As built:** `arcagent/mind/kinds.py` (`KindBook`, `KIN_EVIDENCE = 2`) and `Thing.kind` (defaults to the sig). Changes from the draft, my calls:
+- A kind is named by the first sig of its class (still a `c<color>:<shape>` string), so every parser of subject colors keeps working when facts key on kinds.
+- Evidence: one track switching between two sigs, matched by `prior`, `recolor`, `near`, or a same-color overlap with size change within `NEAR_SIZE`. Growth and appear-plus-disappear never count.
+- Dropped the "two sigs on screen together never join" rule: it would keep on/off tiles apart forever, and the tracking evidence already guards false joins.
+- Unions last the whole game (no next-level confirmation): the same sigs recur on later levels, and the extra rule bought little.
 
-**Interfaces:**
-- Consumes: `Tracker.via_prior`, `SceneDiff`, `FactMemory.kin` (track sig histories).
-- Produces: `class KindBook`: `observe(before: Scene, after: Scene, diff: SceneDiff, via_prior: frozenset[int]) -> None`; `kind_of(sig: str) -> str`; `label(scene: Scene) -> Scene` (things with `kind` filled); `new_level()`. A union of two sigs needs `KIN_EVIDENCE = 2` observations of one track changing between them while matched by position or by the prior (never by the reshape-overlap fallback alone). Kind name: `k` + the first sig of the class in order seen. Unions persist across levels; a union whose evidence came only from one level is dropped if the next level never confirms it (my call: false merges would poison facts across levels).
+`KindBook.observe(before, after, diff, how) -> list[str]` (kinds joined), `kind_of(sig) -> str`, `label(scene) -> Scene`.
 
-- [ ] **Step 1: Failing tests.** `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin` (a thing disappears and a different-color thing appears on its cells in the same move, with no prior: no union), `test_different_kinds_keep_apart_when_both_present` (two sigs seen on screen at once in the same frame are never unioned), `test_level_change_drops_unconfirmed_unions`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (union-find with evidence counts). **Step 4: Gates.** **Step 5: Commit** "Kinds: identity classes across appearances".
+- [x] Tests: `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin`, `test_a_growing_strip_is_not_kin`, `test_recolor_in_place_twice_is_kin`, `test_kinds_chain_and_label_fills_things`, `test_unlabeled_things_are_their_own_kind`.
 
-### Task 3.4: Facts and goals key on kind (spec change)
+### Task 3.4: Facts and goals read kinds (spec change)
 
-**Files:**
-- Modify: `arcagent/mind/facts.py`, `arcagent/mind/predictor.py`, `arcagent/mind/goals.py`, `arcagent/mind/tester.py`, `arcagent/mind/search.py`, `arcagent/mind/fluid.py`
-- Modify: `docs/superpowers/specs/2026-10-23-fluid-agent-design.md` (component 2: subjects are kinds; record Kameron's 2026-10-24 decision)
-- Test: `tests/mind/test_facts.py`, `tests/mind/test_predictor.py`, `tests/mind/test_search.py`, `tests/mind/test_fluid_agent.py`
+**As built (changed from the draft):** keying facts on kind alone would break state-relative looks: a toggle tile gets "click turns it off" from one look and "click turns it on" from the other, under one key. So facts stay keyed by look, and each observation of a thing whose kind differs from its sig is also recorded under the kind, with a move or look change normalized to "and its look becomes X" (the same fact from every look). `FactMemory.lookup(..., kind)` tries a usable look fact, then a usable kind fact, then a broken look fact; the predictor passes the kind (not for the clicked thing) and falls back to kind `blocked` and death facts the same way, reads blockers through both names, and keeps `kind` on predicted things. A kind of two or more looks is named `k` + its first sig (`kinds.KIND_PREFIX`, `base_sig`), so its facts never share a key with that look's. Goals match things by sig or kind and propose a kind in place of its looks (never a kind's own look as its target); search protects and keys by either; novelty counts `(kind, x, y)`, so turning back on a visited cell isn't new. The agent runs `KindBook` on every transition, logs `kind` events and labels its scenes. The spec's component 2 records the decision.
 
-**Interfaces:**
-- Consumes: `Thing.kind`, `KindBook`.
-- Produces: fact subjects, click labels, goal `a`/`b`, `mover_sigs`/`controlled_sigs` (renamed `mover_kinds`/`controlled_kinds`, old names kept as aliases for one task) all use kinds. An appearance change is a `reshape` effect to a sig within the kind; the predictor sets the predicted thing's `sig` and keeps its `kind`. `Scene.key()` stays on `(sig, x, y)`: appearance is state and can matter to a goal.
-
-- [ ] **Step 1: Failing tests.**
-  - `test_move_fact_survives_a_facing_change`: A1 moves the player right and turns it; A2 moves it left and turns it back. After two of each, assert both move facts are solid and keyed on one kind.
-  - `test_search_chains_moves_across_facing_changes`: a 3-step reach plan through two turns is found (today the player "disappears" in prediction).
-  - `test_goal_on_a_kind_holds_whatever_the_facing`.
-  - The full `tests/mind` suite passes after mechanical updates of fixtures that compare subjects.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.**
-- [ ] **Step 5: Commit** "Facts and goals key on kind" with the spec edit.
+- [x] Tests: `tests/mind/test_kind_facts.py` (learned under the kind with the new look; a kind fact predicts an unseen look; a look fact wins until it breaks; search chains moves across looks; a goal on a kind holds in either look; kinds are movers), `test_a_turning_player_becomes_one_kind_and_reaches_the_target`. On that game: 22 moves with kinds, 26 without (one plan held instead of six replans).
 
 **Section gate:** paired offline A/B. Watch tu93 (search timeouts were 200 of 448; fallback share near 50%), wa30 oscillation on moves 52 to 67, and prediction accuracy (must not fall below the current 0.89).
 
@@ -339,53 +274,111 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 **What carries over:** all of it. My calls are how the tags get detected from the screen and how facts read them, since nothing announces a selection: the agent has to infer it from what a click changed.
 
-### Task 4.1: Detect selection
+### Tasks 4.1 to 4.3: selection, the active controller, and facts that read them
+
+**As built:**
+- 4.1 `arcagent/mind/modes.py` `ModeTracker`: a candidate mark is an outline appearing around a clicked thing (color and shape) or the clicked thing recoloring; it is a known selection marker once it moves to another clicked thing (the tracker may keep the outline's id as it jumps, so a moved mark counts) or a second click takes it away. Masked cells and the clicked thing's own move are never marks.
+- 4.2 `Mode.active`: after a non-click action in which exactly one controlled thing (`goals.controlled_sigs`) moved, that thing is active, but only while two or more controlled things are on screen: with one, filing its moves under `active` would pull them out of the `any` facts that the slide, teleport and blocked rules read (a test caught it). Action numbers carry no meaning.
+- 4.3 `Scene.selected` and `Scene.active` are part of the scene and its key. `modes.mode_contexts`: `selected:dx,dy`, `between:dx,dy`, `sel:dx,dy` (past `SEL_RANGE = 8`: `far`) for a click while something is selected; `active` for the active thing under other actions. `learn` gives those contexts to observations still in `any`; the predictor looks them up first (falling back to `any`) and predicts the next mode (`modes.predicted_mode`: a click on a sig or kind in `FactMemory.selectable` selects it alone, any other click clears the selection). The agent runs the tracker each transition and stores the mode on the scene; spec component 11 records the decision.
+
+- [x] Tests: `tests/mind/test_modes.py` (11), `tests/mind/test_mode_facts.py` (6), `test_the_agent_learns_a_selection_marker_and_files_clicks_under_it`. On a five-slot peg game the agent wins in 22 moves with the mode and doesn't win in 300 without it.
+
+### Task 4.4: Click tests key on local view and mode
+
+**As built:** `tester.tried_key(scene, action)`: a simple action keys on `(scene.key(), action.key())` as before; a click keys on the clicked thing's sig, the colors within `MARK_RING` of its bbox (of the point on empty space), and each selected thing's sig and offset from the click. `Tried` is a set of those keys; the tester reads it as a `Container`. The no-op memory keeps the exact scene key (`tester.Noop`).
+
+- [x] Tests: `test_moving_an_unrelated_thing_does_not_reopen_click_tests`, `test_selection_change_does_reopen_click_tests`, `test_identical_neighborhoods_share_a_click_key_but_different_ones_do_not`, `test_simple_actions_keep_the_whole_scene_key`, `test_a_tried_click_settles_its_twins`.
+
+**Section gate:** paired offline A/B. Watch lf52 level 2 (`search` events should show `found` again after move 40), novelty share on wa30 and ls20, and `undoes progress` vetoes.
+
+---
+
+## Section 3: Same object, new look
+
+**Direction:** move from purely spatial tracking to kinematics, temporal context and feature invariance: IoU anchoring, appearance-invariant identity with mutable state properties, Hungarian matching on a global cost matrix, Kalman prediction, and an object-centric model with decoupled attributes keyed by identity and context instead of color and shape; the action engine tells the fact model what it changed.
+
+**What carries over:**
+- **IoU anchoring:** carries over as an overlap term in the match cost.
+- **Hungarian matching:** carries over. No scipy, so `assign.py` implements it (O(n³)) and runs only on the things left after exact stationary matches, which are few on most frames. Capped at `ASSIGN_MAX = 40` per side; above that the current greedy order runs.
+- **Kalman prediction:** carries over in adapted form. Moves here are discrete and caused by our own action, so the best motion prior is the predictor's own expected scene for the action just taken. When no fact covers a thing, the prior is its last displacement under the same action id (the constant-velocity part of a Kalman filter, without the noise model, which a noise-free grid doesn't need).
+- **Explicit action context:** already there in spirit: `predict` runs before every move. This section makes the tracker use it: match against the prediction, so "object 42 turned to face left" is expected, not discovered.
+- **Decoupled attributes:** carries over. A thing gets a stable `kind` (identity class) alongside its `sig` (current appearance). Facts key on kind; appearance becomes an effect the predictor applies (`reshape` to a sig) instead of a change of identity.
+- **Relational identity (GNN idea):** carries over as a cost term: the offset to the nearest unchanged anchor thing.
+- **Slot attention, learned embeddings:** not built. They need training data and a GPU; the board already gives exact components.
+
+### Task 3.1: Hungarian assignment
 
 **Files:**
-- Create: `arcagent/mind/modes.py`
-- Test: `tests/mind/test_modes.py`
+- Create: `arcagent/mind/assign.py`
+- Test: `tests/mind/test_assign.py`
 
 **Interfaces:**
-- Produces:
-  - `@dataclass(frozen=True) class Mode: selected: frozenset[int] = frozenset(); active: int | None = None` (track ids).
-  - `class ModeTracker`: `observe(before: Scene, action: Action, after: Scene, diff: SceneDiff, masked: frozenset[Cell]) -> Mode`; `mode -> Mode`; `reset()`.
-  - Selection rule: a click on thing T is followed by a non-move change confined to T's bbox grown by `MARK_RING = 2` cells (an outline appears, T recolors or reshapes), and a later click on another thing U moves that same change pattern to U, or a click on T again undoes it. After one such transfer or undo, the pattern is a known selection marker; from then on, any thing showing it is selected. Changes on masked cells never count.
+- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`, pairs sorted by row: among assignments that use only pairs with cost at most `gate` (and finite), the one with the most pairs, then the least total cost (as built: a tracker would rather explain two things with two plausible matches than one cheap match and an unexplained appearance). `ASSIGN_MAX = 40`; a matrix with a side above it, or ragged rows, raises `ValueError` (callers fall back). Measured: 1.4 ms for 40×40, 0.08 ms for 10×10.
 
-- [ ] **Step 1: Failing tests.** `test_outline_moving_with_clicks_marks_selection`, `test_recolor_on_click_then_undo_marks_selection`, `test_one_click_alone_is_not_yet_selection`, `test_masked_change_is_not_a_selection_marker`, `test_reset_clears_mode`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Detect selection from what clicks change".
+- [ ] **Step 1: Failing tests.** `test_square_matrix_optimum` (a 3×3 case where greedy is wrong: `[[1,2,9],[2,9,9],[9,9,1]]` gives `{(0,1),(1,0),(2,2)}`), `test_rectangular_leaves_extra_unmatched`, `test_gate_drops_expensive_pairs`, `test_empty_matrix`, `test_size_cap_raises`, `test_matches_brute_force_on_random_5x5` (100 seeded matrices against `itertools.permutations`).
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (Kuhn-Munkres with potentials, pure Python). **Step 4: Gates.** **Step 5: Commit** "Hungarian assignment".
 
-### Task 4.2: Detect the active controller
+### Task 3.2: Tracker matches against the predicted scene
 
 **Files:**
-- Modify: `arcagent/mind/modes.py`
-- Test: `tests/mind/test_modes.py`
+- Modify: `arcagent/mind/objects.py` (`Tracker.update`, `_match`)
+- Modify: `arcagent/mind/fluid.py` (pass the last prediction's scene)
+- Create: `scripts/track_churn.py` (replay check)
+- Test: `tests/mind/test_objects.py`
 
 **Interfaces:**
-- Produces: `Mode.active`: among controlled kinds with more than one thing on screen (or more than one controlled kind), the track that moved under the last direction action. A switch is learned as a fact with a new effect kind `switch_active` (Task 4.3) when, after an action, a different track answers the same direction action.
-
-- [ ] **Step 1: Failing tests.** `test_active_is_the_thing_that_moved`, `test_switch_action_changes_active`, `test_single_controlled_thing_is_always_active`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Track the active controller".
-
-### Task 4.3: Facts read the mode (spec change)
-
-**Files:**
-- Modify: `arcagent/mind/facts.py`, `arcagent/mind/predictor.py`, `arcagent/mind/fluid.py`
-- Modify: spec component 11 (contexts): add `sel` and relative effects; record the decision
-- Test: `tests/mind/test_facts.py`, `tests/mind/test_predictor.py`
-
-**Interfaces:**
-- Consumes: `Mode`.
-- Produces:
-  - Context `sel:<dx>,<dy>` for a click while a thing is selected: the clicked cell's offset from the selected thing's click cell, with `|dx|, |dy| ≤ SEL_RANGE = 8`; farther offsets use `sel:far`.
-  - Effects anchored to the selection: `Effect.rel: Literal["", "selected", "between"]`. `move` with `rel="selected"`: the selected thing moves to the clicked cell. `disappear` with `rel="between"`: things on cells strictly between the selected and clicked cells vanish. Learned only from observation: when a click under a selection changes things, each change is described relative to (selected, clicked) when that description is exact, and absolutely otherwise.
-  - Direction facts apply only to `Mode.active` when it's set.
-- This is the "relative-position click effects" lever noted on 2026-10-24 as Kameron's decision; this direction makes it.
+- Consumes: `assign`.
+- Produces: `Tracker.update(grid, mask, prior: Scene | None = None)`. Order: exact stationary same-sig pairs; then `assign` over the leftovers with cost = `W_DIST * manhattan(after top-left, prior top-left or last displacement) + W_OVERLAP * (1 - IoU with prior cells) + W_SIZE * |Δcells|/max + W_COLOR * (color changed) + W_SHAPE * (shape changed) + W_REL * (anchor offset changed)`, gated at `MATCH_GATE`. Starting weights: 1.0, 4.0, 2.0, 3.0, 1.0, 1.0; gate 24. A record of which ids were matched through the prior: `Tracker.via_prior: frozenset[int]`.
 
 - [ ] **Step 1: Failing tests.**
-  - `test_jump_two_away_is_learned_relative_to_selection`: select A, click an empty slot two cells right; A moves there and the thing between disappears. Assert a fact under context `sel:2,0` with effects `move rel=selected` and `disappear rel=between`, and a correct prediction for a different selected thing at another position.
-  - `test_same_click_without_selection_is_a_different_fact`.
-  - `test_direction_moves_only_the_active_thing`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Facts read selection and the active controller".
+  - `test_facing_change_while_moving_keeps_the_id`: a sprite moves one cell and its shape flips (a facing marker on the other side). Assert one `reshaped` change with the old id, no `appeared`.
+  - `test_recolor_and_move_keeps_the_id_with_prior`.
+  - `test_predicted_teleport_keeps_the_id`: the prior places the thing far away; assert same id.
+  - `test_unpredicted_far_jump_is_disappear_and_appear` (beyond the gate, no prior).
+  - `test_two_same_sig_things_crossing_keep_their_ids` (the prior says they swapped sides).
+  - Every existing `test_objects.py` case passes with `prior=None`.
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
+- [x] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Result on all 25 recordings, old tracker against new (no prior in a replay, so this is the matching rules alone): no game worse; total churn per move 20.5 to 17.6; tu93 0.52 to 0.09, lp85 0.38 to 0.01, dc22 0.92 to 0.47, cn04 0.26 to 0.14, wa30 0.38 to 0.18.
+
+**As built:** the cost adds `KIND_COST` per match kind (prior and sig 0, recolor 20, reshape 40, near 60), so the kind outranks distance; without it a player stepping onto a same-shape lava dot lost its id to the lava "recoloring" in place (caught by `test_game_over_prefers_the_overlapped_color`). Cross-color pairs without overlap or a prediction are never candidates. The gate is the candidate tests themselves (radius 16), so `MATCH_GATE` isn't needed; the relational term was left out, since with stationary anchors it equals the distance term. `Tracker.how` records each id's match kind for Task 3.3.
+- [ ] **Step 5: Gates.** **Step 6: Commit** "Tracker matches against the predicted scene".
+
+### Task 3.3: Kinds: identity classes across appearances
+
+**As built:** `arcagent/mind/kinds.py` (`KindBook`, `KIN_EVIDENCE = 2`) and `Thing.kind` (defaults to the sig). Changes from the draft, my calls:
+- A kind is named by the first sig of its class (still a `c<color>:<shape>` string), so every parser of subject colors keeps working when facts key on kinds.
+- Evidence: one track switching between two sigs, matched by `prior`, `recolor`, `near`, or a same-color overlap with size change within `NEAR_SIZE`. Growth and appear-plus-disappear never count.
+- Dropped the "two sigs on screen together never join" rule: it would keep on/off tiles apart forever, and the tracking evidence already guards false joins.
+- Unions last the whole game (no next-level confirmation): the same sigs recur on later levels, and the extra rule bought little.
+
+`KindBook.observe(before, after, diff, how) -> list[str]` (kinds joined), `kind_of(sig) -> str`, `label(scene) -> Scene`.
+
+- [x] Tests: `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin`, `test_a_growing_strip_is_not_kin`, `test_recolor_in_place_twice_is_kin`, `test_kinds_chain_and_label_fills_things`, `test_unlabeled_things_are_their_own_kind`.
+
+### Task 3.4: Facts and goals read kinds (spec change)
+
+**As built (changed from the draft):** keying facts on kind alone would break state-relative looks: a toggle tile gets "click turns it off" from one look and "click turns it on" from the other, under one key. So facts stay keyed by look, and each observation of a thing whose kind differs from its sig is also recorded under the kind, with a move or look change normalized to "and its look becomes X" (the same fact from every look). `FactMemory.lookup(..., kind)` tries a usable look fact, then a usable kind fact, then a broken look fact; the predictor passes the kind (not for the clicked thing) and falls back to kind `blocked` and death facts the same way, reads blockers through both names, and keeps `kind` on predicted things. A kind of two or more looks is named `k` + its first sig (`kinds.KIND_PREFIX`, `base_sig`), so its facts never share a key with that look's. Goals match things by sig or kind and propose a kind in place of its looks (never a kind's own look as its target); search protects and keys by either; novelty counts `(kind, x, y)`, so turning back on a visited cell isn't new. The agent runs `KindBook` on every transition, logs `kind` events and labels its scenes. The spec's component 2 records the decision.
+
+- [x] Tests: `tests/mind/test_kind_facts.py` (learned under the kind with the new look; a kind fact predicts an unseen look; a look fact wins until it breaks; search chains moves across looks; a goal on a kind holds in either look; kinds are movers), `test_a_turning_player_becomes_one_kind_and_reaches_the_target`. On that game: 22 moves with kinds, 26 without (one plan held instead of six replans).
+
+**Section gate:** paired offline A/B. Watch tu93 (search timeouts were 200 of 448; fallback share near 50%), wa30 oscillation on moves 52 to 67, and prediction accuracy (must not fall below the current 0.89).
+
+---
+
+## Section 4: Hidden mode state
+
+**Direction:** treat selection and activity as relational tags on the objects already tracked, in the fact layer, with no LLM and no global mode slot: `is_selected` on the selected piece (or an edge from a hidden cursor entity to it), and `is_active` on the controller that's driving.
+
+**What carries over:** all of it. My calls are how the tags get detected from the screen and how facts read them, since nothing announces a selection: the agent has to infer it from what a click changed.
+
+### Tasks 4.1 to 4.3: selection, the active controller, and facts that read them
+
+**As built:**
+- 4.1 `arcagent/mind/modes.py` `ModeTracker`: a candidate mark is an outline appearing around a clicked thing (color and shape) or the clicked thing recoloring; it is a known selection marker once it moves to another clicked thing (the tracker may keep the outline's id as it jumps, so a moved mark counts) or a second click takes it away. Masked cells and the clicked thing's own move are never marks.
+- 4.2 `Mode.active`: after a non-click action in which exactly one controlled thing (`goals.controlled_sigs`) moved, that thing is active, but only while two or more controlled things are on screen: with one, filing its moves under `active` would pull them out of the `any` facts that the slide, teleport and blocked rules read (a test caught it). Action numbers carry no meaning.
+- 4.3 `Scene.selected` and `Scene.active` are part of the scene and its key. `modes.mode_contexts`: `selected:dx,dy`, `between:dx,dy`, `sel:dx,dy` (past `SEL_RANGE = 8`: `far`) for a click while something is selected; `active` for the active thing under other actions. `learn` gives those contexts to observations still in `any`; the predictor looks them up first (falling back to `any`) and predicts the next mode (`modes.predicted_mode`: a click on a sig or kind in `FactMemory.selectable` selects it alone, any other click clears the selection). The agent runs the tracker each transition and stores the mode on the scene; spec component 11 records the decision.
+
+- [x] Tests: `tests/mind/test_modes.py` (11), `tests/mind/test_mode_facts.py` (6), `test_the_agent_learns_a_selection_marker_and_files_clicks_under_it`. On a five-slot peg game the agent wins in 22 moves with the mode and doesn't win in 300 without it.
 
 ### Task 4.4: Tests and no-op memory key on mode, not the whole scene
 
@@ -414,49 +407,19 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 - **LLM out of the frame loop:** already true for goals; this keeps it so.
 - **Offline LLM compile:** carries over with one guard. The rule-book must describe generic goal forms (match a reference, cover every target), never what a public game needs; anything else breaks the "no memorized solutions" rule. My recommendation: write the rule-book by hand from root mechanics; if an LLM drafts entries, it sees only the generic descriptions, and every entry is reviewed before commit.
 
-### Task 5.1: Region primitives
+### Tasks 5.1 and 5.2: region primitives, the rule-book, match and cover
 
-**Files:**
-- Create: `arcagent/mind/regions.py`
-- Test: `tests/mind/test_regions.py`
+**As built:** `arcagent/mind/regions.py` (`framed_regions`, `twin_regions` with `TWIN_MIN = 3` and `MAX_TWINS = 20`, `static_cells`, `render`). The rule-book is `arcagent/mind/goal_rules.py`, a typed Python data module instead of JSON, so it ships inside the package with no data-file step (`GoalRule(kind, prior, proposed)`, `prior_of`, `proposed`). Goal kinds: `match` (already evaluated, never proposed before) is proposed for each twin pair of framed regions when `propose` gets the raw grid, and search now plans toward it by rendering predicted scenes; `cover(a, b)` is new: every visible thing named `b` has its own thing named `a` on or beside it, one-to-one by `assign` over cell gaps, proposed for movers and pushables against target sigs with two or more things (`MAX_COVER_TARGETS = 5`). Not built: `match_thing` (region match covers multi-color patterns), `sequence` (needs a progress-indicator detector first), `hold_commit` (the Task 1.4 commit probe does it). Spec component 4 records the decision.
 
-**Interfaces:**
-- Produces: `framed_regions(grid, scene) -> list[Region]` (rectangles enclosed by a one-color border), `twin_regions(grid, scene) -> list[tuple[Region, Region]]` (pairs of equal-size regions, at least `TWIN_MIN = 3×3`, at most `MAX_TWINS = 20` pairs ranked by how much content they hold), `static_cells(history) -> frozenset[Cell]` (never changed this level).
-
-- [ ] **Step 1: Failing tests.** `test_framed_region_found`, `test_twin_regions_pair_equal_sizes`, `test_twins_capped`, `test_static_cells_from_history`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Region primitives".
-
-### Task 5.2: Rule-book and new goal kinds (spec change)
-
-**Files:**
-- Create: `arcagent/mind/rules/goal_kinds.json`
-- Modify: `arcagent/mind/goals.py`
-- Modify: spec component 4: add the kinds and the rule-book; record the decision
-- Test: `tests/mind/test_goals.py`
-
-**Interfaces:**
-- Rule-book entry: `{"kind": str, "recognizer": str, "distance": str, "prior": float, "needs": [str]}`. `recognizer` and `distance` name functions in `goals.py`; unknown names fail at load with a clear error.
-- New `GoalKind` values and predicates:
-  - `match_ref`: a changing twin region equals its static twin. Distance: mismatched cells.
-  - `match_thing`: a thing of kind A has the same shape and colors as reference thing R (a pattern a player carries against a displayed target). Distance: differing cells after aligning top-lefts.
-  - `cover`: every thing of kind B has a thing of kind A on it. Distance: uncovered count, plus the assignment cost from `assign` over kinematic steps when kinematics exist.
-  - `sequence`: targets of kind B touched in an order. Order hypotheses, at most `MAX_ORDERS = 4`: left to right, top to bottom, by size, and the order shown by a static row of colors if one exists. A touch that undoes a progress indicator excludes that order. Proposed only when a progress indicator exists (a thing whose count or size changes exactly on touches).
-  - `hold_commit`: any goal plus a commit action (Task 1.4 records which action committed it).
-
-- [ ] **Step 1: Failing tests.** One holds/distance pair per kind; `test_rule_book_loads_and_names_known_functions`; `test_unknown_recognizer_fails_at_load`; `test_sequence_order_excluded_by_an_undo`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Rule-book and new goal kinds".
+- [x] Tests: `tests/mind/test_regions.py` (6), `tests/mind/test_goal_kinds.py` (5: rule-book kinds, cover holds and distance, cover with one side missing, cover and match proposed, search plans toward a match goal).
 
 ### Task 5.3: Rank goals instead of capping at 200
 
-**Files:**
-- Modify: `arcagent/mind/goals.py` (`GoalBook.propose`, `open`), `arcagent/mind/fluid.py`
-- Test: `tests/mind/test_goals.py`, `tests/mind/test_fluid_agent.py`
+**As built:** `GoalBook.ranked(scene, grid=, kin=, salient=, budget=)`: confirmed forms, then the best `SEARCH_GOALS = 12` open goals by `prior * salience / (1 + cost)` (`SALIENCE = 2.0` when a goal's sigs touch `salient`, `UNKNOWN_COST = 20` with no distance), leaving out goals farther than `budget` for that ranking only. The agent's searches use it (`_ranked`: salient = controlled things and things changed this level, budget = the reader's moves left) plus every goal the executive named. `open()` keeps its insertion order for everything else.
 
-**Interfaces:**
-- Produces: `GoalBook.ranked(scene, kin, budget: int | None) -> list[Goal]`: score `prior * salience / (1 + cost)`, where `salience` is 2 when the goal involves a controlled kind or a thing that changed this level, else 1, and `cost` is the goal's distance (or `UNKNOWN_COST = 20`). Goals whose distance exceeds `budget` are left out for this life (not excluded). Search gets the top `SEARCH_GOALS = 12`. Confirmed forms keep first place.
+**Changed after the bisect (2026-10-25):** the budget filter is gone. Distances estimate moves without bounding them, so a goal one sliding click away could be left out as "too far". The twelve-goal cut is gone too: search gets every open goal, best first. On the full offline run this took the branch from 9 levels and 0.390 to 10 levels and 0.626 (ls20 back to 60 actions, vc33's second level in 195).
 
-- [ ] **Step 1: Failing tests.** `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_left_out_this_life_only`, `test_confirmed_form_stays_first`, `test_search_sees_at_most_twelve_goals`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Rank goals by prior, salience and cost".
+- [x] Tests: `test_ranked_puts_cheap_salient_goals_first`, `test_goal_beyond_budget_is_left_out_this_life_only`, `test_confirmed_form_stays_first_and_search_gets_every_open_goal`.
 
 **Section gate:** paired offline A/B. Watch ls20 (pattern against target), vc33 and wa30 (carry into the frame), and the goal count per game (was up to 202).
 
@@ -473,56 +436,35 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 ### Task 6.1: Read the budget
 
-**Files:**
-- Create: `arcagent/mind/budget.py`
-- Modify: `arcagent/mind/noise.py` (expose counter tracks: `counter_ids -> frozenset[int]`)
-- Create: `scripts/budget_check.py`
-- Test: `tests/mind/test_budget.py`
+**As built:** `arcagent/mind/budget.py`. The recordings showed full-width one-row bars draining a fraction of a cell per move (vc33 64 cells for 50 moves, wa30 64 for 200), and bars that drain only on some moves (lp85, ft09). So: `NoiseMask.counters` keeps each flagged counter as a `budget.Counter` (color, row or column band, direction), through game overs; `BudgetReader` counts the bar's cells across the band, keeps two counts of the life's moves (`all`, and `busy`: leaving out moves that changed nothing and left the bar alone), fits a least-squares line against each and uses the better-fitting count (`MIN_FIT = 5`); moves left = cells left over the fitted rate, trusted after `MIN_DRAIN = 6` cells drained; a game over with under `BUDGET_DEATH_MOVES = 2` moves of bar left sets `per_life`, after which the rate is exact; `new_level` forgets it all. The agent feeds it every frame and logs `budget` on each action record.
 
-**Interfaces:**
-- Produces: `class BudgetReader`: `observe(before: Scene, after: Scene, counters: frozenset[int], game_over: bool) -> None`; `remaining() -> int | None` (None = unknown); `per_life() -> int | None` (learned at the first game over by budget); `new_attempt()`, `new_level()`. Rule: step = median cell-count change per move of the counter track; a shrinking bar has `cells / step` moves left; a growing bar has `(full - cells) / step`, where `full` is the strip's longest extent along its axis. When several counters exist, the one whose change happens on every move wins.
+**Replay check** (`scripts/budget_check.py`, all 25 recordings, scoring only budget deaths): mean error 0.1 to 2.3 moves on 16 of the 21 games with a counter (vc33 0.4, tu93 0.5, s5i5 0.2, sp80 0.1, ka59 0.8, re86 0.9, r11l 0.7), worse on g50t 3.5, sc25 3.5, ar25 4.0, m0r0 5.1, lp85 8.4. Maximum errors reach 14 to 85 moves early in a life when the chosen count flips, so decisions on the estimate need a margin (Task 6.3). sb26 and sk48 have no counter detected (the known miss); lf52 and ls20 had no deaths to score.
 
-- [ ] **Step 1: Failing tests.** `test_shrinking_bar_gives_moves_left`, `test_growing_bar_gives_moves_left`, `test_bar_that_ticks_every_other_move`, `test_no_counter_means_unknown`, `test_per_life_learned_at_budget_game_over`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Replay check.** `scripts/budget_check.py` replays the scratchpad's recorded runs and compares `remaining()` with the actual moves until each budget game over. Acceptance: within ±1 move on vc33, tu93 and wa30, and `None` on games with no counter.
-- [ ] **Step 5: Gates.** **Step 6: Commit** "Read the move budget from the counter".
+- [x] Tests: `tests/mind/test_budget.py` (7), `test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death`.
 
 ### Task 6.2: Budget-bounded search and tests
 
-**Files:**
-- Modify: `arcagent/mind/fluid.py`, `arcagent/mind/search.py`
-- Test: `tests/mind/test_fluid_agent.py`
+**As built:** `search(..., max_depth=)` doesn't expand a scene whose plan is that long; the agent passes the reader's moves left. `budget_tight(remaining=, distance=)`: a plan fits with at most `TEST_RESERVE = 2` moves to spare; then the best partial plan's step goes ahead of tests (`_tight_choice`).
 
-**Interfaces:**
-- Produces: search `max_depth = remaining` when known. Tests stop when `remaining <= cheapest feasible plan + TEST_RESERVE` (`TEST_RESERVE = 2`), so the moves left go to the plan.
+Also in this commit: `tester.test_key` is renamed `tried_key`. Pytest had been collecting the imported `test_key` in `tests/mind/test_tester.py` as a test since Task 4.4 (an ERROR in every run that a FAILED-only filter didn't show); the suite is clean again (518 passed, 1 skipped).
 
-- [ ] **Step 1: Failing tests.** `test_search_never_plans_past_the_budget`, `test_tests_yield_to_a_plan_that_just_fits`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Bound search and tests by the budget".
+- [x] Tests: `test_search_never_plans_past_the_budget`, `test_a_tight_budget_puts_a_fitting_partial_plan_before_tests`.
 
 ### Task 6.3: RESET a life that can't finish
 
-**Files:**
-- Modify: `arcagent/mind/fluid.py`
-- Test: `tests/mind/test_fluid_agent.py`
+**As built:** `life_doomed(remaining=, distances=, exact=, acted=)`: only with an exact budget (a life already ended by it on this level, so the reader's early errors can't trigger it), after an action this game (the engine resets the whole game otherwise), with goals present, every distance known, and the nearest more than `DOOM_MARGIN = 2` moves past the moves left. Goals about things not on screen are skipped (they can't be reached now). It runs after tests and before partial plans and novelty: an open test still beats a RESET. The RESET (branch `reset`, why `doomed life`) restarts the attempt's state like a game over.
 
-**Interfaces:**
-- Produces: branch `reset` with why `doomed life`. Fires when all hold: `remaining()` is known; no ranked goal has a plan or a distance within `remaining`; no open test has information worth more than its move (the Voi module returns no test, or `remaining <= DOOM_MIN_TESTS = 1`); at least one action has been taken in this game (the engine does a full reset otherwise).
+Two fixes the test game exposed, in the same commit: the noise mask now masks a counter's whole band (a bar redrawn full on a new life reached past the flagged box and showed up as things, which drew tests and goals), and the reader keeps the moves made before its counter was flagged and sees the final frame of a life (per-life counts came out 2 or 3 short). Budget replay after these: summed mean error about 30 moves over the 21 games with a counter (was about 43).
 
-- [ ] **Step 1: Failing tests.** `test_doomed_life_resets_at_once` (a fake game with a 10-move budget and a goal 15 moves away, every test settled: assert the next action is RESET), `test_no_reset_when_cheapest_plan_fits`, `test_no_reset_before_first_action`, `test_open_test_beats_reset`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "RESET a life that can't finish".
+- [x] Tests: `test_life_doomed_needs_an_exact_budget_known_distances_and_no_way_through`, `test_a_doomed_second_life_is_reset_at_once`, `test_no_doomed_reset_when_the_target_fits`; the noise tests now expect the band.
+
+**Removed after the bisect (2026-10-25):** the doomed-life RESET came out; the band mask and reader fixes stay. On the five-game bisect it cost ls20 and su15 their only level (su15 reset 1,678 times). The check needs a lower bound on the moves to a goal, and goal distances aren't one: in su15 a click slides a piece many cells, so the cell gap overstates the moves. Every life looked doomed and ended early, and with it the moves the agent needed to learn.
 
 ### Task 6.4: Shortest route over targets
 
-**Files:**
-- Create: `arcagent/mind/route.py`
-- Modify: `arcagent/mind/goals.py` (`cover` and `sequence` distances), `arcagent/mind/fluid.py` (lock the route as a plan when it fits the budget)
-- Test: `tests/mind/test_route.py`
+**As built:** `arcagent/mind/route.py` `route(start, targets, dist, exact_limit=ROUTE_EXACT)`: Held-Karp for up to `ROUTE_EXACT = 6` targets (the draft's 10 would cost about 100k steps a call), nearest neighbor plus up to `TWO_OPT_PASSES = 4` passes of 2-opt above that; None when a leg is unreachable. Used by the `clear` distance when the agent knows its one controlled thing (`Kinematics.mover`, set from `_lone_mover`): things left plus the cells of a heuristic route through them (`MAX_ROUTE_TARGETS = 20`). Inside search it uses the heuristic order only (exact routing at every node would cost seconds a move). Not built: locking a whole route as a plan; best-first search on this distance does the ordering instead.
 
-**Interfaces:**
-- Produces: `route(start: Cell, targets: Sequence[Cell], dist: Callable[[Cell, Cell], int | None]) -> tuple[list[int], int] | None` (visit order and total steps; None when a target is unreachable). `ROUTE_EXACT = 10`, `TWO_OPT_PASSES = 4`.
-
-- [ ] **Step 1: Failing tests.** `test_exact_route_beats_nearest_neighbor` (a 5-target case where greedy is longer), `test_large_route_uses_heuristic_within_bound`, `test_unreachable_target_is_none`, `test_route_matches_brute_force_on_6_targets`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Shortest route over targets".
+- [x] Tests: `tests/mind/test_route.py` (exact beats greedy, matches brute force on six targets, the heuristic on fifteen, unreachable and empty), `test_clear_distance_with_a_mover_adds_the_route_through_what_is_left`.
 
 **Section gate:** paired offline A/B. Watch actions per won level on budget games and the count of `doomed life` resets.
 
