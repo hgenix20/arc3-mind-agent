@@ -346,6 +346,7 @@ Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
 | date | commit | run | levels | score est. | notes |
 |---|---|---|---|---|---|
 | 2026-10-24 | a3c123b | Kaggle eval v4 of `arc3-mind-agent`, FLUID-LLM full build (slices 1 to 3), 25 games, scaled budget | 5 | 0.38 | scorecard 0.3774, 6,247 s, 0 errors; levels on r11l (4.76), lp85 (2.78), lf52 (1.82), tn36 (0.07), ft09 (0.005); 30 sleeps; hit rate 0.89; rule reuse 0.02; 593 tests per level |
+| 2026-10-25 | f2288a1 | Kaggle eval v5 of `arc3-mind-agent`, FLUID-LLM after the forced-move merge, 25 games, scaled budget | 14 | 0.43 | scorecard 0.4464, 6,246 s, 0 errors; prediction accuracy 0.92; levels on ar25 x2 (211, 399), lp85 x2 (7, 1,890), cd82 (1,065), dc22 (1,035), lf52 (149), ls20 (44), m0r0 (95), r11l (29), sp80 (1,189), su15 (628), tn36 (11), vc33 (120); submitted 2026-10-25 (submission 57637984, Kameron's go) |
 
 v4 and v3 are one run each, and 0.38 against 0.41 is inside run to run
 variation. The cap of 200 tests per attempt didn't change the test count,
@@ -353,6 +354,9 @@ because the count resets with each attempt. v4 was submitted on 2026-10-24
 (submission 57588171). v1 (submission 57565016) scored 0.08 on the
 leaderboard, a quarter of its 0.32 public eval estimate.
 Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
+v4 (submission 57588171) scored 0.23 on the leaderboard. v5 is main at f2288a1 with the
+LLM on; offline without it that code scored 10 levels and 0.63, so the LLM adds levels on
+ar25, dc22 and m0r0 but plays slower wins. Logs: `bench/evals/2026-10-25-fluid-llm-v5/`.
 
 ## Open items
 

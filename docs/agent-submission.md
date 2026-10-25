@@ -78,7 +78,9 @@ versions use the scaled budget.
 
 v1 was submitted on 2026-10-23 at Kameron's request (submission 57565016)
 and scored 0.08 on the leaderboard. The fluid agent (kernel version 4) was
-submitted on 2026-10-24 (submission 57588171).
+submitted on 2026-10-24 (submission 57588171) and scored 0.23. Kernel version 5 (main at
+f2288a1, FLUID-LLM) was submitted on 2026-10-25 (submission 57637984): public eval 14
+levels, scorecard 0.446.
 
 ## Earlier baselines
 
