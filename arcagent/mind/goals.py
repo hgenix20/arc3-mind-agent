@@ -119,8 +119,9 @@ class Goal:
         when that is a positive number; else the Manhattan gap in cells between the bboxes
         of the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1.
         None when either is missing. ``count``: ``abs(n - count)``. ``match``: mismatched
-        cells; None without a grid or with regions off the board or of different sizes. ``cover``: the least total,
-        over a one-to-one matching of targets to movers, of each pair's cell gap less one
+        cells; None without a grid or with regions off the board or of different sizes.
+        ``cover``: the least total, over a one-to-one matching of targets to movers, of
+        each pair's cell gap less one
         (0 when they touch), plus ``GRID_SIZE`` per target left without a mover; 0 when no
         target is visible (all covered); None when targets show and no mover does. Cell gaps
         ignore walls and step sizes: a ranking of scenes, not a move count.

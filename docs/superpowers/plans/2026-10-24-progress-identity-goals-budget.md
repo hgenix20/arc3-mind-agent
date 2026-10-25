@@ -458,16 +458,9 @@ Two fixes the test game exposed, in the same commit: the noise mask now masks a 
 
 ### Task 6.4: Shortest route over targets
 
-**Files:**
-- Create: `arcagent/mind/route.py`
-- Modify: `arcagent/mind/goals.py` (`cover` and `sequence` distances), `arcagent/mind/fluid.py` (lock the route as a plan when it fits the budget)
-- Test: `tests/mind/test_route.py`
+**As built:** `arcagent/mind/route.py` `route(start, targets, dist, exact_limit=ROUTE_EXACT)`: Held-Karp for up to `ROUTE_EXACT = 6` targets (the draft's 10 would cost about 100k steps a call), nearest neighbor plus up to `TWO_OPT_PASSES = 4` passes of 2-opt above that; None when a leg is unreachable. Used by the `clear` distance when the agent knows its one controlled thing (`Kinematics.mover`, set from `_lone_mover`): things left plus the cells of a heuristic route through them (`MAX_ROUTE_TARGETS = 20`). Inside search it uses the heuristic order only (exact routing at every node would cost seconds a move). Not built: locking a whole route as a plan; best-first search on this distance does the ordering instead.
 
-**Interfaces:**
-- Produces: `route(start: Cell, targets: Sequence[Cell], dist: Callable[[Cell, Cell], int | None]) -> tuple[list[int], int] | None` (visit order and total steps; None when a target is unreachable). `ROUTE_EXACT = 10`, `TWO_OPT_PASSES = 4`.
-
-- [ ] **Step 1: Failing tests.** `test_exact_route_beats_nearest_neighbor` (a 5-target case where greedy is longer), `test_large_route_uses_heuristic_within_bound`, `test_unreachable_target_is_none`, `test_route_matches_brute_force_on_6_targets`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Shortest route over targets".
+- [x] Tests: `tests/mind/test_route.py` (exact beats greedy, matches brute force on six targets, the heuristic on fifteen, unreachable and empty), `test_clear_distance_with_a_mover_adds_the_route_through_what_is_left`.
 
 **Section gate:** paired offline A/B. Watch actions per won level on budget games and the count of `doomed life` resets.
 
