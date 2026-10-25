@@ -383,6 +383,7 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 | 2026-10-25 | 2e16328 | forced-move branch (forced moves, anytime and best-first search, commit probe, kinds, mode, progress, budget, goal kinds and rule-book, doomed-life RESET, routes); same, one run | 7 | 0.39 | not merged: prediction accuracy 0.92, but lf52 35 to 298 actions, vc33 265 to 1,519, lost ls20 and su15, gained cd82 |
 | 2026-10-25 | ef4c9ca | forced-move without the doomed-life RESET and without the budget filter on goal ranking; same | 9 | 0.39 | lf52 298, ls20 lost; the twelve-goal cut still on |
 | 2026-10-25 | 9b0c53a | same, and search gets every open goal instead of the best twelve | 10 | 0.63 | merged (c2c71f1): cd82 (62), lf52 (19), lp85 (26), ls20 (60), r11l (15), sp80 (827), su15 (434), tn36 (15), vc33 x2 (117, 195); lost lp85's second level |
+| 2026-10-25 | 15fa5f2 | sequence goal and progress indicators; bump into a reached target (sequence steps and the commit probe); same, one run | 11 | 0.57 | merged (958bb21) on more levels: new sc25 (479); slower lp85 (26 to 88), ls20 (60 to 103), lf52 (19 to 22); the rest unchanged |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
@@ -404,6 +405,10 @@ One caveat on determinism: the same commit gives the same result for the same ga
 set, but main on the five-game set won vc33 in 78 actions against 265 in the full run,
 so a game's result depends on which games run beside it. Compare full runs only.
 Logs: scratchpad `bisect/` and `full3/`.
+The sequence branch (Task 5.4) is merged on levels with a lower score. No public probe
+trace showed a progress indicator, so the new sc25 level and the slower wins most likely
+come from the bump (running into a reached target, now also a commit-probe candidate),
+which every game sees. That hasn't been checked by a run without the bump.
 The split and merge half of cd9007e changed nothing on the dc22 probe (303
 tests either way). The leak that remained was in the click label: it carries
 the clicked thing's sig, so a click on a region that keeps changing shape
