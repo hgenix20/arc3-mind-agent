@@ -7,8 +7,9 @@ Per ``choose(obs)``, in order:
 
 1. ``GAME_OVER``: learn the death from the move that caused it (``game_over=True``,
    the tracker diff of the final frame), log ``game_over``, reset the tracker and the
-   noise tracks, clear the plan and return RESET (branch ``reset``). ``NOT_PLAYED``
-   returns RESET too and learns nothing. The frame after a RESET learns nothing: the
+   noise tracks (keeping the cells of move counters, ``NoiseMask.new_attempt``),
+   clear the plan and return RESET (branch ``reset``). ``NOT_PLAYED`` returns RESET
+   too and learns nothing. The frame after a RESET learns nothing: the
    start frame is not a consequence of any rule.
 2. ``levels_completed`` rose: record the ``level_up`` event fact, ``goals.level_up``
    on the frame before and the winning move's prediction, log ``level_up``, then reset
@@ -536,11 +537,18 @@ class FluidAgent:
         self._action_no += 1
         return a
 
-    def _restart(self) -> None:
-        """Forget the tracked frame and noise tracks: the next frame is a fresh start."""
+    def _restart(self, *, new_attempt: bool = False) -> None:
+        """Forget the tracked frame and noise tracks: the next frame is a fresh start.
+
+        ``new_attempt`` (a game over) keeps the noise mask's counter cells: the bar sits
+        in the same strip on every attempt of a level.
+        """
         self._tracker.reset()
         self.mem.kin_reset()
-        self._noise.reset_tracks()
+        if new_attempt:
+            self._noise.new_attempt()
+        else:
+            self._noise.reset_tracks()
         self._fresh = True
         self._pred = None
         self._llm_plan, self._llm_test, self._llm_step = [], None, False
@@ -638,7 +646,7 @@ class FluidAgent:
             if self._last_scene is not None:
                 self._moves.append(f"{move} {_action_name(action, self._last_scene)} -> game over")
         self._new_epoch()
-        self._restart()
+        self._restart(new_attempt=True)
         self._plan = []
         self._scene_ok = True
 

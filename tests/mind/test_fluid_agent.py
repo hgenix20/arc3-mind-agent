@@ -1012,3 +1012,28 @@ def test_the_null_inhibition_module_refuses_no_seen_noop(tmp_path: Path) -> None
     assert scene is not None
     assert agent._veto(scene, a) is None  # pyright: ignore[reportPrivateUsage]
     agent.close()
+
+
+def _bar_frame(bar: int, phase: Phase = Phase.NOT_FINISHED, levels: int = 0) -> Observation:
+    """A player dot and a 1-cell-thick bar of ``bar`` cells along the bottom edge."""
+    g = np.zeros((64, 64), dtype=np.int8)
+    g[10, 10] = 1
+    g[63, :bar] = 5
+    return Observation(g, phase, levels, 3, (0, 1, 2, 3, 4))
+
+
+def test_counter_cells_survive_game_over(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    for bar in range(20, 14, -1):  # the bar shrinks each move until it's a counter
+        agent.choose(_bar_frame(bar))
+    noise = agent._noise  # pyright: ignore[reportPrivateUsage]
+    assert (0, 63) in noise.cells
+    agent.choose(_bar_frame(15, Phase.GAME_OVER))
+    assert (0, 63) in noise.cells
+    agent.choose(_bar_frame(20))  # the frame after the RESET
+    assert (0, 63) in noise.cells
+    for bar in range(19, 13, -1):
+        agent.choose(_bar_frame(bar))
+    agent.choose(_bar_frame(20, levels=1))  # a level-up drops the counter cells
+    assert (0, 63) not in noise.cells
+    agent.close()
