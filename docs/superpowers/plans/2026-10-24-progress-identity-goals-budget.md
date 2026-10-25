@@ -466,19 +466,11 @@ This is the tried-set scope fix that was held back: keying a test on its local c
 
 ### Task 6.1: Read the budget
 
-**Files:**
-- Create: `arcagent/mind/budget.py`
-- Modify: `arcagent/mind/noise.py` (expose counter tracks: `counter_ids -> frozenset[int]`)
-- Create: `scripts/budget_check.py`
-- Test: `tests/mind/test_budget.py`
+**As built:** `arcagent/mind/budget.py`. The recordings showed full-width one-row bars draining a fraction of a cell per move (vc33 64 cells for 50 moves, wa30 64 for 200), and bars that drain only on some moves (lp85, ft09). So: `NoiseMask.counters` keeps each flagged counter as a `budget.Counter` (color, row or column band, direction), through game overs; `BudgetReader` counts the bar's cells across the band, keeps two counts of the life's moves (`all`, and `busy`: leaving out moves that changed nothing and left the bar alone), fits a least-squares line against each and uses the better-fitting count (`MIN_FIT = 5`); moves left = cells left over the fitted rate, trusted after `MIN_DRAIN = 6` cells drained; a game over with under `BUDGET_DEATH_MOVES = 2` moves of bar left sets `per_life`, after which the rate is exact; `new_level` forgets it all. The agent feeds it every frame and logs `budget` on each action record.
 
-**Interfaces:**
-- Produces: `class BudgetReader`: `observe(before: Scene, after: Scene, counters: frozenset[int], game_over: bool) -> None`; `remaining() -> int | None` (None = unknown); `per_life() -> int | None` (learned at the first game over by budget); `new_attempt()`, `new_level()`. Rule: step = median cell-count change per move of the counter track; a shrinking bar has `cells / step` moves left; a growing bar has `(full - cells) / step`, where `full` is the strip's longest extent along its axis. When several counters exist, the one whose change happens on every move wins.
+**Replay check** (`scripts/budget_check.py`, all 25 recordings, scoring only budget deaths): mean error 0.1 to 2.3 moves on 16 of the 21 games with a counter (vc33 0.4, tu93 0.5, s5i5 0.2, sp80 0.1, ka59 0.8, re86 0.9, r11l 0.7), worse on g50t 3.5, sc25 3.5, ar25 4.0, m0r0 5.1, lp85 8.4. Maximum errors reach 14 to 85 moves early in a life when the chosen count flips, so decisions on the estimate need a margin (Task 6.3). sb26 and sk48 have no counter detected (the known miss); lf52 and ls20 had no deaths to score.
 
-- [ ] **Step 1: Failing tests.** `test_shrinking_bar_gives_moves_left`, `test_growing_bar_gives_moves_left`, `test_bar_that_ticks_every_other_move`, `test_no_counter_means_unknown`, `test_per_life_learned_at_budget_game_over`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Replay check.** `scripts/budget_check.py` replays the scratchpad's recorded runs and compares `remaining()` with the actual moves until each budget game over. Acceptance: within ±1 move on vc33, tu93 and wa30, and `None` on games with no counter.
-- [ ] **Step 5: Gates.** **Step 6: Commit** "Read the move budget from the counter".
+- [x] Tests: `tests/mind/test_budget.py` (7), `test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death`.
 
 ### Task 6.2: Budget-bounded search and tests
 

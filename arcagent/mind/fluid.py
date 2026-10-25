@@ -186,6 +186,7 @@ from arcagent.core.types import (
 )
 from arcagent.mind.agent import MAX_ERROR_CHARS, SYNTH_CUTOFF_FRACTION
 from arcagent.mind.baseline import Baseline
+from arcagent.mind.budget import BudgetReader
 from arcagent.mind.config import MindConfig
 from arcagent.mind.contract import PlanItem, Reply
 from arcagent.mind.facts import (
@@ -494,6 +495,7 @@ class FluidAgent:
         self._partial: SearchResult | None = None  # this move's best partial plan, if any
         self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
         self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
+        self._budget = BudgetReader()  # moves left this life, from a counter bar
         self._progress = ProgressMonitor()  # progress or motion, per life
         self._verdict: Verdict = "none"  # this move's progress verdict
         self._motion = 0  # motion verdicts in a row
@@ -585,6 +587,7 @@ class FluidAgent:
             wake=self._wake,
             active=None,
             progress=self._verdict,
+            budget=self._budget.remaining(),
         )
         self._last_action = a
         if a.id == RESET_ID:
@@ -646,6 +649,7 @@ class FluidAgent:
         scene = _strip(full, self._noise.noisy_ids)
         self._keep(full, scene, obs.grid)
         self._start_key = scene.key()
+        self._budget.start_life(obs.grid)
         self._fresh, self._pred = False, None
         self._prev_grid = None
         self._attempt_from = self._action_no
@@ -683,6 +687,7 @@ class FluidAgent:
     def _game_over(self, obs: Observation, move: int) -> None:
         self._tests_attempt = 0  # a new attempt gets its own test budget
         self._end_probe()
+        self._budget.game_over()
         self._progress.reset_life()
         self._motion = 0
         prev_full, action = self._last_full, self._last_action
@@ -723,6 +728,7 @@ class FluidAgent:
         self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
         self._end_probe()  # a probing goal true before the win was just confirmed
         self._progress.reset_level()
+        self._budget.new_level()
         self._motion = 0
         self._log.event("level_up", step=move, level=obs.levels_completed)
         self._moves.append(f"{move} {_action_name(action, before)} -> level up")
@@ -770,6 +776,7 @@ class FluidAgent:
         after = _strip(full, noisy)
         if _strip_diff(diff, noisy).empty:
             self._noop.add((before_s.key(), action.key()))
+        self._read_budget(obs.grid, changed=not _strip_diff(diff, noisy).empty)
         self._keep(full, after, obs.grid)
         snap = self._statuses()
         keys = learn(
@@ -1059,6 +1066,14 @@ class FluidAgent:
                 x, y = self._clicks.cell(t)
                 out.append(Action(COORD_ACTION_ID, x, y))
         return out
+
+    def _read_budget(self, grid: Grid, *, changed: bool) -> None:
+        """Feed the budget reader one frame, picking up a counter the noise mask flagged
+        (the first shrinking one, else the first)."""
+        counters = self._noise.counters
+        if counters and self._budget.counter is None:
+            self._budget.set_counter(next((c for c in counters if c.shrinks), counters[0]))
+        self._budget.observe(grid, changed=changed)
 
     def _note_progress(self, scene: Scene) -> None:
         """Name this move with the progress monitor, over the pursued goal, the confirmed

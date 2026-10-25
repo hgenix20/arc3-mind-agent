@@ -44,6 +44,7 @@ from the first frame saves the moves it takes to flag it again.
 from __future__ import annotations
 
 from arcagent.core.types import GRID_SIZE
+from arcagent.mind.budget import Counter
 from arcagent.mind.objects import Cell, Change, Scene, SceneDiff, Thing
 
 WINDOW = 4
@@ -88,6 +89,7 @@ class NoiseMask:
     def __init__(self) -> None:
         self._cells: set[Cell] = set()
         self._counter_cells: set[Cell] = set()
+        self._counters: dict[tuple[int, str, frozenset[int]], Counter] = {}
         self._noisy: set[int] = set()
         self._sizes: dict[int, tuple[int, int, bool]] = {}  # id: (grew, shrank, edge strip)
         self._by_descriptor: dict[int, dict[Descriptor, set[int]]] = {}
@@ -100,6 +102,11 @@ class NoiseMask:
     @property
     def noisy_ids(self) -> frozenset[int]:
         return frozenset(self._noisy)
+
+    @property
+    def counters(self) -> tuple[Counter, ...]:
+        """Counter bars flagged on this level (kept through game overs), in flag order."""
+        return tuple(self._counters.values())
 
     def observe(self, before: Scene, action_id: int, diff: SceneDiff) -> list[int]:
         """Record one transition; return the ids newly flagged as noise."""
@@ -127,7 +134,19 @@ class NoiseMask:
                 self._cells |= box
                 if counter:
                     self._counter_cells |= box
+                    self._note_counter(c.id, thing)
         return flagged
+
+    def _note_counter(self, tid: int, t: Thing) -> None:
+        """Keep a flagged counter's color, band and direction (``budget.Counter``)."""
+        xs = [x for x, _ in t.cells]
+        ys = [y for _, y in t.cells]
+        wide = max(xs) - min(xs) >= max(ys) - min(ys)
+        axis = "row" if wide else "col"
+        lines = frozenset(ys) if wide else frozenset(xs)
+        grew, shrank, _ = self._sizes.get(tid, (0, 0, True))
+        key = (t.color, axis, lines)
+        self._counters.setdefault(key, Counter(t.color, axis, lines, shrank > grew))
 
     def _count_size(self, c: Change, old: Thing | None) -> bool:
         """Record a size change of ``c``'s track; True when the track is now a counter."""
@@ -160,6 +179,7 @@ class NoiseMask:
         flagged again within a few steps.
         """
         self._counter_cells.clear()
+        self._counters.clear()
         self.new_attempt()
 
     def new_attempt(self) -> None:
@@ -167,7 +187,7 @@ class NoiseMask:
 
         Track ids restart with the tracker, so no flagged id survives. The cells of
         counters stay masked (and no other noise cells do), so the bar is never read as
-        objects on the new attempt.
+        objects on the new attempt; ``counters`` stays too.
         """
         self._cells = set(self._counter_cells)
         self._noisy.clear()

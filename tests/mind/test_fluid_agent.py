@@ -1321,3 +1321,46 @@ def test_a_known_reset_is_refused_only_while_this_life_has_progress(tmp_path: Pa
     monitor.observe(("b",), {goal: 1}, active=goal)
     assert agent._veto(jumped, button) == fluid.UNDOES_PROGRESS  # pyright: ignore[reportPrivateUsage]
     agent.close()
+
+
+class BudgetGame(FakeGame):
+    """The move-to-the-target game with a 30-move budget: a bar along the top row loses a
+    share of its 64 cells on every move, and the life ends when it is spent."""
+
+    BUDGET = 30
+
+    def __init__(self) -> None:
+        super().__init__(player=(10, 10), target=(60, 60), walls=[], lava=[], win_levels=1)
+        self.used = 0
+
+    def observe(self) -> Observation:
+        obs = super().observe()
+        g = obs.grid.copy()
+        g[0, :] = 0
+        g[0, : round(64 * (self.BUDGET - self.used) / self.BUDGET)] = 7
+        return replace(obs, grid=g)
+
+    def step(self, action: Action) -> Observation:
+        if action.id == 0:
+            self.used = 0
+            return super().step(action)
+        obs = super().step(action)
+        self.used += 1
+        if self.used >= self.BUDGET and self.phase == Phase.NOT_FINISHED:
+            self.phase = Phase.GAME_OVER
+            self.game_overs += 1
+        return self.observe() if obs.grid is not None else obs
+
+
+def test_the_agent_reads_its_budget_and_knows_it_exactly_after_a_budget_death(
+    tmp_path: Path,
+) -> None:
+    game = BudgetGame()
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=50, until=lambda: game.game_overs >= 1 and game.used >= 8)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert game.game_overs == 1
+    assert any(r["budget"] is not None for r in acts[:30])  # read during the first life
+    last = acts[-1]
+    assert last["budget"] == BudgetGame.BUDGET - game.used + 1  # exact: before its own move

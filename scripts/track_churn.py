@@ -7,7 +7,7 @@ loop (so no prediction prior: it measures the matching rules alone).
 
 Input: an ``.npz`` with ``grids`` (frames, 64, 64), ``lvl`` (level per frame) and
 ``phase`` (per frame), as written by the play-observation tools. The tracker resets on a
-level change and after a game over (phase 2), as the agent does.
+level change and after a game over, as the agent does.
 
     python scripts/track_churn.py <recording.npz> [...]
 
@@ -23,7 +23,7 @@ import numpy as np
 
 from arcagent.mind.objects import Tracker
 
-GAME_OVER_PHASE = 2
+GAME_OVER_PHASE = "GAME_OVER"
 
 
 def churn(path: Path) -> tuple[int, int, int]:
