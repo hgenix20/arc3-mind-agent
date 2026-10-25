@@ -215,7 +215,7 @@ from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
-from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Tried, question
+from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, test_key
 from arcagent.mind.turn import MOVE_LOG_LINES, TurnInput, name_sigs, render_fact, take_turn
 from arcagent.mind.types import ActionKey, Branch
 from arcagent.mind.vchat import ImagesRejected, VisionChat
@@ -488,7 +488,7 @@ class FluidAgent:
         # one (scene, raw grid) per distinct scene key this level
         self._history: dict[tuple[tuple[str, int, int], ...], tuple[Scene, Grid]] = {}
         self._tried: Tried = set()
-        self._noop: Tried = set()  # (scene key, action key) seen to change nothing, this level
+        self._noop: Noop = set()  # (scene key, action key) seen to change nothing, this level
         self._frontier: tuple[tuple[str, str], ...] = ()
         self._simple: list[Action] = []
         self._can_click = False
@@ -863,7 +863,7 @@ class FluidAgent:
             choice = _Choice(action, "fallback", "deadline passed" if late else "b0")
         if self._chat is not None:
             choice, llm_step = self._maybe_turn(obs, scene, choice, llm_step, late)
-        self._tried.add((scene.key(), choice.action.key()))
+        self._tried.add(test_key(scene, choice.action))
         if choice.test is not None:
             self._tests += 1
             self._tests_attempt += 1
@@ -924,7 +924,7 @@ class FluidAgent:
             return SEEN_NO_EFFECT
         return self.modules.inhibition.veto(scene, action, self.mem, self._tried)
 
-    def _known_noop(self) -> Tried:
+    def _known_noop(self) -> Noop:
         """The no-op pairs vetoes and search use: none under the null Inhibition module."""
         return set() if isinstance(self.modules.inhibition, NullFluidInhibition) else self._noop
 
@@ -1004,7 +1004,7 @@ class FluidAgent:
         """Take a commit-probe move: logged, tried, predicted like a test."""
         a = choice.action
         self._log.event("commit_probe", step=self._action_no, action=[a.id, a.x, a.y])
-        self._tried.add((scene.key(), a.key()))
+        self._tried.add(test_key(scene, a))
         self._plan_goal, self._llm_step = None, False
         self._pred = predict(scene, a, self.mem)
         self._used_level.update(self._pred.used)

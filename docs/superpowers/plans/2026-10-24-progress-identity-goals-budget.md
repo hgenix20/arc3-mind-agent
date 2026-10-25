@@ -328,6 +328,103 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 - [x] Tests: `tests/mind/test_modes.py` (11), `tests/mind/test_mode_facts.py` (6), `test_the_agent_learns_a_selection_marker_and_files_clicks_under_it`. On a five-slot peg game the agent wins in 22 moves with the mode and doesn't win in 300 without it.
 
+### Task 4.4: Click tests key on local view and mode
+
+**As built:** `tester.test_key(scene, action)`: a simple action keys on `(scene.key(), action.key())` as before; a click keys on the clicked thing's sig, the colors within `MARK_RING` of its bbox (of the point on empty space), and each selected thing's sig and offset from the click. `Tried` is a set of those keys; the tester reads it as a `Container`. The no-op memory keeps the exact scene key (`tester.Noop`).
+
+- [x] Tests: `test_moving_an_unrelated_thing_does_not_reopen_click_tests`, `test_selection_change_does_reopen_click_tests`, `test_identical_neighborhoods_share_a_click_key_but_different_ones_do_not`, `test_simple_actions_keep_the_whole_scene_key`, `test_a_tried_click_settles_its_twins`.
+
+**Section gate:** paired offline A/B. Watch lf52 level 2 (`search` events should show `found` again after move 40), novelty share on wa30 and ls20, and `undoes progress` vetoes.
+
+---
+
+## Section 3: Same object, new look
+
+**Direction:** move from purely spatial tracking to kinematics, temporal context and feature invariance: IoU anchoring, appearance-invariant identity with mutable state properties, Hungarian matching on a global cost matrix, Kalman prediction, and an object-centric model with decoupled attributes keyed by identity and context instead of color and shape; the action engine tells the fact model what it changed.
+
+**What carries over:**
+- **IoU anchoring:** carries over as an overlap term in the match cost.
+- **Hungarian matching:** carries over. No scipy, so `assign.py` implements it (O(n³)) and runs only on the things left after exact stationary matches, which are few on most frames. Capped at `ASSIGN_MAX = 40` per side; above that the current greedy order runs.
+- **Kalman prediction:** carries over in adapted form. Moves here are discrete and caused by our own action, so the best motion prior is the predictor's own expected scene for the action just taken. When no fact covers a thing, the prior is its last displacement under the same action id (the constant-velocity part of a Kalman filter, without the noise model, which a noise-free grid doesn't need).
+- **Explicit action context:** already there in spirit: `predict` runs before every move. This section makes the tracker use it: match against the prediction, so "object 42 turned to face left" is expected, not discovered.
+- **Decoupled attributes:** carries over. A thing gets a stable `kind` (identity class) alongside its `sig` (current appearance). Facts key on kind; appearance becomes an effect the predictor applies (`reshape` to a sig) instead of a change of identity.
+- **Relational identity (GNN idea):** carries over as a cost term: the offset to the nearest unchanged anchor thing.
+- **Slot attention, learned embeddings:** not built. They need training data and a GPU; the board already gives exact components.
+
+### Task 3.1: Hungarian assignment
+
+**Files:**
+- Create: `arcagent/mind/assign.py`
+- Test: `tests/mind/test_assign.py`
+
+**Interfaces:**
+- Produces: `assign(cost: Sequence[Sequence[float]], gate: float) -> list[tuple[int, int]]`, pairs sorted by row: among assignments that use only pairs with cost at most `gate` (and finite), the one with the most pairs, then the least total cost (as built: a tracker would rather explain two things with two plausible matches than one cheap match and an unexplained appearance). `ASSIGN_MAX = 40`; a matrix with a side above it, or ragged rows, raises `ValueError` (callers fall back). Measured: 1.4 ms for 40×40, 0.08 ms for 10×10.
+
+- [ ] **Step 1: Failing tests.** `test_square_matrix_optimum` (a 3×3 case where greedy is wrong: `[[1,2,9],[2,9,9],[9,9,1]]` gives `{(0,1),(1,0),(2,2)}`), `test_rectangular_leaves_extra_unmatched`, `test_gate_drops_expensive_pairs`, `test_empty_matrix`, `test_size_cap_raises`, `test_matches_brute_force_on_random_5x5` (100 seeded matrices against `itertools.permutations`).
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (Kuhn-Munkres with potentials, pure Python). **Step 4: Gates.** **Step 5: Commit** "Hungarian assignment".
+
+### Task 3.2: Tracker matches against the predicted scene
+
+**Files:**
+- Modify: `arcagent/mind/objects.py` (`Tracker.update`, `_match`)
+- Modify: `arcagent/mind/fluid.py` (pass the last prediction's scene)
+- Create: `scripts/track_churn.py` (replay check)
+- Test: `tests/mind/test_objects.py`
+
+**Interfaces:**
+- Consumes: `assign`.
+- Produces: `Tracker.update(grid, mask, prior: Scene | None = None)`. Order: exact stationary same-sig pairs; then `assign` over the leftovers with cost = `W_DIST * manhattan(after top-left, prior top-left or last displacement) + W_OVERLAP * (1 - IoU with prior cells) + W_SIZE * |Δcells|/max + W_COLOR * (color changed) + W_SHAPE * (shape changed) + W_REL * (anchor offset changed)`, gated at `MATCH_GATE`. Starting weights: 1.0, 4.0, 2.0, 3.0, 1.0, 1.0; gate 24. A record of which ids were matched through the prior: `Tracker.via_prior: frozenset[int]`.
+
+- [ ] **Step 1: Failing tests.**
+  - `test_facing_change_while_moving_keeps_the_id`: a sprite moves one cell and its shape flips (a facing marker on the other side). Assert one `reshaped` change with the old id, no `appeared`.
+  - `test_recolor_and_move_keeps_the_id_with_prior`.
+  - `test_predicted_teleport_keeps_the_id`: the prior places the thing far away; assert same id.
+  - `test_unpredicted_far_jump_is_disappear_and_appear` (beyond the gate, no prior).
+  - `test_two_same_sig_things_crossing_keep_their_ids` (the prior says they swapped sides).
+  - Every existing `test_objects.py` case passes with `prior=None`.
+- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
+- [x] **Step 4: Replay check.** `scripts/track_churn.py <npz>` replays a recorded run and prints appeared+disappeared per move. Result on all 25 recordings, old tracker against new (no prior in a replay, so this is the matching rules alone): no game worse; total churn per move 20.5 to 17.6; tu93 0.52 to 0.09, lp85 0.38 to 0.01, dc22 0.92 to 0.47, cn04 0.26 to 0.14, wa30 0.38 to 0.18.
+
+**As built:** the cost adds `KIND_COST` per match kind (prior and sig 0, recolor 20, reshape 40, near 60), so the kind outranks distance; without it a player stepping onto a same-shape lava dot lost its id to the lava "recoloring" in place (caught by `test_game_over_prefers_the_overlapped_color`). Cross-color pairs without overlap or a prediction are never candidates. The gate is the candidate tests themselves (radius 16), so `MATCH_GATE` isn't needed; the relational term was left out, since with stationary anchors it equals the distance term. `Tracker.how` records each id's match kind for Task 3.3.
+- [ ] **Step 5: Gates.** **Step 6: Commit** "Tracker matches against the predicted scene".
+
+### Task 3.3: Kinds: identity classes across appearances
+
+**As built:** `arcagent/mind/kinds.py` (`KindBook`, `KIN_EVIDENCE = 2`) and `Thing.kind` (defaults to the sig). Changes from the draft, my calls:
+- A kind is named by the first sig of its class (still a `c<color>:<shape>` string), so every parser of subject colors keeps working when facts key on kinds.
+- Evidence: one track switching between two sigs, matched by `prior`, `recolor`, `near`, or a same-color overlap with size change within `NEAR_SIZE`. Growth and appear-plus-disappear never count.
+- Dropped the "two sigs on screen together never join" rule: it would keep on/off tiles apart forever, and the tracking evidence already guards false joins.
+- Unions last the whole game (no next-level confirmation): the same sigs recur on later levels, and the extra rule bought little.
+
+`KindBook.observe(before, after, diff, how) -> list[str]` (kinds joined), `kind_of(sig) -> str`, `label(scene) -> Scene`.
+
+- [x] Tests: `test_turning_sprite_becomes_one_kind`, `test_one_observation_is_not_enough`, `test_new_thing_on_vacated_spot_is_not_kin`, `test_a_growing_strip_is_not_kin`, `test_recolor_in_place_twice_is_kin`, `test_kinds_chain_and_label_fills_things`, `test_unlabeled_things_are_their_own_kind`.
+
+### Task 3.4: Facts and goals read kinds (spec change)
+
+**As built (changed from the draft):** keying facts on kind alone would break state-relative looks: a toggle tile gets "click turns it off" from one look and "click turns it on" from the other, under one key. So facts stay keyed by look, and each observation of a thing whose kind differs from its sig is also recorded under the kind, with a move or look change normalized to "and its look becomes X" (the same fact from every look). `FactMemory.lookup(..., kind)` tries a usable look fact, then a usable kind fact, then a broken look fact; the predictor passes the kind (not for the clicked thing) and falls back to kind `blocked` and death facts the same way, reads blockers through both names, and keeps `kind` on predicted things. A kind of two or more looks is named `k` + its first sig (`kinds.KIND_PREFIX`, `base_sig`), so its facts never share a key with that look's. Goals match things by sig or kind and propose a kind in place of its looks (never a kind's own look as its target); search protects and keys by either; novelty counts `(kind, x, y)`, so turning back on a visited cell isn't new. The agent runs `KindBook` on every transition, logs `kind` events and labels its scenes. The spec's component 2 records the decision.
+
+- [x] Tests: `tests/mind/test_kind_facts.py` (learned under the kind with the new look; a kind fact predicts an unseen look; a look fact wins until it breaks; search chains moves across looks; a goal on a kind holds in either look; kinds are movers), `test_a_turning_player_becomes_one_kind_and_reaches_the_target`. On that game: 22 moves with kinds, 26 without (one plan held instead of six replans).
+
+**Section gate:** paired offline A/B. Watch tu93 (search timeouts were 200 of 448; fallback share near 50%), wa30 oscillation on moves 52 to 67, and prediction accuracy (must not fall below the current 0.89).
+
+---
+
+## Section 4: Hidden mode state
+
+**Direction:** treat selection and activity as relational tags on the objects already tracked, in the fact layer, with no LLM and no global mode slot: `is_selected` on the selected piece (or an edge from a hidden cursor entity to it), and `is_active` on the controller that's driving.
+
+**What carries over:** all of it. My calls are how the tags get detected from the screen and how facts read them, since nothing announces a selection: the agent has to infer it from what a click changed.
+
+### Tasks 4.1 to 4.3: selection, the active controller, and facts that read them
+
+**As built:**
+- 4.1 `arcagent/mind/modes.py` `ModeTracker`: a candidate mark is an outline appearing around a clicked thing (color and shape) or the clicked thing recoloring; it is a known selection marker once it moves to another clicked thing (the tracker may keep the outline's id as it jumps, so a moved mark counts) or a second click takes it away. Masked cells and the clicked thing's own move are never marks.
+- 4.2 `Mode.active`: after a non-click action in which exactly one controlled thing (`goals.controlled_sigs`) moved, that thing is active, but only while two or more controlled things are on screen: with one, filing its moves under `active` would pull them out of the `any` facts that the slide, teleport and blocked rules read (a test caught it). Action numbers carry no meaning.
+- 4.3 `Scene.selected` and `Scene.active` are part of the scene and its key. `modes.mode_contexts`: `selected:dx,dy`, `between:dx,dy`, `sel:dx,dy` (past `SEL_RANGE = 8`: `far`) for a click while something is selected; `active` for the active thing under other actions. `learn` gives those contexts to observations still in `any`; the predictor looks them up first (falling back to `any`) and predicts the next mode (`modes.predicted_mode`: a click on a sig or kind in `FactMemory.selectable` selects it alone, any other click clears the selection). The agent runs the tracker each transition and stores the mode on the scene; spec component 11 records the decision.
+
+- [x] Tests: `tests/mind/test_modes.py` (11), `tests/mind/test_mode_facts.py` (6), `test_the_agent_learns_a_selection_marker_and_files_clicks_under_it`. On a five-slot peg game the agent wins in 22 moves with the mode and doesn't win in 300 without it.
+
 ### Task 4.4: Tests and no-op memory key on mode, not the whole scene
 
 This is the tried-set scope fix that was held back: keying a test on its local context was unsafe while selection was invisible to the agent.
