@@ -73,9 +73,6 @@ Per ``choose(obs)``, in order:
    (branch ``plan``, why ``toward <goal id>``), but only when it ends closer to the goal
    than any real frame of this life has been, so walking back to a spot already reached
    doesn't count. A refused step isn't a failed attempt.
-   Else, when the life is doomed (``life_doomed``: an exact budget, and every ranked
-   goal more than ``DOOM_MARGIN`` moves past the moves left), RESET (branch ``reset``,
-   why ``doomed life``), ending the life after one action instead of its remaining moves.
    Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    controlled mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held; controlled per
@@ -179,7 +176,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter, deque
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable
 from concurrent.futures import Executor, ThreadPoolExecutor, wait
 from dataclasses import dataclass, replace
 
@@ -250,8 +247,6 @@ MOTION_CUT = 3  # motion verdicts in a row after which novelty yields
 PROGRESS_GOALS = 20  # goals the progress monitor measures per move (pursued and forms first)
 LEVEL = "level"  # subject of a reset-level fact: (action label, LEVEL, "any")
 TEST_RESERVE = 2  # moves to spare that still leave room for a test before a fitting plan
-DOOM_MARGIN = 2  # moves past the budget the nearest goal must be before a life is doomed
-DOOMED_WHY = "doomed life"  # the why of a RESET that ends a life with no way through
 COMMIT_PROBES = 4  # most commit-probe moves on one reached goal
 COMMIT_MAX_CELLS = 16  # a commit-probe click target has at most this many cells
 FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
@@ -361,19 +356,6 @@ def plan_breaks(  # noqa: PLR0917  # each input is a distinct part of the rule
         ):
             return True
     return False
-
-
-def life_doomed(
-    *, remaining: int | None, distances: Sequence[int | None], exact: bool, acted: bool
-) -> bool:
-    """Whether to end this life now: the budget is exact (a life already ended by it on this
-    level), an action was taken this game (else the engine resets the whole game), there
-    are goals, every one has a distance, and even the nearest is more than ``DOOM_MARGIN``
-    moves past the moves left. Anything less certain keeps playing."""
-    if remaining is None or not exact or not acted or not distances:
-        return False
-    known = [d for d in distances if d is not None]
-    return len(known) == len(distances) and min(known) > remaining + DOOM_MARGIN
 
 
 def budget_tight(*, remaining: int | None, distance: int) -> bool:
@@ -526,9 +508,6 @@ class FluidAgent:
         self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
         self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
         self._budget = BudgetReader()  # moves left this life, from a counter bar
-        self._acted = (
-            False  # a non-RESET action was taken this game (a RESET is then a level reset)
-        )
         self._progress = ProgressMonitor()  # progress or motion, per life
         self._verdict: Verdict = "none"  # this move's progress verdict
         self._motion = 0  # motion verdicts in a row
@@ -623,7 +602,6 @@ class FluidAgent:
             budget=self._budget.remaining(),
         )
         self._last_action = a
-        self._acted = self._acted or a.id != RESET_ID
         if a.id == RESET_ID:
             self._fresh = True
         self._action_no += 1
@@ -924,10 +902,8 @@ class FluidAgent:
                 else None
             )
         if choice is None and not late:
-            choice = (
-                self._doomed_choice(scene)
-                or self._partial_choice(scene)
-                or (self._novel_choice(scene) if self._motion < MOTION_CUT else None)
+            choice = self._partial_choice(scene) or (
+                self._novel_choice(scene) if self._motion < MOTION_CUT else None
             )
         if choice is None:
             if not late:
@@ -1152,34 +1128,6 @@ class FluidAgent:
             d = g.distance(scene, None, self._kin)
             if d is not None and d < best:
                 self._closest[g] = d
-
-    def _doomed_choice(self, scene: Scene) -> _Choice | None:
-        """RESET now when this life can't reach any goal (``life_doomed``): the scorecard
-        counts every move of a lost life, and a RESET is one action."""
-        on_screen = {t.sig for t in scene.things} | {t.kind for t in scene.things}
-        goals = self.goals.ranked(scene, grid=self._last_grid, kin=self._kin)
-        dists = [
-            d
-            for g in goals
-            if (d := g.distance(scene, self._last_grid, self._kin)) is not None
-            or goal_sigs(g, scene) <= on_screen  # a goal about absent things is out of reach
-        ]
-        doomed = life_doomed(
-            remaining=self._budget.remaining(),
-            distances=dists,
-            exact=self._budget.per_life() is not None,
-            acted=self._acted,
-        )
-        if not doomed:
-            return None
-        self._tests_attempt = 0
-        self._end_probe()
-        self._new_epoch()
-        self._restart(new_attempt=True)
-        self._progress.reset_life()
-        self._motion = 0
-        self._plan = []
-        return _Choice(Action(RESET_ID), "reset", DOOMED_WHY)
 
     def _tight_choice(self, scene: Scene) -> _Choice | None:
         """The partial plan's step ahead of tests, when its goal just fits the moves left

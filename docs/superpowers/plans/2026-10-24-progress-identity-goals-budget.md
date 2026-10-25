@@ -456,6 +456,8 @@ Two fixes the test game exposed, in the same commit: the noise mask now masks a 
 
 - [x] Tests: `test_life_doomed_needs_an_exact_budget_known_distances_and_no_way_through`, `test_a_doomed_second_life_is_reset_at_once`, `test_no_doomed_reset_when_the_target_fits`; the noise tests now expect the band.
 
+**Removed after the bisect (2026-10-25):** the doomed-life RESET came out; the band mask and reader fixes stay. On the five-game bisect it cost ls20 and su15 their only level (su15 reset 1,678 times). The check needs a lower bound on the moves to a goal, and goal distances aren't one: in su15 a click slides a piece many cells, so the cell gap overstates the moves. Every life looked doomed and ended early, and with it the moves the agent needed to learn.
+
 ### Task 6.4: Shortest route over targets
 
 **As built:** `arcagent/mind/route.py` `route(start, targets, dist, exact_limit=ROUTE_EXACT)`: Held-Karp for up to `ROUTE_EXACT = 6` targets (the draft's 10 would cost about 100k steps a call), nearest neighbor plus up to `TWO_OPT_PASSES = 4` passes of 2-opt above that; None when a leg is unreachable. Used by the `clear` distance when the agent knows its one controlled thing (`Kinematics.mover`, set from `_lone_mover`): things left plus the cells of a heuristic route through them (`MAX_ROUTE_TARGETS = 20`). Inside search it uses the heuristic order only (exact routing at every node would cost seconds a move). Not built: locking a whole route as a plan; best-first search on this distance does the ordering instead.
