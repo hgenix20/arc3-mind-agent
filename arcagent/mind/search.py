@@ -241,13 +241,24 @@ def search(
     ``assume_still`` is the protected sig set passed to ``predict``; None computes it with
     ``protected_sigs``. ``goal_test``, when given, is one more goal: the first scene where
     it holds (after no goal in ``goals`` did) ends the search as ``found``, goal None.
+
+    match_thing references stay still only in a second pass, run when the first finds no
+    plan: a pinned reference that the actions really change hides the plans that need it
+    to change (tn36's ``clear`` plan), while a match_thing plan needs it held (ar25).
     """
     live = list(goals)
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
-    run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
-    run.weight = weight
-    run.max_depth = max_depth
-    return run.run(scene, clock, time_s, max_nodes)
+    pins = frozenset(g.n for g in live if g.kind == "match_thing" and g.n >= 0)
+    passes = (frozenset(), pins) if pins else (frozenset(),)
+    res: SearchResult | None = None
+    for pinned in passes:
+        run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
+        run.pinned, run.weight, run.max_depth = pinned, weight, max_depth
+        res = run.run(scene, clock, time_s, max_nodes)
+        if res.stop == "found":
+            break
+    assert res is not None
+    return res
 
 
 Plan = tuple[PlanStep, ...]
@@ -269,7 +280,7 @@ class _Run:
         kin: Kinematics | None = None,
     ) -> None:
         self.actions, self.mem, self.live, self.protect = actions, mem, live, protect
-        self.pinned = frozenset(g.n for g in live if g.kind == "match_thing" and g.n >= 0)
+        self.pinned: frozenset[int] = frozenset()  # match_thing references held still
         self.goal_test, self.noop = goal_test, noop
         self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
         self.frontier: dict[tuple[str, str], None] = {}
