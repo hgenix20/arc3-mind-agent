@@ -40,7 +40,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -392,11 +392,13 @@ def _greedy(
     before: list[Thing], after: list[Thing], pairs: Pairs, used: set[int], how: dict[int, MatchHow]
 ) -> None:
     """The fallback for big leftovers: same sig, then recolor, then reshape, greedily."""
-    for step, kind in (
+    passes: tuple[tuple[Callable[[list[Thing], list[Thing], Pairs, set[int]], None], MatchHow], ...]
+    passes = (
         (_match_same_sig, "sig"),
         (_match_recolor, "recolor"),
         (_match_reshape, "reshape"),
-    ):
+    )
+    for step, kind in passes:
         known = set(pairs)
         step(before, after, pairs, used)
         for i in set(pairs) - known:
