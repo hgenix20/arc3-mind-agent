@@ -984,3 +984,31 @@ def test_search_actions_skip_things_predicted_off_the_board(tmp_path: Path) -> N
     scene = Scene((on, off), 0, frozenset(), np.zeros((64, 64), dtype=np.int8))
     clicks = [a for a in agent._actions(scene) if a.id == 6]
     assert [(a.x, a.y) for a in clicks] == [(5, 5)]
+
+
+def test_a_move_seen_to_do_nothing_is_refused_on_that_screen(tmp_path: Path) -> None:
+    game = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[])
+    agent = make_agent(tmp_path)
+    obs = game.observe()
+    a = agent.choose(obs)
+    agent.choose(obs)  # the same frame back: ``a`` changed nothing on this screen
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    assert agent._veto(scene, a) == fluid.SEEN_NO_EFFECT  # pyright: ignore[reportPrivateUsage]
+    for b in (Action(i) for i in (1, 2, 3, 4)):
+        if b.key() != a.key():
+            assert agent._veto(scene, b) != fluid.SEEN_NO_EFFECT  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+
+
+def test_the_null_inhibition_module_refuses_no_seen_noop(tmp_path: Path) -> None:
+    log = RunLog(tmp_path / "n.jsonl", "fake", "FLUID", 0)
+    cfg = replace(CONFIGS["FLUID"], inhibition=False)
+    agent = fluid.FluidAgent("fake", cfg, seed=0, log=log, game_deadline=1e12, run_deadline=1e12)
+    obs = FakeGame(player=(3, 3), target=(10, 10), walls=[], lava=[]).observe()
+    a = agent.choose(obs)
+    agent.choose(obs)
+    scene = agent._last_scene  # pyright: ignore[reportPrivateUsage]
+    assert scene is not None
+    assert agent._veto(scene, a) is None  # pyright: ignore[reportPrivateUsage]
+    agent.close()

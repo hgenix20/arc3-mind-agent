@@ -22,6 +22,9 @@ Branch rules:
   protected, the full ``Scene.key()`` is used.
 - A prediction whose key equals its parent's changes nothing that matters and is dropped.
 - ``match`` goals need a grid, so slice 1 search skips them.
+- ``noop`` holds ``(Scene.key(), Action.key())`` pairs seen to change nothing on a real
+  frame. Such an action is not expanded from a scene with that full key, whatever the
+  facts predict: the observation beats the prediction, and the pair costs no node.
 - ``goal_test`` is an extra predicate goal (the fluid agent's novelty pseudo-goal): a
   scene where it holds wins like a goal does, with ``SearchResult.goal`` None. Goals in
   ``goals`` are checked first on each scene.
@@ -36,7 +39,7 @@ from __future__ import annotations
 
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -102,6 +105,7 @@ def search(
     clock: Callable[[], float] = time.monotonic,
     assume_still: frozenset[str] | None = None,
     goal_test: Callable[[Scene], bool] | None = None,
+    noop: Collection[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]] = (),
 ) -> SearchResult:
     """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
 
@@ -144,7 +148,10 @@ def search(
         current, plan = queue.popleft()
         deepest = max(deepest, len(plan))
         parent_key = key_of(current)
+        full_key = current.key() if noop else ()
         for action in actions(current):
+            if noop and (full_key, action.key()) in noop:
+                continue
             if clock() - start >= time_s:
                 return done("time", nodes, deepest)
             if nodes >= max_nodes:

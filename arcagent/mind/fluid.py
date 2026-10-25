@@ -177,7 +177,7 @@ from arcagent.mind.facts import (
     clicked_sig,
     learn,
 )
-from arcagent.mind.fluid_modules import build_fluid_modules
+from arcagent.mind.fluid_modules import NullFluidInhibition, build_fluid_modules
 from arcagent.mind.fluid_sleep import FluidSleepReport, fluid_sleep
 from arcagent.mind.goals import (
     Goal,
@@ -201,7 +201,8 @@ from arcagent.mind.vchat import ImagesRejected, VisionChat
 STALL_AFTER = 2  # failed attempts at one goal in one level before it is set aside
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
-_PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT})  # the veto reasons a plan step honors
+SEEN_NO_EFFECT = "seen no effect here"  # this action changed nothing on this very scene
+_PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT, SEEN_NO_EFFECT})  # reasons a plan step honors
 MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skipped
 NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
 NOVEL_TIME_S = SEARCH_TIME_S / 2
@@ -449,6 +450,7 @@ class FluidAgent:
         # one (scene, raw grid) per distinct scene key this level
         self._history: dict[tuple[tuple[str, int, int], ...], tuple[Scene, Grid]] = {}
         self._tried: Tried = set()
+        self._noop: Tried = set()  # (scene key, action key) seen to change nothing, this level
         self._frontier: tuple[tuple[str, str], ...] = ()
         self._simple: list[Action] = []
         self._can_click = False
@@ -667,6 +669,7 @@ class FluidAgent:
         self.mem.new_level()
         self.modules.transfer.carry(self.mem, self.goals)
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
+        self._noop = set()
         self._seen_at = set()
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
@@ -682,6 +685,8 @@ class FluidAgent:
         noisy = self._noise.noisy_ids
         before = _strip(prev_full, noisy)
         after = _strip(full, noisy)
+        if _strip_diff(diff, noisy).empty:
+            self._noop.add((before_s.key(), action.key()))
         self._keep(full, after, obs.grid)
         snap = self._statuses()
         keys = learn(
@@ -804,7 +809,7 @@ class FluidAgent:
     ) -> _Choice | None:
         """The option as a choice, or None (and a ``veto`` event) when it is refused."""
         if not late:
-            reason = self.modules.inhibition.veto(scene, action, self.mem, self._tried)
+            reason = self._veto(scene, action)
             if reason is not None and (not plan or reason in _PLAN_VETOES):
                 self._refuse(action, reason)
                 if plan:
@@ -812,6 +817,17 @@ class FluidAgent:
                     self._notes.add("plan blocked")
                 return None
         return _Choice(action, branch, why)
+
+    def _veto(self, scene: Scene, action: Action) -> str | None:
+        """``SEEN_NO_EFFECT`` when ``action`` already changed nothing on this scene, else
+        the Inhibition module's veto. The null module (an ablation) refuses nothing."""
+        if (scene.key(), action.key()) in self._known_noop():
+            return SEEN_NO_EFFECT
+        return self.modules.inhibition.veto(scene, action, self.mem, self._tried)
+
+    def _known_noop(self) -> Tried:
+        """The no-op pairs vetoes and search use: none under the null Inhibition module."""
+        return set() if isinstance(self.modules.inhibition, NullFluidInhibition) else self._noop
 
     def _refuse(self, action: Action, reason: str) -> None:
         self._vetoes.add(action.key())
@@ -876,6 +892,7 @@ class FluidAgent:
             goal_test=goal_test,
             max_nodes=max_nodes,
             time_s=time_s,
+            noop=self._known_noop(),
         )
         self._log.event(
             "search",
@@ -911,7 +928,7 @@ class FluidAgent:
         self._notes.add("no plan and no test")
         self._plan, self._plan_goal = [], None
         action = res.plan[0].action
-        reason = self.modules.inhibition.veto(scene, action, self.mem, self._tried)
+        reason = self._veto(scene, action)
         if reason is not None and reason in _PLAN_VETOES:
             self._refuse(action, reason)
             return None
@@ -1132,7 +1149,7 @@ class FluidAgent:
     def _exclude_vetoed(self, obs: Observation, scene: Scene) -> None:
         """Add every candidate ``veto`` refuses to this move's vetoes (no events)."""
         for action in candidate_actions(obs):
-            if self.modules.inhibition.veto(scene, action, self.mem, self._tried) is not None:
+            if self._veto(scene, action) is not None:
                 self._vetoes.add(action.key())
 
     def _actions(self, scene: Scene) -> list[Action]:

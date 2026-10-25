@@ -221,3 +221,10 @@ def test_goal_test_at_the_root_returns_an_empty_plan() -> None:
     s = scene_of({(2, 2): 1})
     r = search(s, simple_actions, moves((1,)), [], goal_test=lambda _s: True)
     assert r.stop == "found" and r.plan == () and r.goal is None
+
+
+def test_seen_noop_pairs_are_not_expanded() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4})
+    noop = {(s.key(), Action(4).key())}  # A4 was seen to do nothing here (a wall)
+    r = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], noop=noop)
+    assert r.stop == "found" and r.plan[0].action.id != 4

@@ -93,9 +93,51 @@ def test_reshape_with_shift_is_motion_never_noise() -> None:
     assert m.noisy_ids == frozenset()
 
 
-def _bar(n: int) -> Scene:
-    cells = frozenset((x, 0) for x in range(10 - n, 10))
+def _bar(n: int, y: int = 20) -> Scene:
+    """A horizontal bar of ``n`` cells ending at x 9, on row ``y`` (off the edge by default)."""
+    cells = frozenset((x, y) for x in range(10 - n, 10))
     return Scene((_thing(7, 4, cells),), 0, frozenset())
+
+
+def _shrink(n: int) -> SceneDiff:
+    return _diff(Change(7, "reshaped", dx=1, color=4, sig=f"c4:len{n - 1}", size=n - 1))
+
+
+def test_edge_bar_shrinking_under_one_action_is_a_counter() -> None:
+    m = NoiseMask()
+    flagged = [m.observe(_bar(n, y=0), 6, _shrink(n)) for n in (8, 7, 6)]
+    assert flagged == [[], [], [7]]
+    assert m.cells == frozenset((x, 0) for x in range(4, 10))
+
+
+def test_counter_rule_needs_the_board_edge() -> None:
+    m = NoiseMask()
+    for n in (8, 7, 6, 5, 4):
+        m.observe(_bar(n), 6, _shrink(n))
+    assert m.noisy_ids == frozenset()
+
+
+def test_strip_that_grows_and_shrinks_is_not_a_counter() -> None:
+    m = NoiseMask()
+    grow = _diff(Change(7, "reshaped", color=4, sig="c4:len9", size=9))
+    m.observe(_bar(8, y=0), 6, grow)
+    for n in (9, 8, 7):
+        m.observe(_bar(n, y=0), 6, _shrink(n))
+    assert m.noisy_ids == frozenset()
+
+
+def test_new_attempt_keeps_only_counter_cells() -> None:
+    m = NoiseMask()
+    for n in (8, 7, 6):
+        m.observe(_bar(n, y=0), 6, _shrink(n))
+    m.observe(_scene(), 1, reshape_diff(1, -1))
+    m.observe(_scene(), 2, reshape_diff(1, -1))  # thing 1 is noise by the first rule
+    assert m.noisy_ids == {1, 7}
+    m.new_attempt()
+    assert m.noisy_ids == frozenset()
+    assert m.cells == frozenset((x, 0) for x in range(4, 10))
+    m.reset_tracks()
+    assert m.cells == frozenset()
 
 
 def test_shrinking_bar_with_shift_is_noise() -> None:
