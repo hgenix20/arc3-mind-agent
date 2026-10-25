@@ -450,15 +450,11 @@ Also in this commit: `tester.test_key` is renamed `tried_key`. Pytest had been c
 
 ### Task 6.3: RESET a life that can't finish
 
-**Files:**
-- Modify: `arcagent/mind/fluid.py`
-- Test: `tests/mind/test_fluid_agent.py`
+**As built:** `life_doomed(remaining=, distances=, exact=, acted=)`: only with an exact budget (a life already ended by it on this level, so the reader's early errors can't trigger it), after an action this game (the engine resets the whole game otherwise), with goals present, every distance known, and the nearest more than `DOOM_MARGIN = 2` moves past the moves left. Goals about things not on screen are skipped (they can't be reached now). It runs after tests and before partial plans and novelty: an open test still beats a RESET. The RESET (branch `reset`, why `doomed life`) restarts the attempt's state like a game over.
 
-**Interfaces:**
-- Produces: branch `reset` with why `doomed life`. Fires when all hold: `remaining()` is known; no ranked goal has a plan or a distance within `remaining`; no open test has information worth more than its move (the Voi module returns no test, or `remaining <= DOOM_MIN_TESTS = 1`); at least one action has been taken in this game (the engine does a full reset otherwise).
+Two fixes the test game exposed, in the same commit: the noise mask now masks a counter's whole band (a bar redrawn full on a new life reached past the flagged box and showed up as things, which drew tests and goals), and the reader keeps the moves made before its counter was flagged and sees the final frame of a life (per-life counts came out 2 or 3 short). Budget replay after these: summed mean error about 30 moves over the 21 games with a counter (was about 43).
 
-- [ ] **Step 1: Failing tests.** `test_doomed_life_resets_at_once` (a fake game with a 10-move budget and a goal 15 moves away, every test settled: assert the next action is RESET), `test_no_reset_when_cheapest_plan_fits`, `test_no_reset_before_first_action`, `test_open_test_beats_reset`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "RESET a life that can't finish".
+- [x] Tests: `test_life_doomed_needs_an_exact_budget_known_distances_and_no_way_through`, `test_a_doomed_second_life_is_reset_at_once`, `test_no_doomed_reset_when_the_target_fits`; the noise tests now expect the band.
 
 ### Task 6.4: Shortest route over targets
 

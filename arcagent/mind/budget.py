@@ -102,7 +102,10 @@ class BudgetReader:
             return
         self._counter = counter
         self._per_life = {}
+        moves = {name: fit.moves for name, fit in self._fits.items()}
         self._restart(self._first)
+        for name, fit in self._fits.items():  # moves made before the counter was known count
+            fit.moves = moves[name]
 
     def new_level(self) -> None:
         """A new level: its counter and budget may differ, so forget both."""

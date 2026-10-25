@@ -1373,3 +1373,37 @@ def test_a_tight_budget_puts_a_fitting_partial_plan_before_tests() -> None:
     assert not fluid.budget_tight(remaining=4, distance=5)  # doesn't fit at all
     assert not fluid.budget_tight(remaining=None, distance=5)
     assert fluid.TEST_RESERVE == 2
+
+
+def test_life_doomed_needs_an_exact_budget_known_distances_and_no_way_through() -> None:
+    doomed = fluid.life_doomed
+    assert doomed(remaining=10, distances=[15, 20], exact=True, acted=True)
+    assert not doomed(remaining=10, distances=[12, 20], exact=True, acted=True)  # within margin
+    assert not doomed(remaining=10, distances=[9], exact=True, acted=True)  # fits
+    assert not doomed(remaining=10, distances=[15, None], exact=True, acted=True)  # unknown
+    assert not doomed(remaining=10, distances=[], exact=True, acted=True)  # no goal at all
+    assert not doomed(remaining=10, distances=[15], exact=False, acted=True)  # rate unsure
+    assert not doomed(remaining=10, distances=[15], exact=True, acted=False)  # full reset
+    assert not doomed(remaining=None, distances=[15], exact=True, acted=True)
+    assert fluid.DOOM_MARGIN == 2
+
+
+def test_a_doomed_second_life_is_reset_at_once(tmp_path: Path) -> None:
+    game = BudgetGame()  # 30 moves a life, the target about 100 moves away
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=60, until=lambda: game.game_overs >= 2)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    doomed = [i for i, r in enumerate(acts) if r["why"] == fluid.DOOMED_WHY]
+    assert doomed and acts[doomed[0]]["action"][0] == 0
+    assert game.game_overs == 1  # the second life ended by RESET, not by the budget
+
+
+def test_no_doomed_reset_when_the_target_fits(tmp_path: Path) -> None:
+    game = BudgetGame()
+    game.target = (20, 10)  # ten moves away: fits the 30-move budget
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=60)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert not any(r["why"] == fluid.DOOMED_WHY for r in acts)

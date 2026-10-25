@@ -35,7 +35,9 @@ Only changes with a known new size (``Change.size`` >= 0) count. A bar that is r
 objects reshapes every move, so every move would open fresh questions and goals about it.
 
 The mask cells are the bboxes of noise tracks' things in ``before``, so the mask only
-grows within a level. ``reset_tracks`` drops history, flagged ids and cells.
+grows within a level; for a counter they are its whole band (its rows or columns across
+the board), since a bar redrawn full on a new attempt reaches past where it was flagged.
+``reset_tracks`` drops history, flagged ids and cells.
 ``new_attempt`` (a RESET after a game over) drops history and ids but keeps the cells
 of counters: the bar sits in the same strip on every attempt of a level, and masking it
 from the first frame saves the moves it takes to flag it again.
@@ -133,12 +135,14 @@ class NoiseMask:
                 box = _bbox(thing)
                 self._cells |= box
                 if counter:
-                    self._counter_cells |= box
-                    self._note_counter(c.id, thing)
+                    band = self._note_counter(c.id, thing)
+                    self._counter_cells |= band
+                    self._cells |= band
         return flagged
 
-    def _note_counter(self, tid: int, t: Thing) -> None:
-        """Keep a flagged counter's color, band and direction (``budget.Counter``)."""
+    def _note_counter(self, tid: int, t: Thing) -> set[Cell]:
+        """Keep a flagged counter's color, band and direction (``budget.Counter``); return
+        the band's cells across the whole board."""
         xs = [x for x, _ in t.cells]
         ys = [y for _, y in t.cells]
         wide = max(xs) - min(xs) >= max(ys) - min(ys)
@@ -147,6 +151,10 @@ class NoiseMask:
         grew, shrank, _ = self._sizes.get(tid, (0, 0, True))
         key = (t.color, axis, lines)
         self._counters.setdefault(key, Counter(t.color, axis, lines, shrank > grew))
+        span = range(GRID_SIZE)
+        if wide:
+            return {(x, y) for y in lines for x in span}
+        return {(x, y) for x in lines for y in span}
 
     def _count_size(self, c: Change, old: Thing | None) -> bool:
         """Record a size change of ``c``'s track; True when the track is now a counter."""
