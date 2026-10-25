@@ -174,35 +174,11 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 - **Completion criteria against a rule set:** carries over as `Goal.distance == 0` plus the rule-book of section 5.
 - **CNN/YOLO object identity:** already exact on this board (see "What the research changed").
 
-### Task 2.1: A distance for every goal kind
+### Tasks 2.1 and 2.2: goal distances and the kinematic model
 
-**Files:**
-- Modify: `arcagent/mind/goals.py`
-- Test: `tests/mind/test_goals.py`
+**As built:** `Goal.distance(scene, grid=None, kin=None)` (0 exactly when the goal holds; None for no estimate): reach is the bbox cell gap less one, or with `kin` the moves from `kin.field`; clear is things left; count is `abs(n - count)`; match is mismatched cells. `arcagent/mind/kinematics.py`: `Gait`, `Kinematics.gaits` (move and slide facts in context `any`, simple actions only), `reachable` (forward walk, slides included), `steps_to`, and `field` (backward walk from every top-left touching the target, fixed-step gaits only, cached per (subject, target)). Bounds: `KIN_LIMIT = 4096` top-lefts per walk, `KIN_FIELDS = 8` fields per object; the agent builds one `Kinematics` per move and passes it to its searches, so search distances and the partial-plan guard use the same metric.
 
-**Interfaces:**
-- Consumes: `Kinematics.steps_to(scene, kind, target_cells) -> int | None` (Task 2.2).
-- Produces: `Goal.distance(scene: Scene, grid: Grid | None, kin: Kinematics | None) -> int | None`. `reach`: kinematic steps from the nearest `a` to a cell overlapping or 4-adjacent to the nearest `b`, falling back to the Manhattan distance between bboxes over the mover's step size when `kin` is None. `clear`: things of that color left. `count`: `abs(n - count)`. `match`: mismatched cells (None without a grid). None means "no estimate". `distance == 0` exactly when `holds` is true (a property test).
-
-- [ ] **Step 1: Failing tests.** `test_reach_distance_counts_steps_around_a_wall`, `test_clear_distance_is_things_left`, `test_count_distance`, `test_match_distance_is_mismatched_cells`, `test_distance_zero_iff_holds` (loop over the existing `holds` fixtures).
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.** **Step 4: Gates.** **Step 5: Commit** "Goals report a distance".
-
-### Task 2.2: Kinematic model of the controlled things
-
-**Files:**
-- Create: `arcagent/mind/kinematics.py`
-- Test: `tests/mind/test_kinematics.py`
-
-**Interfaces:**
-- Consumes: `FactMemory` (move/slide facts, `blockers`, `walkable`), `goals.controlled_sigs`.
-- Produces:
-  - `@dataclass(frozen=True) class Gait: action: ActionKey; dx: int; dy: int; slides: bool`
-  - `class Kinematics: def __init__(self, mem: FactMemory) -> None`; `gaits(kind: str) -> tuple[Gait, ...]`; `reachable(scene: Scene, kind: str, *, limit: int = KIN_LIMIT) -> dict[Cell, int]` (top-left cell to moves, breadth-first over gaits, blocked by edge, padding and blocker colors, never by things that facts say get pushed); `steps_to(scene, kind, target_cells) -> int | None`.
-  - `KIN_LIMIT = 4096` cells visited per call.
-  - Kinds per section 3; before section 3 lands, `kind` is the sig.
-
-- [ ] **Step 1: Failing tests.** `test_gaits_come_from_move_facts`, `test_reachable_stops_at_blocker_colors`, `test_slide_gait_stops_where_it_would_be_blocked`, `test_unreachable_target_is_none`, `test_limit_bounds_the_walk`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** (pure Python, a deque, the same blocking rule as `predictor` for single bodies). **Step 4: Gates.** **Step 5: Commit** "Kinematic model of controlled things".
+- [x] Tests: `tests/mind/test_kinematics.py` (gaits, blockers, slides, around a wall, unreachable, the walk limit, the field, goal distance in moves around a wall) and the distance tests in `tests/mind/test_goals.py`.
 
 ### Task 2.3: Progress monitor
 

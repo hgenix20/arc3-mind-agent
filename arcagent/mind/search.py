@@ -62,6 +62,7 @@ from typing import Literal
 from arcagent.core.types import Action
 from arcagent.mind.facts import FactMemory
 from arcagent.mind.goals import Goal, goal_sigs, mover_sigs
+from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene
 from arcagent.mind.predictor import Prediction, predict
 
@@ -141,6 +142,7 @@ class _Best:
     """
 
     trap: Callable[[Scene], bool]
+    kin: Kinematics | None = None
     gain: int = 0
     goal: Goal | None = None
     distance: int | None = None
@@ -150,7 +152,7 @@ class _Best:
         """Score ``scene`` per goal; return the first goal that holds there (distance 0)."""
         hit: Goal | None = None
         for g, r in root.items():
-            d = g.distance(scene)
+            d = g.distance(scene, None, self.kin)
             if d is None:
                 continue
             if d == 0 and hit is None:
@@ -178,11 +180,13 @@ def _stable(notes: list[_Note], nodes: int, best: _Best) -> bool:
     return len(last) == STABLE_SLICES and last[0] is not None and len(set(last)) == 1
 
 
-def _distances(goals: Sequence[Goal], scene: Scene) -> dict[Goal, int]:
+def _distances(
+    goals: Sequence[Goal], scene: Scene, kin: Kinematics | None = None
+) -> dict[Goal, int]:
     """Each goal's distance in ``scene``, in goal order; goals with no estimate left out."""
     out: dict[Goal, int] = {}
     for g in goals:
-        d = g.distance(scene)
+        d = g.distance(scene, None, kin)
         if d is not None:
             out[g] = d
     return out
@@ -200,8 +204,13 @@ def search(
     assume_still: frozenset[str] | None = None,
     goal_test: Callable[[Scene], bool] | None = None,
     noop: Collection[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]] = (),
+    kin: Kinematics | None = None,
 ) -> SearchResult:
     """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
+
+    ``kin`` measures reach distances in moves (``Goal.distance``); without it they are
+    cell gaps. A caller that compares ``best_distance`` with its own distances must pass
+    the same ``kin`` it measures with.
 
     ``assume_still`` is the protected sig set passed to ``predict``; None computes it with
     ``protected_sigs``. ``goal_test``, when given, is one more goal: the first scene where
@@ -209,7 +218,7 @@ def search(
     """
     live = [g for g in goals if g.kind != "match"]
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
-    run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop))
+    run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
     return run.run(scene, clock, time_s, max_nodes)
 
 
@@ -228,12 +237,14 @@ class _Run:
         *,
         goal_test: Callable[[Scene], bool] | None,
         noop: frozenset[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]],
+        kin: Kinematics | None = None,
     ) -> None:
         self.actions, self.mem, self.live, self.protect = actions, mem, live, protect
         self.goal_test, self.noop = goal_test, noop
         self.colors = frozenset(g.color for g in live if g.kind in ("clear", "count"))
         self.frontier: dict[tuple[str, str], None] = {}
-        self.best = _Best(self.trap)
+        self.kin = kin
+        self.best = _Best(self.trap, kin)
         self.held: list[tuple[Goal | None, Plan]] = []  # a found plan ending in a trap
         self.root: dict[Goal, int] = {}
         self.unscored: list[Goal] = []
@@ -281,7 +292,7 @@ class _Run:
         self, scene: Scene, clock: Callable[[], float], time_s: float, max_nodes: int
     ) -> SearchResult:
         start = clock()
-        self.root = _distances(self.live, scene)
+        self.root = _distances(self.live, scene, self.kin)
         self.unscored = [g for g in self.live if g not in self.root]
         hit = _first_holding(self.live, scene)
         if self.holds(scene, hit):

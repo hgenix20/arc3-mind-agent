@@ -208,6 +208,7 @@ from arcagent.mind.goals import (
     mover_sigs,
 )
 from arcagent.mind.kinds import KindBook
+from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.modes import ModeTracker
 from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
@@ -483,6 +484,7 @@ class FluidAgent:
         self._plan_goal: Goal | None = None
         self._partial: SearchResult | None = None  # this move's best partial plan, if any
         self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
+        self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
         self._closest: dict[Goal, int] = {}  # lowest real distance per partial-plan goal, this life
         self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         # one (scene, raw grid) per distinct scene key this level
@@ -836,6 +838,7 @@ class FluidAgent:
 
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
         self._partial = None
+        self._kin = Kinematics(self.mem)  # this move's walks, shared with its searches
         self._note_closest(scene)
         probe = self._probe_choice(scene)
         return self._commit(scene, probe) if probe is not None else self._choose(obs, scene)
@@ -1030,7 +1033,7 @@ class FluidAgent:
     def _note_closest(self, scene: Scene) -> None:
         """Lower each partial-plan goal's closest distance this life to the real frame's."""
         for g, best in self._closest.items():
-            d = g.distance(scene)
+            d = g.distance(scene, None, self._kin)
             if d is not None and d < best:
                 self._closest[g] = d
 
@@ -1043,7 +1046,7 @@ class FluidAgent:
         goal, end = (None, None) if res is None else (res.best_goal, res.best_distance)
         if res is None or goal is None or end is None or not res.best:
             return None
-        now = goal.distance(scene)
+        now = goal.distance(scene, None, self._kin)
         if now is not None:
             self._closest[goal] = min(self._closest.get(goal, now), now)
         if end >= self._closest.get(goal, end + 1):
@@ -1084,6 +1087,7 @@ class FluidAgent:
             max_nodes=max_nodes,
             time_s=time_s,
             noop=self._known_noop(),
+            kin=self._kin,
         )
         self._log.event(
             "search",

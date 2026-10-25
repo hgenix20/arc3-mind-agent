@@ -37,6 +37,7 @@ from typing import Literal
 from arcagent.core.types import GRID_SIZE, Grid
 from arcagent.mind.facts import Effect, FactMemory, clicked_sig
 from arcagent.mind.kinds import base_sig
+from arcagent.mind.kinematics import Kinematics
 from arcagent.mind.objects import Scene, Thing
 
 GoalKind = Literal["reach", "clear", "match", "count"]
@@ -89,11 +90,15 @@ class Goal:
             case "match":
                 return grid is not None and _regions_equal(grid, self.region_a, self.region_b)
 
-    def distance(self, scene: Scene, grid: Grid | None = None) -> int | None:
+    def distance(
+        self, scene: Scene, grid: Grid | None = None, kin: Kinematics | None = None
+    ) -> int | None:
         """How far ``scene`` is from the goal; 0 exactly when ``holds``, None for no estimate.
 
-        ``reach``: 0 when it holds, else the Manhattan gap in cells between the bboxes of
-        the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1;
+        ``reach``: 0 when it holds; else, with ``kin``, the moves from ``a``'s top-left in
+        ``kin.field`` (built on the first scene it saw for this pair: a search's root),
+        when that is a positive number; else the Manhattan gap in cells between the bboxes
+        of the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1.
         None when either is missing. ``clear``: things of the color left. ``count``:
         ``abs(n - count)``. ``match``: mismatched cells; None without a grid or with
         regions that are off the board or of different sizes. Cell gaps ignore walls and
@@ -101,7 +106,12 @@ class Goal:
         """
         match self.kind:
             case "reach":
-                return _reach_distance(scene, self.a, self.b)
+                gap = _reach_distance(scene, self.a, self.b)
+                if not gap or kin is None:
+                    return gap
+                body = kin.body(scene, self.a)
+                moves = kin.field(scene, self.a, self.b).get((body.x, body.y)) if body else None
+                return moves if moves else gap
             case "clear":
                 return sum(1 for t in scene.things if t.color == self.color)
             case "count":
