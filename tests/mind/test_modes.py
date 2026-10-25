@@ -185,3 +185,13 @@ def test_a_twelve_cell_jump_keeps_its_offset_and_what_lies_between() -> None:
     ctx = selection_contexts(scene, click((22, 10)))
     assert ctx[run.id_at((10, 10))] == "selected:12,0"
     assert ctx[run.id_at((16, 10))] == "between:12,0"
+
+
+def test_any_cell_of_the_clicked_thing_gives_the_same_offset() -> None:
+    first = {(10, 10): 2} | {(22 + i, 10 + j): 5 for i in range(3) for j in range(3)}
+    run = Run(first)
+    scene = replace(run.scene, selected=frozenset({run.id_at((10, 10))}))
+    offsets = {
+        selection_contexts(scene, click(c))[run.id_at((10, 10))] for c in first if first[c] == 5
+    }
+    assert offsets == {"selected:13,1"}

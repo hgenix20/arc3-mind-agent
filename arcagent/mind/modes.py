@@ -88,8 +88,9 @@ def mode_contexts(scene: Scene, action: Action) -> dict[int, str]:
 def selection_contexts(scene: Scene, action: Action) -> dict[int, str]:
     """Contexts of a click made while a thing is selected (the lowest id if several).
 
-    With (dx, dy) the click point less the selected thing's click cell (``far`` past
-    ``SEL_RANGE``): the selected thing gets ``selected:dx,dy``, the clicked thing
+    With (dx, dy) the clicked thing's click cell (the click point when it hits nothing)
+    less the selected thing's click cell (``far`` past ``SEL_RANGE``), so every cell of one
+    target gives one context: the selected thing gets ``selected:dx,dy``, the clicked thing
     ``sel:dx,dy``, and things on the cells strictly between the two along a row, column or
     diagonal ``between:dx,dy``. Empty when nothing is selected or the action isn't a click.
     """
@@ -101,11 +102,12 @@ def selection_contexts(scene: Scene, action: Action) -> dict[int, str]:
     if sel is None:
         return {}
     sx, sy = click_cell(sel)
-    dx, dy = action.x - sx, action.y - sy
+    clicked = clicked_thing(scene, action)
+    px, py = click_cell(clicked) if clicked is not None else (action.x, action.y)
+    dx, dy = px - sx, py - sy
     near = max(abs(dx), abs(dy)) <= SEL_RANGE
     tag = f"{dx},{dy}" if near else "far"
     out = {sid: f"selected:{tag}"}
-    clicked = clicked_thing(scene, action)
     if clicked is not None and clicked.id != sid:
         out[clicked.id] = f"sel:{tag}"
     if near and (dx == 0 or dy == 0 or abs(dx) == abs(dy)):
