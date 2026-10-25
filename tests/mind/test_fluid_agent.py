@@ -1257,3 +1257,61 @@ def test_the_agent_learns_a_selection_marker_and_files_clicks_under_it(tmp_path:
     assert agent._modes.known  # pyright: ignore[reportPrivateUsage]
     assert f"c2:{DOT}" in agent.mem.selectable
     assert any(k[2].startswith(("selected:", "sel:")) for k in agent.mem.facts)
+
+
+def _peg_scenes() -> tuple[Scene, Scene, Any]:
+    """The peg row after a jump, and the start row: a two-thing change back to the start."""
+    start = {(10, 20): 2, (12, 20): 2, (14, 20): 3, (5, 20): 6}
+    jumped = {(10, 20): 3, (12, 20): 3, (14, 20): 2, (5, 20): 6}
+    t = Tracker()
+    first, _ = t.update(fake_grid(start), frozenset())
+    after_jump, _ = t.update(fake_grid(jumped), frozenset())
+    back, diff = t.update(fake_grid(start), frozenset())
+    return first, after_jump, (back, diff)
+
+
+def fake_grid(cells: dict[tuple[int, int], int]) -> Grid:
+    g = np.zeros((64, 64), dtype=np.int8)
+    for (x, y), c in cells.items():
+        g[y, x] = c
+    return g
+
+
+def test_a_return_to_the_start_picture_is_learned_as_a_level_reset(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    first, jumped, (back, diff) = _peg_scenes()
+    agent._start_key = first.key()  # pyright: ignore[reportPrivateUsage]
+    button = Action(6, 5, 20)
+    agent._note_reset(jumped, button, back, diff, 7)  # pyright: ignore[reportPrivateUsage]
+    fact = agent.mem.get((fluid.action_label(button, jumped), fluid.LEVEL, "any"))
+    assert fact is not None and fact.effects == (Effect("reset_level"),)
+    agent.close()
+
+
+def test_one_thing_stepping_back_to_the_start_is_not_a_reset(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    t = Tracker()
+    start, _ = t.update(fake_grid({(10, 10): 1}), frozenset())
+    moved, _ = t.update(fake_grid({(11, 10): 1}), frozenset())
+    back, diff = t.update(fake_grid({(10, 10): 1}), frozenset())
+    assert diff is not None
+    agent._start_key = start.key()  # pyright: ignore[reportPrivateUsage]
+    agent._note_reset(moved, Action(3), back, diff, 2)  # pyright: ignore[reportPrivateUsage]
+    assert agent.mem.get(("A3", fluid.LEVEL, "any")) is None
+    agent.close()
+
+
+def test_a_known_reset_is_refused_only_while_this_life_has_progress(tmp_path: Path) -> None:
+    agent = make_agent(tmp_path)
+    _, jumped, _ = _peg_scenes()
+    button = Action(6, 5, 20)
+    agent.mem.record(
+        (fluid.action_label(button, jumped), fluid.LEVEL, "any"), (Effect("reset_level"),), 0
+    )
+    assert agent._veto(jumped, button) != fluid.UNDOES_PROGRESS  # pyright: ignore[reportPrivateUsage]
+    goal = fluid.Goal("clear", color=2)
+    monitor = agent._progress  # pyright: ignore[reportPrivateUsage]
+    monitor.observe(("a",), {goal: 2}, active=goal)
+    monitor.observe(("b",), {goal: 1}, active=goal)
+    assert agent._veto(jumped, button) == fluid.UNDOES_PROGRESS  # pyright: ignore[reportPrivateUsage]
+    agent.close()

@@ -182,21 +182,9 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 ### Task 2.3: Progress monitor
 
-**Files:**
-- Create: `arcagent/mind/progress.py`
-- Modify: `arcagent/mind/fluid.py` (feed it each transition; log `progress` fields on the action record)
-- Test: `tests/mind/test_progress.py`
+**As built:** `arcagent/mind/progress.py` `ProgressMonitor` (verdicts `milestone`, `progress`, `regress`, `motion`, `none`; `progressed()`, `settled(goal)`, `best(goal)`, `reset_life`, `reset_level`; `MOTION_WINDOW = 12`, `SETTLE_MOVES = 6`, `REGRESS_SLACK = 2`). Bests are per life: a new attempt has to make its own progress. The agent measures the pursued goal, the confirmed forms and the first open goals (`PROGRESS_GOALS = 20`) each move, logs the verdict as `progress` on the action record, and lets novelty run only while fewer than `MOTION_CUT = 3` motion verdicts came in a row. A transition that changed two or more things and left the scene exactly as the attempt started records `(label, "level", "any") -> reset_level` (one thing stepping back is a step, not a reset); `_veto` refuses such an action with `undoes progress` while `progressed()`, and plan steps honor it.
 
-**Interfaces:**
-- Produces:
-  - `class ProgressMonitor`: `observe(key: SceneKey, distances: Mapping[Goal, int | None], level_up: bool) -> Verdict`; `reset_life()`; `reset_level()`; `best(goal) -> int | None` (lowest distance this level); `settled() -> bool` (the active goal's distance is 0, or `SETTLE_MOVES` moves changed nothing).
-  - `Verdict = Literal["progress", "motion", "regress", "milestone", "none"]`. `progress`: some open goal's distance fell below its best this life. `milestone`: a clear/count goal's remaining things fell and never came back within the level, or a level-up. `motion`: the scene key repeated within `MOTION_WINDOW` moves with no distance improved. `regress`: the active goal's distance rose by more than `REGRESS_SLACK`.
-  - `MOTION_WINDOW = 12`, `SETTLE_MOVES = 6`, `REGRESS_SLACK = 2`.
-
-- [ ] **Step 1: Failing tests.** `test_back_and_forth_is_motion`, `test_closer_to_target_is_progress`, `test_fewer_things_of_clear_color_is_milestone`, `test_level_reset_by_an_action_is_regress`, `test_settled_after_quiet_moves`.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement.**
-- [ ] **Step 4: Wire into `fluid.py`.** Two uses: (a) novelty moves stop after `motion` verdicts on 3 moves in a row (the novelty branch then yields to tests or fallback); (b) a new effect kind `reset_level` in `facts.py`, learned when an action returns the scene to the level's start key; `_veto` refuses an action with a solid `reset_level` fact while `ProgressMonitor.best(active) < root distance`, reason `"undoes progress"`. Test `test_reset_button_is_refused_after_progress` (a fake game with a reset button and a two-step goal).
-- [ ] **Step 5: Gates.** **Step 6: Commit** "Progress monitor; refuse actions that undo progress".
+- [x] Tests: `tests/mind/test_progress.py` (6), `test_a_return_to_the_start_picture_is_learned_as_a_level_reset`, `test_one_thing_stepping_back_to_the_start_is_not_a_reset`, `test_a_known_reset_is_refused_only_while_this_life_has_progress`.
 
 ### Task 2.4: Best-first search on goal distance
 

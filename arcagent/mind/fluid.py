@@ -190,9 +190,11 @@ from arcagent.mind.config import MindConfig
 from arcagent.mind.contract import PlanItem, Reply
 from arcagent.mind.facts import (
     SPAWN,
+    Effect,
     FactKey,
     FactMemory,
     Status,
+    action_label,
     cell_owner,
     clicked_sig,
     learn,
@@ -214,6 +216,7 @@ from arcagent.mind.noise import NoiseMask
 from arcagent.mind.objects import Cell, Scene, SceneDiff, Thing, Tracker, click_cell
 from arcagent.mind.perception import candidate_actions, frame_hash
 from arcagent.mind.predictor import Prediction, check, predict
+from arcagent.mind.progress import ProgressMonitor, Verdict
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SEARCH_MAX_NODES, SEARCH_TIME_S, PlanStep, SearchResult, search
 from arcagent.mind.tester import GAME_OVER, NO_EFFECT, Noop, Tried, question, test_key
@@ -225,12 +228,18 @@ STALL_AFTER = 2  # failed attempts at one goal in one level before it is set asi
 GOAL_SOURCE = "heuristic"  # slice 1 goals come from the heuristics in GoalBook.propose
 LLM_SOURCE = "llm"  # goals named by the executive turn
 SEEN_NO_EFFECT = "seen no effect here"  # this action changed nothing on this very scene
-_PLAN_VETOES = frozenset({GAME_OVER, NO_EFFECT, SEEN_NO_EFFECT})  # reasons a plan step honors
+UNDOES_PROGRESS = "undoes progress"  # a known level reset while this life has progress
+_PLAN_VETOES = frozenset(
+    {GAME_OVER, NO_EFFECT, SEEN_NO_EFFECT, UNDOES_PROGRESS}
+)  # reasons a plan step honors
 MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skipped
 NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
 NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
 PARTIAL_WHY = "toward"  # why prefix of a best-partial-plan step: ``toward <goal id>``
+MOTION_CUT = 3  # motion verdicts in a row after which novelty yields
+PROGRESS_GOALS = 20  # goals the progress monitor measures per move (pursued and forms first)
+LEVEL = "level"  # subject of a reset-level fact: (action label, LEVEL, "any")
 COMMIT_PROBES = 4  # most commit-probe moves on one reached goal
 COMMIT_MAX_CELLS = 16  # a commit-probe click target has at most this many cells
 FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
@@ -485,6 +494,10 @@ class FluidAgent:
         self._partial: SearchResult | None = None  # this move's best partial plan, if any
         self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
         self._kin = Kinematics(self.mem)  # rebuilt each move: walks read that move's scene
+        self._progress = ProgressMonitor()  # progress or motion, per life
+        self._verdict: Verdict = "none"  # this move's progress verdict
+        self._motion = 0  # motion verdicts in a row
+        self._start_key: tuple[tuple[str, int, int], ...] = ()  # the attempt's first scene
         self._closest: dict[Goal, int] = {}  # lowest real distance per partial-plan goal, this life
         self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         # one (scene, raw grid) per distinct scene key this level
@@ -571,6 +584,7 @@ class FluidAgent:
             entropy=len(self._frontier),
             wake=self._wake,
             active=None,
+            progress=self._verdict,
         )
         self._last_action = a
         if a.id == RESET_ID:
@@ -631,6 +645,7 @@ class FluidAgent:
         full = self._kinds.label(full)
         scene = _strip(full, self._noise.noisy_ids)
         self._keep(full, scene, obs.grid)
+        self._start_key = scene.key()
         self._fresh, self._pred = False, None
         self._prev_grid = None
         self._attempt_from = self._action_no
@@ -668,6 +683,8 @@ class FluidAgent:
     def _game_over(self, obs: Observation, move: int) -> None:
         self._tests_attempt = 0  # a new attempt gets its own test budget
         self._end_probe()
+        self._progress.reset_life()
+        self._motion = 0
         prev_full, action = self._last_full, self._last_action
         if not self._fresh and prev_full is not None and action is not None:
             full, diff = self._tracker.update(obs.grid, self._noise.cells)
@@ -705,6 +722,8 @@ class FluidAgent:
         after = self._pred.scene if self._pred is not None else None
         self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
         self._end_probe()  # a probing goal true before the win was just confirmed
+        self._progress.reset_level()
+        self._motion = 0
         self._log.event("level_up", step=move, level=obs.levels_completed)
         self._moves.append(f"{move} {_action_name(action, before)} -> level up")
         self._new_epoch()
@@ -766,6 +785,7 @@ class FluidAgent:
         broke = self._log_facts(keys, snap, move)
         if broke:
             self._notes.add("fact broken")
+        self._note_reset(before, action, after, _strip_diff(diff, noisy), move)
         self._changed.update(c.id for c in diff.changes if c.kind != "same")
         pred = self._pred
         hit = False
@@ -840,6 +860,7 @@ class FluidAgent:
         self._partial = None
         self._kin = Kinematics(self.mem)  # this move's walks, shared with its searches
         self._note_closest(scene)
+        self._note_progress(scene)
         probe = self._probe_choice(scene)
         return self._commit(scene, probe) if probe is not None else self._choose(obs, scene)
 
@@ -857,7 +878,9 @@ class FluidAgent:
         if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
             choice = self._test_choice(obs, scene)
         if choice is None and not late:
-            choice = self._partial_choice(scene) or self._novel_choice(scene)
+            choice = self._partial_choice(scene) or (
+                self._novel_choice(scene) if self._motion < MOTION_CUT else None
+            )
         if choice is None:
             if not late:
                 self._exclude_vetoed(obs, scene)
@@ -925,7 +948,14 @@ class FluidAgent:
         the Inhibition module's veto. The null module (an ablation) refuses nothing."""
         if (scene.key(), action.key()) in self._known_noop():
             return SEEN_NO_EFFECT
+        if self._resets(scene, action) and self._progress.progressed():
+            return UNDOES_PROGRESS
         return self.modules.inhibition.veto(scene, action, self.mem, self._tried)
+
+    def _resets(self, scene: Scene, action: Action) -> bool:
+        """Whether a non-broken fact says ``action`` puts the level back as it started."""
+        fact = self.mem.get((action_label(action, scene), LEVEL, "any"))
+        return fact is not None and fact.status != "broken"
 
     def _known_noop(self) -> Noop:
         """The no-op pairs vetoes and search use: none under the null Inhibition module."""
@@ -1029,6 +1059,30 @@ class FluidAgent:
                 x, y = self._clicks.cell(t)
                 out.append(Action(COORD_ACTION_ID, x, y))
         return out
+
+    def _note_progress(self, scene: Scene) -> None:
+        """Name this move with the progress monitor, over the pursued goal, the confirmed
+        forms and the first open goals (``PROGRESS_GOALS`` in all)."""
+        pursued = [self._plan_goal] if self._plan_goal is not None else []
+        goals = list(dict.fromkeys([*pursued, *self.goals.open()]))[:PROGRESS_GOALS]
+        dists = {g: g.distance(scene, self._last_grid, self._kin) for g in goals}
+        self._verdict = self._progress.observe(scene.key(), dists, active=self._plan_goal)
+        self._motion = self._motion + 1 if self._verdict == "motion" else 0
+
+    def _note_reset(
+        self, before: Scene, action: Action, after: Scene, diff: SceneDiff, move: int
+    ) -> None:
+        """An action that changed two or more things and left the scene exactly as this
+        attempt started puts the level back: record it (one thing moving back is a step)."""
+        changed = sum(1 for c in diff.changes if c.kind != "same")
+        if changed < 2 or not self._start_key or after.key() != self._start_key:
+            return
+        if before.key() == self._start_key:
+            return
+        key = (action_label(action, before), LEVEL, "any")
+        snap = self._statuses()
+        self.mem.record(key, (Effect("reset_level"),), move)
+        self._log_facts([key], snap, move)
 
     def _note_closest(self, scene: Scene) -> None:
         """Lower each partial-plan goal's closest distance this life to the real frame's."""

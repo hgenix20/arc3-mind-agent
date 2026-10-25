@@ -52,6 +52,7 @@ EffectKind = Literal[
     "none",
     "game_over",
     "level_up",
+    "reset_level",
 ]
 FactKey = tuple[str, str, str]  # (action label, subject, context)
 SPAWN = "spawn"  # subject of the per-action spawn fact (label, SPAWN, "any")
@@ -120,6 +121,8 @@ class Effect:
                 out = "ends the game"
             case "level_up":
                 out = "completes the level"
+            case "reset_level":
+                out = "puts the level back as it started"
         return out
 
 
@@ -185,6 +188,7 @@ _KIND_TAGS: dict[str, frozenset[str]] = {
     "appear": frozenset({"spawn"}),
     "game_over": frozenset({"die"}),
     "level_up": frozenset({"win"}),
+    "reset_level": frozenset({"reset"}),
     "teleport": frozenset({"teleport"}),
     "reshape": frozenset({"reshape"}),
 }
