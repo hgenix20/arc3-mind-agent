@@ -1073,3 +1073,14 @@ def test_settled_actions_do_not_make_a_move_forced(tmp_path: Path) -> None:
     agent._tried.update((scene.key(), Action(i).key()) for i in (1, 2, 3, 4))  # pyright: ignore[reportPrivateUsage]
     assert agent._forced(scene) is None  # pyright: ignore[reportPrivateUsage]
     agent.close()
+
+
+def test_search_cap_falls_back_to_the_best_partial_plan(tmp_path: Path) -> None:
+    game = FakeGame(player=(2, 2), target=(60, 60), walls=[], lava=[], win_levels=1)
+    agent = make_agent(tmp_path)
+    play(game, agent, max_steps=200)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    assert any(r["why"].startswith("toward reach") for r in acts)
+    assert game.levels == 1
+    assert not any(r["why"] == fluid.NOVEL_WHY for r in acts)

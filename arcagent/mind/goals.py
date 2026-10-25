@@ -80,6 +80,58 @@ class Goal:
             case "match":
                 return grid is not None and _regions_equal(grid, self.region_a, self.region_b)
 
+    def distance(self, scene: Scene, grid: Grid | None = None) -> int | None:
+        """How far ``scene`` is from the goal; 0 exactly when ``holds``, None for no estimate.
+
+        ``reach``: 0 when it holds, else the Manhattan gap in cells between the bboxes of
+        the nearest ``a`` and ``b`` less one (the last cell is the contact), at least 1;
+        None when either is missing. ``clear``: things of the color left. ``count``:
+        ``abs(n - count)``. ``match``: mismatched cells; None without a grid or with
+        regions that are off the board or of different sizes. Cell gaps ignore walls and
+        step sizes: a ranking of scenes, not a move count.
+        """
+        match self.kind:
+            case "reach":
+                return _reach_distance(scene, self.a, self.b)
+            case "clear":
+                return sum(1 for t in scene.things if t.color == self.color)
+            case "count":
+                return abs(self.n - sum(1 for t in scene.things if t.color == self.color))
+            case "match":
+                if grid is None:
+                    return None
+                return _mismatched(grid, self.region_a, self.region_b)
+
+
+def _reach_distance(scene: Scene, a: str, b: str) -> int | None:
+    mine = [t for t in scene.things if t.sig == a]
+    targets = [t for t in scene.things if t.sig == b]
+    if not mine or not targets:
+        return None
+    if _reaches(scene, a, b):
+        return 0
+    boxes = [(t, _bbox(t)) for t in mine]
+    best: int | None = None
+    for target in targets:
+        bx0, by0, bx1, by1 = _bbox(target)
+        for t, (ax0, ay0, ax1, ay1) in boxes:
+            if t is target:
+                continue
+            gap = max(0, bx0 - ax1, ax0 - bx1) + max(0, by0 - ay1, ay0 - by1)
+            best = gap if best is None else min(best, gap)
+    return None if best is None else max(1, best - 1)
+
+
+def _mismatched(grid: Grid, ra: Region, rb: Region) -> int | None:
+    for x0, y0, x1, y1 in (ra, rb):
+        if not (0 <= x0 < x1 <= grid.shape[1] and 0 <= y0 < y1 <= grid.shape[0]):
+            return None
+    ax0, ay0, ax1, ay1 = ra
+    bx0, by0, bx1, by1 = rb
+    if (ax1 - ax0, ay1 - ay0) != (bx1 - bx0, by1 - by0):
+        return None
+    return int((grid[ay0:ay1, ax0:ax1] != grid[by0:by1, bx0:bx1]).sum())
+
 
 def _bbox(t: Thing) -> tuple[int, int, int, int]:
     xs = [x for x, _ in t.cells]

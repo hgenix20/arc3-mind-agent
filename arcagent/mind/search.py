@@ -29,6 +29,14 @@ Branch rules:
   scene where it holds wins like a goal does, with ``SearchResult.goal`` None. Goals in
   ``goals`` are checked first on each scene.
 
+Anytime: every expanded scene is scored by ``Goal.distance`` against the root, per goal.
+``SearchResult.best`` is the plan to the scene that lowered some goal's distance the most
+(ties: the shorter plan, then the first found), with that goal and its distance there;
+empty when no scene lowered any. At each node count in ``SEARCH_SLICES`` the search
+notes the best plan's first action and distance; when that note is the same at
+``STABLE_SLICES`` boundaries in a row, the search stops with ``"stable"``: searching on
+isn't changing its answer. A search with no best never stops this way.
+
 Bounded two ways. ``max_nodes`` expansions (``predict`` calls) is the main bound: every
 game runs as a thread of one process, so a wall-clock budget would buy less search the
 more games share the GIL. ``time_s`` of wall clock (read from ``clock`` before every
@@ -51,8 +59,10 @@ from arcagent.mind.predictor import Prediction, predict
 
 SEARCH_MAX_NODES = 3000  # the main bound: predict calls per search
 SEARCH_TIME_S = 1.0  # wall-clock safety cap; shared with other game threads under the GIL
+SEARCH_SLICES = (500, 1000, 2000)  # node counts where the best plan is noted
+STABLE_SLICES = 2  # boundaries in a row with the same best plan that end the search
 
-Stop = Literal["found", "exhausted", "time", "nodes"]
+Stop = Literal["found", "exhausted", "time", "nodes", "stable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +80,8 @@ class SearchResult:
 
     ``frontier`` holds the unknown ``(label, subject)`` pairs met, by first meeting.
     ``depth`` is the plan length when found, else the deepest level expanded.
-    ``protected`` is the number of protected sigs the search used.
+    ``protected`` is the number of protected sigs the search used. ``best``,
+    ``best_goal`` and ``best_distance`` are the anytime answer (module docstring).
     """
 
     goal: Goal | None
@@ -80,6 +91,9 @@ class SearchResult:
     depth: int
     stop: Stop
     protected: int = 0
+    best: tuple[PlanStep, ...] = ()
+    best_goal: Goal | None = None
+    best_distance: int | None = None
 
 
 def protected_sigs(mem: FactMemory, goals: Sequence[Goal], scene: Scene) -> frozenset[str]:
@@ -92,6 +106,56 @@ def protected_sigs(mem: FactMemory, goals: Sequence[Goal], scene: Scene) -> froz
 
 def _first_holding(goals: Sequence[Goal], scene: Scene) -> Goal | None:
     return next((g for g in goals if g.holds(scene)), None)
+
+
+@dataclass(slots=True)
+class _Best:
+    """The anytime answer so far: goal, distance, plan, and the gain over the root."""
+
+    gain: int = 0
+    goal: Goal | None = None
+    distance: int | None = None
+    plan: tuple[PlanStep, ...] = ()
+
+    def offer(self, root: dict[Goal, int], scene: Scene, plan: tuple[PlanStep, ...]) -> Goal | None:
+        """Score ``scene`` per goal; return the first goal that holds there (distance 0)."""
+        hit: Goal | None = None
+        for g, r in root.items():
+            d = g.distance(scene)
+            if d is None:
+                continue
+            if d == 0 and hit is None:
+                hit = g
+            gain = r - d
+            if gain > self.gain or (gain == self.gain > 0 and len(plan) < len(self.plan)):
+                self.gain, self.goal, self.distance, self.plan = gain, g, d, plan
+        return hit
+
+    def note(self) -> tuple[tuple[int, int, int], int | None] | None:
+        return None if not self.plan else (self.plan[0].action.key(), self.distance)
+
+
+_Note = tuple[tuple[int, int, int], int | None] | None
+
+
+def _stable(notes: list[_Note], nodes: int, best: _Best) -> bool:
+    """At a ``SEARCH_SLICES`` boundary not yet noted, note ``best``; True when the last
+    ``STABLE_SLICES`` notes are the same non-empty one."""
+    if nodes not in SEARCH_SLICES or len(notes) > SEARCH_SLICES.index(nodes):
+        return False
+    notes.append(best.note())
+    last = notes[-STABLE_SLICES:]
+    return len(last) == STABLE_SLICES and last[0] is not None and len(set(last)) == 1
+
+
+def _distances(goals: Sequence[Goal], scene: Scene) -> dict[Goal, int]:
+    """Each goal's distance in ``scene``, in goal order; goals with no estimate left out."""
+    out: dict[Goal, int] = {}
+    for g in goals:
+        d = g.distance(scene)
+        if d is not None:
+            out[g] = d
+    return out
 
 
 def search(
@@ -126,6 +190,9 @@ def search(
         )
 
     frontier: dict[tuple[str, str], None] = {}
+    best = _Best()
+    root = _distances(live, scene)
+    unscored = [g for g in live if g not in root]
 
     def done(
         stop: Stop,
@@ -134,7 +201,18 @@ def search(
         goal: Goal | None = None,
         plan: tuple[PlanStep, ...] = (),
     ) -> SearchResult:
-        return SearchResult(goal, plan, tuple(frontier), nodes, depth, stop, len(protect))
+        return SearchResult(
+            goal,
+            plan,
+            tuple(frontier),
+            nodes,
+            depth,
+            stop,
+            len(protect),
+            best.plan,
+            best.goal,
+            best.distance,
+        )
 
     hit = _first_holding(live, scene)
     if hit is not None or (goal_test is not None and goal_test(scene)):
@@ -144,6 +222,7 @@ def search(
     queue: deque[tuple[Scene, tuple[PlanStep, ...]]] = deque([(scene, ())])
     nodes = 0
     deepest = 0
+    notes: list[_Note] = []
     while queue:
         current, plan = queue.popleft()
         deepest = max(deepest, len(plan))
@@ -156,6 +235,8 @@ def search(
                 return done("time", nodes, deepest)
             if nodes >= max_nodes:
                 return done("nodes", nodes, deepest)
+            if _stable(notes, nodes, best):
+                return done("stable", nodes, deepest)
             pred = predict(current, action, mem, assume_still=protect, spawns=False)
             nodes += 1
             if pred.scene is None:
@@ -169,7 +250,7 @@ def search(
                 continue
             seen.add(key)
             child = (*plan, PlanStep(action, pred))
-            goal = _first_holding(live, pred.scene)
+            goal = best.offer(root, pred.scene, child) or _first_holding(unscored, pred.scene)
             if goal is not None or (goal_test is not None and goal_test(pred.scene)):
                 return done("found", nodes, len(child), goal, child)
             queue.append((pred.scene, child))

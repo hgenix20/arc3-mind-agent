@@ -228,3 +228,31 @@ def test_seen_noop_pairs_are_not_expanded() -> None:
     noop = {(s.key(), Action(4).key())}  # A4 was seen to do nothing here (a wall)
     r = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], noop=noop)
     assert r.stop == "found" and r.plan[0].action.id != 4
+
+
+def test_cap_returns_best_partial_plan() -> None:
+    s = scene_of({(2, 2): 1, (40, 2): 4})
+    goal = reach(PSIG, TSIG)
+    r = search(s, simple_actions, moves((1, 2, 3, 4)), [goal], max_nodes=40)
+    assert r.stop == "nodes" and r.best and r.best_goal == goal
+    root = goal.distance(s)
+    assert root is not None and r.best_distance is not None and r.best_distance < root
+    end = r.best[-1].expect.scene
+    assert end is not None and goal.distance(end) == r.best_distance
+
+
+def test_stable_best_stops_early() -> None:
+    ring = {(x, y): 3 for x in range(28, 33) for y in (28, 32)}
+    ring |= {(x, y): 3 for x in (28, 32) for y in range(28, 33)}
+    s = scene_of({(20, 30): 1, (30, 30): 4} | ring)
+    mem = moves((1, 2, 3, 4))
+    mem.blockers[PSIG] = {3}
+    r = search(s, simple_actions, mem, [reach(PSIG, TSIG)])
+    assert r.stop == "stable" and r.nodes < SEARCH_MAX_NODES
+    assert r.best and r.best_distance == 2
+
+
+def test_no_progress_means_empty_best() -> None:
+    s = scene_of({(20, 2): 1, (40, 2): 4})
+    r = search(s, simple_actions, moves((3,)), [reach(PSIG, TSIG)], max_nodes=40)
+    assert r.best == () and r.best_goal is None and r.best_distance is None

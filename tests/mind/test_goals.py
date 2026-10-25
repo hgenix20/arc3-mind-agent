@@ -270,3 +270,47 @@ def test_level_up_confirms_a_goal_that_holds_only_in_the_predicted_winning_scene
     assert book.level_up(BASE) == []
     out = book.level_up(BASE, after=ON_T2)
     assert [g.b for g in out] == [T2SIG] and book.confirmed_forms[0].b == T2SIG
+
+
+def test_reach_distance_is_the_cell_gap_less_one() -> None:
+    goal = Goal("reach", a=PSIG, b=T1SIG)
+    assert goal.distance(BASE) == 19  # player at x=10, target from x=30
+    assert goal.distance(ON_T1) == 0
+    assert goal.distance(scene_of(T1, T2)) is None  # no player on screen
+
+
+def test_reach_distance_inside_a_ring_is_never_zero() -> None:
+    ring = {(x, y): 4 for x in range(20, 25) for y in range(20, 25)}
+    for x in range(21, 24):
+        for y in range(21, 24):
+            del ring[(x, y)]
+    scene = scene_of({(22, 22): 1}, ring)
+    assert Goal("reach", a=sig(scene, 1), b=sig(scene, 4)).distance(scene) == 1
+
+
+def test_clear_and_count_distances() -> None:
+    assert Goal("clear", color=4).distance(BASE) == 1
+    assert Goal("clear", color=8).distance(BASE) == 0
+    assert Goal("count", color=4, n=3).distance(BASE) == 2
+
+
+def test_match_distance_is_mismatched_cells() -> None:
+    g = grid_with({(0, 0): 3, (10, 10): 3})
+    goal = Goal("match", region_a=(0, 0, 2, 2), region_b=(10, 10, 12, 12))
+    assert goal.distance(BASE) is None
+    assert goal.distance(BASE, g) == 0
+    g[11, 11] = 5
+    g[0, 1] = 6
+    assert goal.distance(BASE, g) == 2
+    assert Goal("match", region_a=(0, 0, 2, 2), region_b=(0, 0, 3, 3)).distance(BASE, g) is None
+
+
+def test_distance_zero_iff_holds() -> None:
+    ring = {(x, y): 4 for x in range(20, 25) for y in range(20, 25)}
+    scenes = [BASE, ON_T1, ON_T2, scene_of({(29, 9): 1}, T1, T2), scene_of({(22, 19): 1}, ring)]
+    goals = [Goal("reach", a=PSIG, b=T1SIG), Goal("reach", a=PSIG, b=T2SIG)]
+    goals += [Goal("clear", color=c) for c in (4, 8)] + [Goal("count", color=4, n=1)]
+    for scene in scenes:
+        for goal in goals:
+            d = goal.distance(scene)
+            assert d is None or (d == 0) == goal.holds(scene), (goal.id(), d)

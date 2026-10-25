@@ -52,7 +52,12 @@ Per ``choose(obs)``, in order:
    frontier (branch ``learn``, why the test's question), unless this level attempt
    already made ``MAX_TESTS_PER_ATTEMPT`` test moves (the count restarts on a level
    change and on game over); then Voi is skipped.
-7. Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
+7. Else the goal search's best partial plan (``SearchResult.best``), when that search
+   found no plan: its first step is taken and the rest held as a plan toward its goal
+   (branch ``plan``, why ``toward <goal id>``), but only when it ends closer to the goal
+   than any real frame of this life has been, so walking back to a spot already reached
+   doesn't count. A refused step isn't a failed attempt.
+   Else novelty: ``search`` with no goals and one pseudo-goal (``goal_test``), "some
    controlled mover thing sits at a top-left its sig hasn't held on this level" (every
    ``(sig, x, y)`` of every scene seen this level counts as held; controlled per
    ``goals.controlled_sigs``, so an enemy that moves whatever the action doesn't
@@ -211,6 +216,7 @@ MAX_TESTS_PER_ATTEMPT = 200  # test moves per level attempt before Voi is skippe
 NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search's
 NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
+PARTIAL_WHY = "toward"  # why prefix of a best-partial-plan step: ``toward <goal id>``
 FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
@@ -451,6 +457,8 @@ class FluidAgent:
         self._pred: Prediction | None = None
         self._plan: list[PlanStep] = []
         self._plan_goal: Goal | None = None
+        self._partial: SearchResult | None = None  # this move's best partial plan, if any
+        self._closest: dict[Goal, int] = {}  # lowest real distance per partial-plan goal, this life
         self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         # one (scene, raw grid) per distinct scene key this level
         self._history: dict[tuple[tuple[str, int, int], ...], tuple[Scene, Grid]] = {}
@@ -558,6 +566,7 @@ class FluidAgent:
         self._llm_plan, self._llm_test, self._llm_step = [], None, False
         self._changed.clear()
         self._last_grid = None
+        self._closest.clear()
 
     def _mind_step(self, obs: Observation) -> _Choice:
         move = self._action_no - 1  # index of the move that produced obs
@@ -756,6 +765,8 @@ class FluidAgent:
 
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
         late = self._clock() >= self._deadline
+        self._partial = None
+        self._note_closest(scene)
         if self._plan and self._plan_goal not in self.goals.open():
             self._plan = []  # its goal was ruled out, excluded or stalled
         choice, llm_step = self._llm_choice(scene, late)
@@ -767,7 +778,7 @@ class FluidAgent:
         if choice is None and not late and self._tests_attempt < MAX_TESTS_PER_ATTEMPT:
             choice = self._test_choice(obs, scene)
         if choice is None and not late:
-            choice = self._novel_choice(scene)
+            choice = self._partial_choice(scene) or self._novel_choice(scene)
         if choice is None:
             if not late:
                 self._exclude_vetoed(obs, scene)
@@ -880,6 +891,7 @@ class FluidAgent:
             res = self._search_toward(scene, lambda _g: True)
         self._frontier = res.frontier
         if res.stop != "found" or not res.plan or res.goal is None:
+            self._partial = res if res.best and res.best_goal is not None else None
             return None
         first, *rest_steps = res.plan
         self._plan = list(rest_steps)
@@ -888,6 +900,36 @@ class FluidAgent:
         if choice is None:
             self._plan = []
             self.note_failed(res.goal)  # a vetoed first step is a failed attempt
+        return choice
+
+    def _note_closest(self, scene: Scene) -> None:
+        """Lower each partial-plan goal's closest distance this life to the real frame's."""
+        for g, best in self._closest.items():
+            d = g.distance(scene)
+            if d is not None and d < best:
+                self._closest[g] = d
+
+    def _partial_choice(self, scene: Scene) -> _Choice | None:
+        """The first step of this move's best partial plan (``SearchResult.best``), held as a
+        plan toward its goal. None without one, when it ends no closer to its goal than some
+        real frame of this life already was (motion, not progress), or when a plan veto
+        refuses the step; a refused step isn't a failed attempt at the goal."""
+        res = self._partial
+        goal, end = (None, None) if res is None else (res.best_goal, res.best_distance)
+        if res is None or goal is None or end is None or not res.best:
+            return None
+        now = goal.distance(scene)
+        if now is not None:
+            self._closest[goal] = min(self._closest.get(goal, now), now)
+        if end >= self._closest.get(goal, end + 1):
+            return None
+        first, *rest = res.best
+        self._plan, self._plan_goal = list(rest), goal
+        choice = self._offer(
+            scene, first.action, "plan", f"{PARTIAL_WHY} {goal.id()}", False, plan=True
+        )
+        if choice is None:
+            self._plan, self._plan_goal = [], None
         return choice
 
     def _search_toward(self, scene: Scene, keep: Callable[[Goal], bool]) -> SearchResult:
