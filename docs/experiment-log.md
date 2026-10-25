@@ -388,6 +388,9 @@ ar25, dc22 and m0r0 but plays slower wins. Logs: `bench/evals/2026-10-25-fluid-l
 | 2026-10-25 | ef4c9ca | forced-move without the doomed-life RESET and without the budget filter on goal ranking; same | 9 | 0.39 | lf52 298, ls20 lost; the twelve-goal cut still on |
 | 2026-10-25 | 9b0c53a | same, and search gets every open goal instead of the best twelve | 10 | 0.63 | merged (c2c71f1): cd82 (62), lf52 (19), lp85 (26), ls20 (60), r11l (15), sp80 (827), su15 (434), tn36 (15), vc33 x2 (117, 195); lost lp85's second level |
 | 2026-10-25 | 15fa5f2 | sequence goal and progress indicators; bump into a reached target (sequence steps and the commit probe); same, one run | 11 | 0.57 | merged (958bb21) on more levels: new sc25 (479); slower lp85 (26 to 88), ls20 (60 to 103), lf52 (19 to 22); the rest unchanged |
+| 2026-10-25 | e440d5b | match_thing goal (restyle families, stored reference picture, pinned reference); same, one run | 12 | 0.34 | merged on more levels: new ar25 (372), m0r0 (831); slower tn36 (15 to 3,219), cd82 (62 to 611); the rest unchanged |
+| 2026-10-25 | 2783b47 | main with the sequence and match_thing goals together; same, one run | 13 | 0.28 | main as it stands: ar25 (565), sc25 (409), m0r0 (831); tn36 still 3,219 and cd82 611 |
+| 2026-10-25 | 705e420 | main plus the route lock (`_route_choice`, `Kinematics.tour`, `_closer`); same, one run | 10 | 0.28 | not merged: loses ar25, cd82 and sc25; m0r0 faster (831 to 698) |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
