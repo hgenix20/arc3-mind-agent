@@ -17,21 +17,25 @@ the object, so a search builds it once from its root scene. Every walk visits at
 get an empty field, and goal distances fall back to cell gaps): a search may score up to
 200 goals, and the first ones (confirmed forms, the executive's) matter most. ``mover``
 names the one controlled thing when the agent knows it; ``Goal.distance`` then routes it
-through what a ``clear`` goal has left (``route.route``). Pure.
+through what a ``clear`` goal has left (``route.route``). ``tour`` walks it through a list
+of stops for real: the visiting order from ``route.route`` over walk distances, then the
+gaits of each leg, a leg ending where the body overlaps its stop. Pure.
 """
 
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from arcagent.core.types import GRID_SIZE
 from arcagent.mind.facts import FactMemory, cell_owner
 from arcagent.mind.objects import Cell, Scene, Thing, color_at
+from arcagent.mind.route import route
 
 KIN_LIMIT = 4096  # top-lefts visited per walk
 KIN_FIELDS = 8  # distance fields one Kinematics builds (one per move in the agent)
+TOUR_STOPS = 12  # most stops ``tour`` walks through (one walk per stop and leg)
 _NOT_GAITS = ("any", "event")
 _TOUCH = ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))
 
@@ -120,6 +124,96 @@ class Kinematics:
                 queue.append(there)
         return dist
 
+    def tree(
+        self, scene: Scene, name: str, start: Cell | None = None, *, limit: int = KIN_LIMIT
+    ) -> dict[Cell, tuple[Cell, Gait] | None]:
+        """Forward walk from ``start`` (the subject's place by default): each top-left
+        reached, with the top-left and gait it was first reached from (None at the start).
+        Breadth first, so following the links back gives a fewest-moves path. Empty when
+        the subject isn't on screen."""
+        body = self.body(scene, name)
+        if body is None:
+            return {}
+        return self._tree(
+            self._fits(scene, body, name), self.gaits(name), start or (body.x, body.y), limit
+        )
+
+    def _tree(
+        self, fits: Callable[[Cell], bool], gaits: Sequence[Gait], start: Cell, limit: int
+    ) -> dict[Cell, tuple[Cell, Gait] | None]:
+        links: dict[Cell, tuple[Cell, Gait] | None] = {start: None}
+        queue = deque([start])
+        while queue and len(links) < limit:
+            here = queue.popleft()
+            for g in gaits:
+                there = _step(here, g, fits)
+                if there is None or there in links:
+                    continue
+                links[there] = (here, g)
+                if len(links) >= limit:
+                    break
+                queue.append(there)
+        return links
+
+    def tour(
+        self, scene: Scene, name: str, stops: Sequence[frozenset[Cell]]
+    ) -> tuple[list[Gait], list[int]] | None:
+        """The subject's gaits through every stop and the order it visits them, shortest
+        order by walk distance (``route.route``, exact up to its ``ROUTE_EXACT`` stops). A
+        stop is reached when the body overlaps one of its cells. None when the subject is
+        missing, a stop can't be reached, or there are more than ``TOUR_STOPS``."""
+        body = self.body(scene, name)
+        if body is None or not stops or len(stops) > TOUR_STOPS:
+            return None
+        fits = self._fits(scene, body, name)
+        gaits = self.gaits(name)
+        offs = [(x - body.x, y - body.y) for x, y in body.cells]
+        stands = [{(cx - ox, cy - oy) for cx, cy in stop for ox, oy in offs} for stop in stops]
+        stands = [{tl for tl in st if fits(tl)} for st in stands]
+        if any(not st for st in stands):
+            return None
+        start = (body.x, body.y)
+        trees: dict[Cell, dict[Cell, tuple[Cell, Gait] | None]] = {}
+
+        def walk(src: Cell) -> dict[Cell, tuple[Cell, Gait] | None]:
+            if src not in trees:
+                trees[src] = self._tree(fits, gaits, src, KIN_LIMIT)
+            return trees[src]
+
+        def nearest(src: Cell, i: int) -> tuple[Cell, int] | None:
+            links = walk(src)
+            best: tuple[int, Cell] | None = None
+            for tl in sorted(stands[i]):
+                if tl in links:
+                    d = len(_path(links, tl))
+                    if best is None or d < best[0]:
+                        best = (d, tl)
+            return None if best is None else (best[1], best[0])
+
+        firsts = [nearest(start, i) for i in range(len(stops))]
+        if any(f is None for f in firsts):
+            return None
+        reps = [f[0] for f in firsts if f is not None]
+        index = {tl: i for i, tl in enumerate(reps)}
+
+        def dist(a: Cell, b: Cell) -> int | None:
+            found = nearest(a, index[b])
+            return None if found is None else found[1]
+
+        found = route(start, reps, dist)
+        if found is None:
+            return None
+        order = found[0]
+        steps: list[Gait] = []
+        here = start
+        for i in order:
+            leg = nearest(here, i)
+            if leg is None:
+                return None
+            steps += _path(walk(here), leg[0])
+            here = leg[0]
+        return steps, order
+
     def steps_to(self, scene: Scene, name: str, target: frozenset[Cell]) -> int | None:
         """Fewest moves until the subject's thing touches ``target``; None when unreachable."""
         body = self.body(scene, name)
@@ -181,6 +275,17 @@ def _open(scene: Scene, owner: dict[Cell, tuple[int, int]], stop: set[int], c: C
     if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE) or c in scene.blocked:
         return False
     return color_at(scene, owner, c) not in stop
+
+
+def _path(links: dict[Cell, tuple[Cell, Gait] | None], end: Cell) -> list[Gait]:
+    """The gaits from a tree's start to ``end`` (which must be in it)."""
+    out: list[Gait] = []
+    link = links[end]
+    while link is not None:
+        prev, g = link
+        out.append(g)
+        link = links[prev]
+    return out[::-1]
 
 
 def _touching(cells: frozenset[Cell]) -> set[Cell]:

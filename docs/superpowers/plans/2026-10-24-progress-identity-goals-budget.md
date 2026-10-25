@@ -513,6 +513,17 @@ Two fixes the test game exposed, in the same commit: the noise mask now masks a 
 
 - [x] Tests: `tests/mind/test_route.py` (exact beats greedy, matches brute force on six targets, the heuristic on fifteen, unreachable and empty), `test_clear_distance_with_a_mover_adds_the_route_through_what_is_left`.
 
+**Route lock, built 2026-10-25 (Kameron's go):**
+- **The walk:** `Kinematics.tree` (a breadth-first forward walk with links back, so a path is fewest moves) and `Kinematics.tour(scene, name, stops)`. The tour takes the visiting order from `route.route` over walk distances (exact up to `ROUTE_EXACT`), then each leg's gaits; a leg ends where the body overlaps its stop. At most `TOUR_STOPS = 12` stops.
+- **The lock:** `FluidAgent._route_choice` runs when search finds no plan. For the first `ROUTE_GOALS = 5` open goals, a `clear` goal with two or more things left, a known lone mover and a walk that fits the moves left gets the walk as its plan (branch `plan`, why `route <goal id>`, event `route`). Each step is predicted from the one before; the plan ends before the first step with no prediction or a predicted game over.
+- **A fix the toy game needed:** a broken plan no longer counts as a failed attempt when its goal got closer (`_closer`: the goal's distance without walks fell). A coin taken early is progress the prediction missed. Before, two pickups stalled the goal.
+
+In `CoinGame` (eight coins around two walls with gaps, the clear goal seeded because vanishing on contact never became a fact there) the agent takes every coin in 485 moves with the lock and in 1,027 without it (both with the `_closer` fix).
+
+Open: coins that vanish on contact don't become a disappear fact (the coin's solid "no change" fact absorbs the miss), so a collect game gets no `clear` goal of its own.
+
+- [x] Tests: `test_tree_gives_a_fewest_moves_path_around_a_wall`, `test_tour_visits_every_stop_in_the_shortest_order`, `test_a_locked_route_collects_every_coin`.
+
 **Section gate:** paired offline A/B. Watch actions per won level on budget games and the count of `doomed life` resets.
 
 ---

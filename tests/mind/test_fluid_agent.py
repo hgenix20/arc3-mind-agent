@@ -1518,3 +1518,66 @@ def test_the_agent_restyles_a_piece_to_match_a_reference(tmp_path: Path) -> None
     assert game.phase == Phase.WIN
     assert any(g.kind == "match_thing" for g in agent.goals.status)
     assert game.level_moves[1] <= 4  # the cycle is known: two presses, a few moves at most
+
+
+class CoinGame:
+    """A player (color 1, one cell) and coins (color 4) spread around two walls (color 8)
+    with gaps. Stepping onto a coin takes it; the last coin wins. Arrows 1 to 4."""
+
+    COINS: ClassVar[tuple[tuple[int, int], ...]] = (
+        (4, 6),
+        (30, 8),
+        (58, 6),
+        (8, 56),
+        (34, 50),
+        (58, 58),
+        (20, 30),
+        (46, 30),
+    )
+
+    def __init__(self) -> None:
+        self.player = (32, 32)
+        self.coins = set(self.COINS)
+        self.walls = {(16, y) for y in range(64) if not 28 <= y <= 34}
+        self.walls |= {(48, y) for y in range(64) if not 28 <= y <= 34}
+        self.levels = 0
+        self.moves = 0
+        self.phase = Phase.NOT_FINISHED
+
+    def observe(self) -> Observation:
+        g = np.zeros((64, 64), dtype=np.int8)
+        for x, y in self.walls:
+            g[y, x] = 8
+        for x, y in self.coins:
+            g[y, x] = 4
+        g[self.player[1], self.player[0]] = 1
+        return Observation(g, self.phase, self.levels, 1, (0, 1, 2, 3, 4))
+
+    def step(self, action: Action) -> Observation:
+        moves = {1: (0, -1), 2: (0, 1), 3: (-1, 0), 4: (1, 0)}
+        if self.phase != Phase.NOT_FINISHED or action.id not in moves:
+            return self.observe()
+        self.moves += 1
+        dx, dy = moves[action.id]
+        x, y = self.player[0] + dx, self.player[1] + dy
+        if 0 <= x < 64 and 0 <= y < 64 and (x, y) not in self.walls:
+            self.player = (x, y)
+            self.coins.discard((x, y))
+            if not self.coins:
+                self.levels, self.phase = 1, Phase.WIN
+        return self.observe()
+
+
+def test_a_locked_route_collects_every_coin(tmp_path: Path) -> None:
+    # Coins vanishing on contact never become a fact here, so the clear goal is seeded
+    # (in real runs it comes from a disappear fact or the executive). Each pickup breaks
+    # the plan (the prediction kept the coin) without counting as a failure, and the
+    # route is locked again from there. Without the lock this takes about 1,000 moves.
+    game = CoinGame()
+    agent = make_agent(tmp_path)
+    agent.goals.status[fluid.Goal("clear", color=4)] = "open"
+    play(game, agent, max_steps=700)
+    agent.close()
+    assert game.phase == Phase.WIN
+    routes = [r for r in records(tmp_path) if r["type"] == "route"]
+    assert routes and 2 <= routes[0]["stops"] <= len(CoinGame.COINS)
