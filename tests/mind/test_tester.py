@@ -207,6 +207,22 @@ def test_reshaped_thing_with_a_fact_under_its_earlier_shape_is_not_open() -> Non
     assert choose_test(s, [Action(1)], mem, [], set(), None) is None
 
 
+def test_the_restyle_that_made_a_look_does_not_settle_the_new_look() -> None:
+    # A5 turned the thing from color 2 to color 3. Borrowed for the color-3 look, that fact
+    # predicts no change, which can't tell an action that sets color 3 from one that cycles
+    # colors: the new look gets its own test, once.
+    s = scene_of({(10, 10): 1, (20, 20): 3})
+    thing = next(t for t in s.things if t.color == 3)
+    mem = mem_moves((1,))
+    know(mem, "A5", SIG_A, Effect("recolor", color=3))
+    know(mem, "A5", PSIG, Effect("none"))
+    mem.kin[thing.id] = [SIG_A, thing.sig]
+    test = choose_test(s, [Action(5)], mem, [], set(), None)
+    assert test is not None and test.action == Action(5)
+    know(mem, "A5", SIG_B, Effect("recolor", color=4))
+    assert choose_test(s, [Action(5)], mem, [], set(), None) is None
+
+
 def test_broken_fact_under_the_earlier_shape_keeps_the_pair_open() -> None:
     s = scene_of({(10, 10): 1, (20, 20): 2, (21, 20): 2})
     bar = next(t for t in s.things if t.color == 2)
