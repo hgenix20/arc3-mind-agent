@@ -303,3 +303,20 @@ def test_best_partial_plan_never_ends_in_a_trap() -> None:
     player = next(t for t in end.things if t.sig == PSIG)
     assert (player.x, player.y) == (4, 2)
     assert not is_trap(end, down_right, mem, frozenset({PSIG, TSIG}))
+
+
+def test_best_first_finds_a_far_target_that_breadth_first_runs_out_on() -> None:
+    s = scene_of({(2, 2): 1, (40, 40): 4})
+    mem, goal = moves((1, 2, 3, 4)), reach(PSIG, TSIG)
+    wide = search(s, simple_actions, mem, [goal], weight=0.0)  # breadth-first order
+    assert wide.stop != "found"
+    deep = search(s, simple_actions, mem, [goal])
+    assert deep.stop == "found" and deep.nodes < SEARCH_MAX_NODES
+    assert len(deep.plan) == 38 + 37  # the plan is still a shortest one here
+
+
+def test_without_distances_search_is_breadth_first() -> None:
+    s = scene_of({(2, 2): 1, (6, 2): 4})
+    a = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)], weight=0.0)
+    b = search(s, simple_actions, moves((1, 2, 3, 4)), [reach(PSIG, TSIG)])
+    assert [x.action.id for x in a.plan] == [x.action.id for x in b.plan] == [4, 4, 4]

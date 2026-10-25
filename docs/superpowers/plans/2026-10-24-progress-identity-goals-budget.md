@@ -188,18 +188,9 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 ### Task 2.4: Best-first search on goal distance
 
-**Files:**
-- Modify: `arcagent/mind/search.py`
-- Test: `tests/mind/test_search.py`
+**As built:** the queue is a heap ordered by `len(plan) + weight * h` (`h` the lowest goal distance in the scene, 0 when none), ties to the lower `h`, then queue order; `HEURISTIC_WEIGHT = 1.0`, `search(..., weight=)`. The tie to lower `h` matters: with an exact distance, about 1,400 scenes tie on priority for a far target, and queue order alone explores them breadth-first. With `weight=0` or no distances the search goes level by level as before. A scene too long to beat a held trap plan is skipped instead of ending the search.
 
-**Interfaces:**
-- Consumes: `Goal.distance`, `Kinematics`.
-- Produces: `search(..., kin: Kinematics | None = None, weight: float = HEURISTIC_WEIGHT)`. Priority `len(plan) + weight * h`, `h` = min distance over live goals, ties by insertion order. `HEURISTIC_WEIGHT = 1.0` (admissible enough for reach, where steps are exact; clear counts are under-estimates). With every `h` None, the order is breadth-first and results equal today's.
-
-- [ ] **Step 1: Failing tests.**
-  - `test_best_first_finds_deep_clear_plan_within_cap`: a click board with 50 targets where clearing takes 6 clicks, each click removing one thing. With `max_nodes=3000`, breadth-first doesn't find it (assert on the old path with `kin=None` and goals without distance), best-first does.
-  - `test_without_distance_search_is_breadth_first`: every existing `test_search.py` case passes unchanged, and a case with `distance` returning None gives the same plan as before.
-- [ ] **Step 2: Run, expect FAIL.** **Step 3: Implement** with `heapq` and a counter tiebreak. **Step 4: Gates.** **Step 5: Commit** "Best-first search on goal distance".
+- [x] Tests: `test_best_first_finds_a_far_target_that_breadth_first_runs_out_on` (75 moves found under the cap; breadth-first order runs out), `test_without_distances_search_is_breadth_first`; `test_search_cap_falls_back_to_the_best_partial_plan` now forces breadth-first order, since best-first finds that plan whole.
 
 **Section gate:** paired offline A/B. Watch lf52 level 2 (`search` events should show `found` again after move 40), novelty share on wa30 and ls20, and `undoes progress` vetoes.
 

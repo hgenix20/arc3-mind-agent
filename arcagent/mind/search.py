@@ -1,9 +1,14 @@
-"""Short breadth-first search over predicted scenes toward goal guesses.
+"""Short best-first search over predicted scenes toward goal guesses.
 
 ``search`` expands the scene with every action the caller offers, using ``predict`` to
-build each child. The first scene where any goal holds wins, so the plan has the fewest
-predicted moves. The root is checked first: a goal that already holds there returns with
-an empty plan.
+build each child. Scenes are expanded in order of ``len(plan) + weight * h``, where ``h``
+is the lowest ``Goal.distance`` over the goals in that scene (0 when none has one), ties
+to the lower ``h`` and then in the order they were queued. With ``weight=0`` or no
+distances, scenes go level by level as in breadth-first search, and the first scene where
+a goal holds has the fewest predicted moves. With
+distances, the search runs toward the nearest goal first and the plan is short but not
+always the shortest. The root is checked first: a goal that already holds there returns
+with an empty plan.
 
 Branch rules:
 
@@ -41,7 +46,9 @@ Quiescence: a scene where every action the caller offers is predicted to end the
 a trap (``is_trap``). A plan whose end scene is a trap isn't returned at once: the search
 keeps going for a plan whose end isn't a trap, at most ``QUIESCENCE_PLIES`` moves longer,
 and returns the trap plan only when none turns up (or a bound stops the search first). The
-best partial plan never ends in a trap. A leaf next to a death color isn't a trap by
+best partial plan never ends in a trap. Plans come off the queue in priority order, not
+length order, so a scene too long to beat a held trap plan is skipped, not a stop. A leaf
+next to a death color isn't a trap by
 itself: the move back is usually safe, and vetoes refuse the deadly moves. Slides can't be
 caught mid-way: the predictor resolves each to where it stops.
 
@@ -53,8 +60,8 @@ expansion) is only a safety cap. Pure apart from the clock.
 
 from __future__ import annotations
 
+import heapq
 import time
-from collections import deque
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -71,6 +78,7 @@ SEARCH_TIME_S = 1.0  # wall-clock safety cap; shared with other game threads und
 SEARCH_SLICES = (500, 1000, 2000)  # node counts where the best plan is noted
 STABLE_SLICES = 2  # boundaries in a row with the same best plan that end the search
 QUIESCENCE_PLIES = 2  # extra moves a safe plan may take over a plan ending in a trap
+HEURISTIC_WEIGHT = 1.0  # weight of the goal distance in the best-first priority
 
 Stop = Literal["found", "exhausted", "time", "nodes", "stable"]
 
@@ -148,20 +156,25 @@ class _Best:
     distance: int | None = None
     plan: tuple[PlanStep, ...] = ()
 
-    def offer(self, root: dict[Goal, int], scene: Scene, plan: tuple[PlanStep, ...]) -> Goal | None:
-        """Score ``scene`` per goal; return the first goal that holds there (distance 0)."""
+    def offer(
+        self, root: dict[Goal, int], scene: Scene, plan: tuple[PlanStep, ...]
+    ) -> tuple[Goal | None, int | None]:
+        """Score ``scene`` per goal; return the first goal that holds there (distance 0)
+        and the lowest distance of any goal."""
         hit: Goal | None = None
+        low: int | None = None
         for g, r in root.items():
             d = g.distance(scene, None, self.kin)
             if d is None:
                 continue
+            low = d if low is None else min(low, d)
             if d == 0 and hit is None:
                 hit = g
             gain = r - d
             better = gain > self.gain or (gain == self.gain > 0 and len(plan) < len(self.plan))
             if better and not self.trap(scene):
                 self.gain, self.goal, self.distance, self.plan = gain, g, d, plan
-        return hit
+        return hit, low
 
     def note(self) -> tuple[tuple[int, int, int], int | None] | None:
         return None if not self.plan else (self.plan[0].action.key(), self.distance)
@@ -205,6 +218,7 @@ def search(
     goal_test: Callable[[Scene], bool] | None = None,
     noop: Collection[tuple[tuple[tuple[str, int, int], ...], tuple[int, int, int]]] = (),
     kin: Kinematics | None = None,
+    weight: float = HEURISTIC_WEIGHT,
 ) -> SearchResult:
     """Breadth-first search from ``scene`` for the shortest plan that makes a goal hold.
 
@@ -219,10 +233,12 @@ def search(
     live = [g for g in goals if g.kind != "match"]
     protect = protected_sigs(mem, live, scene) if assume_still is None else assume_still
     run = _Run(actions, mem, live, protect, goal_test=goal_test, noop=frozenset(noop), kin=kin)
+    run.weight = weight
     return run.run(scene, clock, time_s, max_nodes)
 
 
 Plan = tuple[PlanStep, ...]
+Queue = list[tuple[float, int, int, Scene, Plan]]  # (priority, h, queued, scene, plan)
 
 
 class _Run:
@@ -251,6 +267,8 @@ class _Run:
         self.seen: set[tuple[tuple[str, int, int], ...]] = set()
         self.nodes = 0
         self.deepest = 0
+        self.weight = HEURISTIC_WEIGHT
+        self.queued = 0  # tiebreak: the order scenes were queued in
 
     def trap(self, s: Scene) -> bool:
         return is_trap(s, self.actions, self.mem, self.protect)
@@ -298,12 +316,13 @@ class _Run:
         if self.holds(scene, hit):
             return self.done("found", hit)
         self.seen.add(self.key_of(scene))
-        queue: deque[tuple[Scene, Plan]] = deque([(scene, ())])
+        queue: Queue = []
+        self.push(queue, scene, (), min(self.root.values(), default=None))
         notes: list[_Note] = []
         while queue:
-            current, plan = queue.popleft()
+            *_, current, plan = heapq.heappop(queue)
             if self.held and len(plan) >= len(self.held[0][1]) + QUIESCENCE_PLIES:
-                break  # no safe plan within the extra plies: ``done`` returns the held one
+                continue  # can't beat the held trap plan within the extra plies
             self.deepest = max(self.deepest, len(plan))
             full_key = current.key() if self.noop else ()
             for action in self.actions(current):
@@ -320,8 +339,14 @@ class _Run:
                     return found
         return self.done("exhausted")
 
+    def push(self, queue: Queue, scene: Scene, plan: Plan, h: int | None) -> None:
+        """Queue a scene at priority ``len(plan) + weight * h``, ties to the lower ``h``."""
+        self.queued += 1
+        low = h or 0
+        heapq.heappush(queue, (len(plan) + self.weight * low, low, self.queued, scene, plan))
+
     def _expand(
-        self, current: Scene, plan: Plan, action: Action, queue: deque[tuple[Scene, Plan]]
+        self, current: Scene, plan: Plan, action: Action, queue: Queue
     ) -> SearchResult | None:
         """Predict one child; queue it, hold it (a trap goal), or return it as found."""
         pred = predict(current, action, self.mem, assume_still=self.protect, spawns=False)
@@ -335,11 +360,10 @@ class _Run:
             return None
         self.seen.add(key)
         child = (*plan, PlanStep(action, pred))
-        goal = self.best.offer(self.root, pred.scene, child) or _first_holding(
-            self.unscored, pred.scene
-        )
+        goal, low = self.best.offer(self.root, pred.scene, child)
+        goal = goal or _first_holding(self.unscored, pred.scene)
         if not self.holds(pred.scene, goal):
-            queue.append((pred.scene, child))
+            self.push(queue, pred.scene, child, low)
         elif not self.trap(pred.scene):
             return self.done("found", goal, child)
         elif not self.held:

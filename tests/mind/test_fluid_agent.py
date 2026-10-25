@@ -1075,7 +1075,13 @@ def test_settled_actions_do_not_make_a_move_forced(tmp_path: Path) -> None:
     agent.close()
 
 
-def test_search_cap_falls_back_to_the_best_partial_plan(tmp_path: Path) -> None:
+def test_search_cap_falls_back_to_the_best_partial_plan(tmp_path: Path, monkeypatch: Any) -> None:
+    real = fluid.search
+
+    def breadth_first(*a: Any, **k: Any) -> Any:  # best-first would find the whole plan
+        return real(*a, **{**k, "weight": 0.0})
+
+    monkeypatch.setattr(fluid, "search", breadth_first)
     game = FakeGame(player=(2, 2), target=(60, 60), walls=[], lava=[], win_levels=1)
     agent = make_agent(tmp_path)
     play(game, agent, max_steps=200)
