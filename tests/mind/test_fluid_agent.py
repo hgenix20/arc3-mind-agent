@@ -1084,3 +1084,78 @@ def test_search_cap_falls_back_to_the_best_partial_plan(tmp_path: Path) -> None:
     assert any(r["why"].startswith("toward reach") for r in acts)
     assert game.levels == 1
     assert not any(r["why"] == fluid.NOVEL_WHY for r in acts)
+
+
+class CommitGame(FakeGame):
+    """Standing next to the target doesn't win; A5 there does (A5 elsewhere does nothing).
+
+    ``commits=False`` makes A5 do nothing anywhere."""
+
+    def __init__(self, *, commits: bool = True) -> None:
+        super().__init__(player=(2, 2), target=(6, 2), walls=[], lava=[], win_levels=1)
+        self.commits = commits
+
+    def observe(self) -> Observation:
+        return replace(super().observe(), available_actions=(0, 1, 2, 3, 4, 5, 6))
+
+    def _next_to_target(self) -> bool:
+        return abs(self.player[0] - self.target[0]) + abs(self.player[1] - self.target[1]) == 1
+
+    def step(self, action: Action) -> Observation:
+        if action.id == 5 and self.commits and self._next_to_target():
+            self.steps += 1
+            self.levels = 1
+            self.phase = Phase.WIN
+            return self.observe()
+        if action.id in (1, 2, 3, 4):
+            dx, dy = {1: (0, -1), 2: (0, 1), 3: (-1, 0), 4: (1, 0)}[action.id]
+            nxt = (self.player[0] + dx, self.player[1] + dy)
+            if nxt != self.target and 0 <= nxt[0] < 64 and 0 <= nxt[1] < 64:
+                self.steps += 1
+                self.player = nxt
+                return self.observe()
+        self.steps += 1
+        return self.observe()
+
+
+def a5_does_nothing(agent: fluid.FluidAgent) -> None:
+    """Solid facts that A5 changes nothing: the usual state of a commit action that only
+    works in the winning state, which the agent learned elsewhere."""
+    for sig in (PSIG, TSIG):
+        for move in range(5):
+            agent.mem.record(("A5", sig, "any"), (Effect("none"),), move)
+
+
+def test_goal_holding_without_level_up_triggers_commit_probe(tmp_path: Path) -> None:
+    game = CommitGame()
+    agent = make_agent(tmp_path)
+    a5_does_nothing(agent)
+    play(game, agent, max_steps=120)
+    agent.choose(game.observe())  # the winning frame: the agent sees the level-up
+    agent.close()
+    assert game.levels == 1
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    win = acts[-2]  # the last action is the reply to the winning frame
+    assert win["branch"] == "commit" and win["action"][0] == 5
+    assert any(r["type"] == "commit_probe" for r in records(tmp_path))
+    goal = fluid.Goal("reach", a=PSIG, b=TSIG)
+    assert agent.goals.status[goal] == "confirmed"
+
+
+def test_commit_probe_is_bounded(tmp_path: Path, monkeypatch: Any) -> None:
+    game = CommitGame(commits=False)
+    agent = make_agent(tmp_path)
+    a5_does_nothing(agent)
+    clicks = [Action(6, 40 + i, 40) for i in range(10)]  # empty cells: nothing changes
+
+    def many(_scene: Scene) -> list[Action]:
+        return [Action(5), *clicks]
+
+    monkeypatch.setattr(agent, "_commit_candidates", many)
+    play(game, agent, max_steps=80)
+    agent.close()
+    acts = [r for r in records(tmp_path) if r["type"] == "action"]
+    probes = [i for i, r in enumerate(acts) if r["branch"] == "commit"]
+    assert 0 < len(probes) <= fluid.COMMIT_PROBES
+    assert probes == list(range(probes[0], probes[0] + len(probes)))  # one run, no repeat
+    assert agent.goals.status[fluid.Goal("reach", a=PSIG, b=TSIG)] == "excluded"

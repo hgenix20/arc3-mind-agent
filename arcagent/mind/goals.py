@@ -10,7 +10,10 @@ next level as the first hypothesis. Only open goals change status, and ``propose
 every goal already in ``status``, so a refuted guess is not re-proposed within a game and
 a confirmed form is never excluded. A goal whose plans keep failing is ``stalled``
 (``stall``, called by the agent after repeated failed attempts in one level) and ``open``
-leaves it out; ``reopen_stalled`` puts it back in play on a level change. A confirmed form
+leaves it out; ``reopen_stalled`` puts it back in play on a level change. An open goal
+the agent was pursuing that holds without a level-up can be set ``probing``
+(``start_probe``) while the agent tries actions that might commit it; ``open`` leaves it
+out, a level-up confirms it, and ``end_probe`` excludes it. A confirmed form
 can stall too, for the rest of its level.
 
 Slice 1 proposes only ``reach`` and ``clear`` (see ``GoalBook.propose``). ``match`` and
@@ -31,7 +34,7 @@ from arcagent.mind.facts import Effect, FactMemory, clicked_sig
 from arcagent.mind.objects import Scene, Thing
 
 GoalKind = Literal["reach", "clear", "match", "count"]
-GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled"]
+GoalStatus = Literal["open", "ruled_out", "excluded", "confirmed", "stalled", "probing"]
 Region = tuple[int, int, int, int]  # (x0, y0, x1, y1), end exclusive
 
 MAX_TARGET_AREA = GRID_SIZE * GRID_SIZE // 4  # bigger things are backgrounds or walls
@@ -339,21 +342,33 @@ class GoalBook:
     def level_up(
         self, before: Scene, grid: Grid | None = None, *, after: Scene | None = None
     ) -> list[Goal]:
-        """Open goals true in the frame before a level-up (raw ``grid``) become confirmed.
+        """Open or probing goals true in the frame before a level-up (raw ``grid``) become
+        confirmed.
 
         The frame a winning move returns already shows the next level, so the winning
         state is never seen. ``after``, the predicted outcome of that move, stands in for
         it: open goals true there are confirmed too.
         """
-        out = [
-            g
-            for g in self._open_goals()
-            if g.holds(before, grid) or (after is not None and g.holds(after))
-        ]
+        live = [g for g, s in self.status.items() if s in ("open", "probing")]
+        out = [g for g in live if g.holds(before, grid) or (after is not None and g.holds(after))]
         for g in out:
             self.status[g] = "confirmed"
             if g not in self.confirmed_forms:
                 self.confirmed_forms.append(g)
+        return out
+
+    def start_probe(self, goal: Goal) -> bool:
+        """Set an open goal ``probing``; True when it was open."""
+        if self.status.get(goal) != "open":
+            return False
+        self.status[goal] = "probing"
+        return True
+
+    def end_probe(self) -> list[Goal]:
+        """Exclude every probing goal (no commit worked); return them in order."""
+        out = [g for g, s in self.status.items() if s == "probing"]
+        for g in out:
+            self.status[g] = "excluded"
         return out
 
     def stall(self, goal: Goal) -> bool:

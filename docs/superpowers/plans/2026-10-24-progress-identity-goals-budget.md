@@ -148,20 +148,16 @@ The branch has `NoiseMask.new_attempt()` documented and tested, but `FluidAgent.
 
 ### Task 1.4: Commit probe when a goal holds and no level-up came
 
+**As built:** the draft read `ProgressMonitor.settled()` (Task 2.3, not built yet). The trigger is the event itself: the goal of the plan being followed (found or partial) is open and holds on a real frame with no level-up. Only the pursued goal triggers it; a reach guess that becomes true by accident doesn't, or probes would cost moves all the time.
+
 **Files:**
-- Modify: `arcagent/mind/fluid.py`, `arcagent/mind/goals.py`
-- Test: `tests/mind/test_fluid_agent.py`
+- Modify: `arcagent/mind/fluid.py` (`_start_probe`, `_probe_choice`, `_commit`, `_commit_candidates`, `_end_probe`; `_decide` split into `_decide` and `_choose`), `arcagent/mind/goals.py` (status `probing`, `start_probe`, `end_probe`; `level_up` confirms probing goals), `arcagent/mind/types.py` (branch `commit`)
+- Test: `tests/mind/test_fluid_agent.py`, `tests/mind/test_goals.py`
 
 **Interfaces:**
-- Consumes: `ProgressMonitor.settled() -> bool` (Task 2.3).
-- Produces: `GoalBook.probe_commit(goal) -> None` status path: a goal that holds without a level-up goes to a new status `"probing"` before `"excluded"`; constants `COMMIT_PROBES = 4`. Log event `commit_probe` with the action and outcome.
+- Produces: `COMMIT_PROBES = 4`, `COMMIT_MAX_CELLS = 16`; branch `commit`, event `commit_probe`, goal event status `probing`. Candidates: A5 when offered, then clicks on small non-mover things whose color is unique on screen, fewest cells first, each once. Probes skip the `known no effect` veto (a commit shows nothing until the winning state) and honor `predicted game_over` and `seen no effect here`. A level-up confirms the goal; any other end (scene changed, candidates spent, game over) excludes it.
 
-- [ ] **Step 1: Failing tests.**
-  - `test_goal_holding_without_level_up_triggers_commit_probe`: a fake game whose level needs A5 after the target state. Assert the agent's next action is A5 (branch `commit`) and the level completes.
-  - `test_commit_probe_is_bounded`: no commit action works. Assert at most `COMMIT_PROBES` probe moves, then the goal is `excluded` as today.
-- [ ] **Step 2: Run, expect FAIL.**
-- [ ] **Step 3: Implement.** Candidates, cheapest first: A5 when available; then clicks on small things that never moved, that no fact explains and that aren't masked (the paper's high-salience tier: few cells, isolated, a color unique on screen). Each candidate once per state. A probe that changes the state without a level-up ends the probe.
-- [ ] **Step 4: Gates.** **Step 5: Commit** "Probe commit actions when a goal holds without a level-up".
+- [x] Tests: `test_goal_holding_without_level_up_triggers_commit_probe` (A5 known to do nothing, wins only next to the target), `test_commit_probe_is_bounded`, `test_probing_goal_leaves_open_and_is_confirmed_or_excluded`.
 
 **Section gate:** paired offline A/B against the section-2 result. Watch tn36 (should win earlier) and the `forced`/`stable` counts in the logs.
 

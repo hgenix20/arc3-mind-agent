@@ -314,3 +314,15 @@ def test_distance_zero_iff_holds() -> None:
         for goal in goals:
             d = goal.distance(scene)
             assert d is None or (d == 0) == goal.holds(scene), (goal.id(), d)
+
+
+def test_probing_goal_leaves_open_and_is_confirmed_or_excluded() -> None:
+    book = GoalBook()
+    book.propose(BASE, mover_memory(), source="t")
+    goal = Goal("reach", a=PSIG, b=T1SIG)
+    assert book.start_probe(goal) and goal not in book.open()
+    assert not book.start_probe(goal)  # only an open goal can start probing
+    assert book.level_up(ON_T1) == [goal] and book.status[goal] == "confirmed"
+    other = Goal("reach", a=PSIG, b=T2SIG)
+    book.start_probe(other)
+    assert book.end_probe() == [other] and book.status[other] == "excluded"

@@ -24,7 +24,15 @@ Per ``choose(obs)``, in order:
 3. Otherwise update tracker and noise, strip noisy things from both scenes and the
    diff, ``learn`` from the transition and ``check`` the previous prediction (its
    misses feed only the log and the plan stop; ``learn`` charges facts itself). Then
-   ``goals.note_reached`` on the new scene.
+   ``goals.note_reached`` on the new scene. Just before, if the goal of the plan being
+   followed (a found or a partial plan) is open and holds with no level-up, it is set
+   ``probing`` instead of excluded, the plan ends, and a commit probe starts: while the
+   scene stays the same, the next moves (branch ``commit``, event ``commit_probe``) try
+   A5, then clicks on small non-mover things whose color is unique on screen, each once,
+   at most ``COMMIT_PROBES``. They skip the ``known no effect`` veto, since a commit shows
+   nothing until the winning state, but honor a predicted game over and a no-op seen on
+   this scene. A level-up confirms the goal; a probe that ends any other way (the scene
+   changed, no candidate left, game over) excludes it.
 4. A plan stops only on a miss that matters (``plan_breaks``): a missed or newly broken
    fact about a mover sig or one of the plan goal's sigs (``self`` and ``any`` subjects
    count; spawn and other side objects don't), or a mover that ended somewhere other
@@ -217,6 +225,8 @@ NOVEL_NODES = SEARCH_MAX_NODES // 2  # novelty search caps: half the goal search
 NOVEL_TIME_S = SEARCH_TIME_S / 2
 NOVEL_WHY = "explore novel"  # the why of a novelty fallback move (branch ``plan``)
 PARTIAL_WHY = "toward"  # why prefix of a best-partial-plan step: ``toward <goal id>``
+COMMIT_PROBES = 4  # most commit-probe moves on one reached goal
+COMMIT_MAX_CELLS = 16  # a commit-probe click target has at most this many cells
 FORCED_WHY = "only move left"  # the why of a forced move (branch ``forced``)
 _EMPTY_DIFF = SceneDiff((), 0)
 
@@ -389,6 +399,15 @@ def _run_turn(chat: VisionChat, inp: TurnInput, seed: int) -> tuple[Reply, float
     return reply, time.perf_counter() - t0
 
 
+@dataclass(slots=True)
+class _Probe:
+    """Commit probing of a reached goal: the scene key it holds on, the actions tried."""
+
+    goal: Goal
+    key: tuple[tuple[str, int, int], ...]
+    tried: set[tuple[int, int, int]]
+
+
 class _Clicks:
     """One click cell per thing: the cell nearest its centroid, cached by shape."""
 
@@ -458,6 +477,7 @@ class FluidAgent:
         self._plan: list[PlanStep] = []
         self._plan_goal: Goal | None = None
         self._partial: SearchResult | None = None  # this move's best partial plan, if any
+        self._probe: _Probe | None = None  # a goal reached with no level-up, being committed
         self._closest: dict[Goal, int] = {}  # lowest real distance per partial-plan goal, this life
         self._failed: dict[Goal, int] = {}  # failed plan attempts per goal, this level
         # one (scene, raw grid) per distinct scene key this level
@@ -636,6 +656,7 @@ class FluidAgent:
 
     def _game_over(self, obs: Observation, move: int) -> None:
         self._tests_attempt = 0  # a new attempt gets its own test budget
+        self._end_probe()
         prev_full, action = self._last_full, self._last_action
         if not self._fresh and prev_full is not None and action is not None:
             full, diff = self._tracker.update(obs.grid, self._noise.cells)
@@ -671,6 +692,7 @@ class FluidAgent:
         self._log_facts(keys, snap, move)
         after = self._pred.scene if self._pred is not None else None
         self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
+        self._end_probe()  # a probing goal true before the win was just confirmed
         self._log.event("level_up", step=move, level=obs.levels_completed)
         self._moves.append(f"{move} {_action_name(action, before)} -> level up")
         self._new_epoch()
@@ -735,8 +757,25 @@ class FluidAgent:
             tag = "predicted" if hit else "unpredicted"
             what = _outcome(_strip_diff(diff, noisy), before_s)
             self._moves.append(f"{move} {_action_name(action, before_s)} -> {what} ({tag})")
+        self._start_probe(after, obs.grid)
         self._log_goals(self.goals.note_reached(after, obs.grid), "excluded")
         return after
+
+    def _start_probe(self, after: Scene, grid: Grid) -> None:
+        """The pursued goal holds with no level-up: set it probing (instead of excluded)."""
+        goal = self._plan_goal
+        if goal is None or self.goals.status.get(goal) != "open" or not goal.holds(after, grid):
+            return
+        self._end_probe()
+        self.goals.start_probe(goal)
+        self._probe = _Probe(goal, after.key(), set())
+        self._plan = []
+        self._log_goals([goal], "probing")
+
+    def _end_probe(self) -> None:
+        """Stop probing; a goal still probing is excluded."""
+        self._probe = None
+        self._log_goals(self.goals.end_probe(), "excluded")
 
     def _check_plan(
         self, pred: Prediction, before: Scene, after: Scene, keys: list[FactKey], grid: Grid
@@ -764,9 +803,14 @@ class FluidAgent:
     # -- deciding ------------------------------------------------------------
 
     def _decide(self, obs: Observation, scene: Scene) -> _Choice:
-        late = self._clock() >= self._deadline
         self._partial = None
         self._note_closest(scene)
+        probe = self._probe_choice(scene)
+        return self._commit(scene, probe) if probe is not None else self._choose(obs, scene)
+
+    def _choose(self, obs: Observation, scene: Scene) -> _Choice:
+        """Every branch but a commit probe, in the order of the module docstring."""
+        late = self._clock() >= self._deadline
         if self._plan and self._plan_goal not in self.goals.open():
             self._plan = []  # its goal was ruled out, excluded or stalled
         choice, llm_step = self._llm_choice(scene, late)
@@ -901,6 +945,55 @@ class FluidAgent:
             self._plan = []
             self.note_failed(res.goal)  # a vetoed first step is a failed attempt
         return choice
+
+    def _probe_choice(self, scene: Scene) -> _Choice | None:
+        """The next commit-probe action, or None (ending any probe that is over).
+
+        A probe is over when the scene moved off the goal state, ``COMMIT_PROBES`` moves
+        were spent, or no candidate is left. Candidates skip the ``known no effect`` veto
+        (a commit action shows nothing until the winning state) but not a predicted game
+        over or a no-op seen on this very scene.
+        """
+        probe = self._probe
+        if probe is None:
+            return None
+        if scene.key() == probe.key and len(probe.tried) < COMMIT_PROBES:
+            for action in self._commit_candidates(scene):
+                if action.key() in probe.tried:
+                    continue
+                if self._veto(scene, action) in (GAME_OVER, SEEN_NO_EFFECT):
+                    continue
+                probe.tried.add(action.key())
+                return _Choice(action, "commit", f"commit probe {probe.goal.id()}")
+        self._end_probe()
+        return None
+
+    def _commit(self, scene: Scene, choice: _Choice) -> _Choice:
+        """Take a commit-probe move: logged, tried, predicted like a test."""
+        a = choice.action
+        self._log.event("commit_probe", step=self._action_no, action=[a.id, a.x, a.y])
+        self._tried.add((scene.key(), a.key()))
+        self._plan_goal, self._llm_step = None, False
+        self._pred = predict(scene, a, self.mem)
+        self._used_level.update(self._pred.used)
+        return choice
+
+    def _commit_candidates(self, scene: Scene) -> list[Action]:
+        """A5 when offered, then clicks on small non-mover things whose color no other thing
+        on screen has, fewest cells first."""
+        out = [a for a in self._simple if a.id == 5]
+        if self._can_click:
+            movers = mover_sigs(self.mem)
+            colors = Counter(t.color for t in scene.things)
+            small = [
+                t
+                for t in scene.things
+                if len(t.cells) <= COMMIT_MAX_CELLS and t.sig not in movers and colors[t.color] == 1
+            ]
+            for t in sorted(small, key=lambda t: (len(t.cells), t.id)):
+                x, y = self._clicks.cell(t)
+                out.append(Action(COORD_ACTION_ID, x, y))
+        return out
 
     def _note_closest(self, scene: Scene) -> None:
         """Lower each partial-plan goal's closest distance this life to the real frame's."""
