@@ -347,6 +347,7 @@ Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
 |---|---|---|---|---|---|
 | 2026-10-24 | a3c123b | Kaggle eval v4 of `arc3-mind-agent`, FLUID-LLM full build (slices 1 to 3), 25 games, scaled budget | 5 | 0.38 | scorecard 0.3774, 6,247 s, 0 errors; levels on r11l (4.76), lp85 (2.78), lf52 (1.82), tn36 (0.07), ft09 (0.005); 30 sleeps; hit rate 0.89; rule reuse 0.02; 593 tests per level |
 | 2026-10-25 | f2288a1 | Kaggle eval v5 of `arc3-mind-agent`, FLUID-LLM after the forced-move merge, 25 games, scaled budget | 14 | 0.43 | scorecard 0.4464, 6,246 s, 0 errors; prediction accuracy 0.92; levels on ar25 x2 (211, 399), lp85 x2 (7, 1,890), cd82 (1,065), dc22 (1,035), lf52 (149), ls20 (44), m0r0 (95), r11l (29), sp80 (1,189), su15 (628), tn36 (11), vc33 (120); submitted 2026-10-25 (submission 57637984, Kameron's go) |
+| 2026-10-26 | ea4e8b4 (llm-drive, before the review fixes) | Kaggle eval v7 of `arc3-mind-agent`, DRIVE (the LLM drives, code plays plans out in its model), 25 games, scaled budget | 8 | 0.46 | scorecard 0.4555, 6,249 s, 0 errors; levels on r11l (4.76), tn36 (3.57), lp85 (2.78), ka59 (0.17), ar25 (0.08), m0r0, sp80, vc33; 1,753 turns; moves 21,069 fallback, 7,124 sim, 511 experiment; 0 claims seeded in every game; 11 tool fixes tried, 1 adopted (sp80) |
 
 v4 and v3 are one run each, and 0.38 against 0.41 is inside run to run
 variation. The cap of 200 tests per attempt didn't change the test count,
@@ -357,6 +358,12 @@ Logs: `bench/evals/2026-10-24-fluid-llm-v4/`.
 v4 (submission 57588171) scored 0.23 on the leaderboard. v5 is main at f2288a1 with the
 LLM on; offline without it that code scored 10 levels and 0.63, so the LLM adds levels on
 ar25, dc22 and m0r0 but plays slower wins. Logs: `bench/evals/2026-10-25-fluid-llm-v5/`.
+v7 ran the DRIVE build from before the review fix pass. Its score is v5's, and for a
+plain reason: no LLM fact ever reached the model. Qwen sent `facts` as one object instead
+of a list in 1,638 of 1,640 replies and wrote ids as `"#3"`, and the parser dropped both,
+so play-out had only observed facts and most moves fell through to slice-1 fallback.
+2f90da9 reads a lone object as a list of one and integers written as strings; kernel v8 is
+d9f726e's review fixes plus that. Logs: `bench/evals/2026-10-26-drive-v7/`.
 
 ## Open items
 
