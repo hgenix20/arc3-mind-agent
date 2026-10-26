@@ -220,3 +220,28 @@ def test_move_claim_needs_an_object() -> None:
     r = parse_reply(text, SCENE, AVAIL)
     assert r.claims == (FactClaim("A2", "any", (Effect("none"),)),)
     assert r.dropped == ("fact: a move names its object",)
+
+
+def test_colors_in_screen_notation_cover_and_no_change_parse() -> None:
+    text = json.dumps(
+        {
+            "facts": [
+                {"action": "click #4", "object": 4, "effect": "recolor", "color": "c9"},
+                {"action": "A2", "object": "any", "effect": "no change"},
+            ],
+            "goals": [{"kind": "clear", "color": "c11"}, {"kind": "cover", "a": 1, "b": 4}],
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    x, y = click_cell(SCENE.things[1])
+    assert r.claims == (
+        FactClaim(
+            action_label(Action(6, x, y), SCENE), SCENE.things[1].sig, (Effect("recolor", color=9),)
+        ),
+        FactClaim("A2", "any", (Effect("none"),)),
+    )
+    assert r.goals == (
+        Goal("clear", color=11),
+        Goal("reach", a=SCENE.things[0].sig, b=SCENE.things[1].sig),
+    )
+    assert r.dropped == ()

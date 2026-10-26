@@ -24,7 +24,8 @@ Contract (``parse_reply``, never raises):
   (a Python function, run only in the tools worker) to ``MAX_RULE_CHARS``.
 - Lenient where the model is sloppy but clear: a lone object where ``goals``, ``plan`` or
   ``facts`` wants a list counts as a list of one, and an integer may be written as a
-  string (``"3"``, ``"#3"`` for an id).
+  string (``"3"``, ``"#3"`` for an id, ``"c11"`` for a color as the screen text writes
+  it), ``cover`` is ``reach``, and the effect ``no change`` is ``none``.
 - Unknown keys are ignored.
 """
 
@@ -49,6 +50,8 @@ _MAX_TEXT = 300
 _ACTION_RE = re.compile(r"^A([1-7])$")
 _CLICK_RE = re.compile(r"^click\s*#\s*(\d{1,6})$", re.IGNORECASE)
 _INT_RE = re.compile(r"^#?\s*(-?\d{1,6})$")
+_COLOR_RE = re.compile(r"^c?(\d{1,2})$", re.IGNORECASE)
+_NONE_WORDS = frozenset({"no change", "no_change", "nothing", "no effect"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +107,14 @@ def _int(v: object) -> int | None:
     return None
 
 
+def _color(v: object) -> int | None:
+    """A color 0..15 as an integer or as the screen text writes it (``c11``)."""
+    if isinstance(v, str) and (m := _COLOR_RE.match(v.strip())):
+        v = int(m.group(1))
+    c = _int(v)
+    return c if c is not None and 0 <= c <= 15 else None
+
+
 def _as_list(raw: object) -> object:
     """A lone object where a list belongs counts as a list of one."""
     return [raw] if isinstance(raw, dict) else raw
@@ -137,8 +148,8 @@ def _reach(g: dict[str, Any], by_id: dict[int, Thing]) -> Goal | str:
 
 
 def _color_goal(kind: str, g: dict[str, Any]) -> Goal | str:
-    color = _int(g.get("color"))
-    if color is None or not 0 <= color <= 15:
+    color = _color(g.get("color"))
+    if color is None:
         return f"{kind} needs a color 0..15"
     if kind == "clear":
         return Goal("clear", color=color)
@@ -161,7 +172,7 @@ def _goal(raw: object, by_id: dict[int, Thing]) -> Goal | str:
         return "goal is not an object"
     g: dict[str, Any] = raw  # pyright: ignore[reportUnknownVariableType]
     kind = g.get("kind")
-    if kind == "reach":
+    if kind in ("reach", "cover"):  # cover: a ends on b, which reach already means
         return _reach(g, by_id)
     if kind in ("clear", "count"):
         return _color_goal(kind, g)
@@ -254,14 +265,16 @@ def _plan(
 
 def _effect(f: dict[str, Any]) -> Effect | str:
     kind = f.get("effect")
+    if isinstance(kind, str) and kind.strip().lower() in _NONE_WORDS:
+        kind = "none"
     if kind == "move":
         dx, dy = _int(f.get("dx", 0)), _int(f.get("dy", 0))
         if dx is None or dy is None or (dx, dy) == (0, 0):
             return "move needs integer dx, dy, not both 0"
         return Effect("move", dx, dy)
     if kind == "recolor":
-        color = _int(f.get("color"))
-        if color is None or not 0 <= color <= 15:
+        color = _color(f.get("color"))
+        if color is None:
             return "recolor needs a color 0..15"
         return Effect("recolor", color=color)
     if kind in ("none", "disappear", "game_over", "level_up"):
