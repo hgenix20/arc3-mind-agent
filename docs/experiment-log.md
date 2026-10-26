@@ -395,6 +395,7 @@ ar25, dc22 and m0r0 but plays slower wins. Logs: `bench/evals/2026-10-25-fluid-l
 | 2026-10-25 | 4c6f4be | composite pieces (Section 7: decorations on a sprite's rim join it, selection shown by use, SEL_RANGE 16); same, one run | 13 | 0.05 | not merged: r11l 15 to 91 and lf52 22 to 771 sink the score; sc25 409 to 123, cd82 611 to 416, tn36 3,219 to 1,785; before the click-cell offset fix (76433c1) |
 | 2026-10-25 | e0d371c | search without match_thing pins first, pinned pass only if nothing is found; same, one run | 11 | 0.42 | merged on score: tn36 3,219 to 13; loses ar25 (main's 565 rides on a pinning side effect at move 315) and sc25 (409); the rest unchanged |
 | 2026-10-25 | 4bd5735 | composite pieces with the recurrence rule (a piece look shows twice) and click-cell offsets, on the old main; same, one run | 11 | 0.21 | not merged: r11l back to 15, but lf52 190 (main 22), tn36 and sc25 lost; lf52 still burns its opening on sequence tries (slot rows look like an indicator) and records jumps under scattered offsets (clicks land on marker fragments) |
+| 2026-10-26 | a5b76d7 | composite pieces shelved on Kameron's call; branch composite-pieces kept as is. Kaggle v6 pushed from main a5b76d7 (pin-fallback, sequence, match_thing) | | | public score pending |
 
 One run each under wall-clock caps. The first two rows are within noise; the
 drop in tests is the effect that fix was for.
