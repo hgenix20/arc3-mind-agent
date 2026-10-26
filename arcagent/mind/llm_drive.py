@@ -12,10 +12,11 @@ Modes, one per real move (counted and logged in ``drive_end``):
   move, B0) taken because no turn could run (none due, timed out, turns off, late).
 
 Turns (changes from the fluid executive):
-- No per-level or per-game caps and no spacing. A turn may start until ``DRIVE_CUTOFF``
+- No per-level or per-game caps. A turn may start until ``DRIVE_CUTOFF``
   of the game's budget is left; it waits up to ``DRIVE_TURN_S`` for the reply.
 - A slice 1 choice that isn't modeled wakes the LLM (``no modeled move``) whatever the
-  other rules say, so the LLM picks experiments, not the tester. Only ``FORCED_WAKES``
+  other rules say (after ``DRIVE_GAP_MOVES`` unmodeled moves since the last turn, which
+  the agent's own policy plays), so the LLM picks experiments. Only ``FORCED_WAKES``
   wake while a modeled move remains.
 - The prompt carries the LLM's own model text from its last reply.
 
@@ -66,6 +67,10 @@ DRIVE_MAX_TOKENS = 4096  # per drive or fix turn (2048 cut 4% of turns, most fix
 DRIVE_CUTOFF = 0.1  # no turn starts with less than this share of the game's budget left
 RULE_S = 2.0  # deadline per rule call in the tools worker
 DRIVE_BACKOFF_MOVES = 5  # moves without a turn after one timed out (level start excepted)
+# Unmodeled moves the agent's own policy must have played since the last turn before a
+# turn for no modeled move (v10 woke on every one: 2.7 moves a turn, 81% of moves after
+# the last turn).
+DRIVE_GAP_MOVES = 5
 NO_MODELED_MOVE = "no modeled move"
 EXPERIMENT_RESULT = "experiment result"
 # Wakes that run even while a modeled plan holds: the LLM looks before a level's first
@@ -108,6 +113,7 @@ class DriveAgent(FluidAgent):
         self._case: tuple[bytes, SearchResult] | None = None  # the followed plan's search
         self._cur_llm = False  # whether this move's choice is an LLM plan step
         self._quiet_until = 0  # no turn before this move after a timeout
+        self._loose = DRIVE_GAP_MOVES  # unmodeled moves since the last turn
 
     # -- tools ----------------------------------------------------------------
 
@@ -219,7 +225,10 @@ class DriveAgent(FluidAgent):
         if choice.test is not None and choice.why.startswith("llm test"):
             self._force = EXPERIMENT_RESULT
             return "experiment"
-        return "sim" if modeled(choice) else "fallback"
+        if modeled(choice):
+            return "sim"
+        self._loose += 1
+        return "fallback"
 
     def _search(
         self, scene: Scene, goals: list[Goal], goal_test: Any = None, **kwargs: Any
@@ -250,7 +259,7 @@ class DriveAgent(FluidAgent):
         forced = next((r for r in FORCED_WAKES if r in self._pending), None)
         if forced is not None:
             return forced
-        if self._cur_llm or modeled(choice):
+        if self._cur_llm or modeled(choice) or self._loose < DRIVE_GAP_MOVES:
             return None
         if self._chat is not None:
             self._pending.add(NO_MODELED_MOVE)
@@ -276,6 +285,7 @@ class DriveAgent(FluidAgent):
         self._stretch_from = self._action_no
         inp = self._turn_input(obs, scene, reason)
         self._pending.clear()
+        self._loose = 0
         self._wake_text = ""
         self._log.event("wake", step=self._action_no, reason=reason)
         self._wake = reason

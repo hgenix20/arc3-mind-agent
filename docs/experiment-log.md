@@ -350,6 +350,7 @@ Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
 | 2026-10-26 | ea4e8b4 (llm-drive, before the review fixes) | Kaggle eval v7 of `arc3-mind-agent`, DRIVE (the LLM drives, code plays plans out in its model), 25 games, scaled budget | 8 | 0.46 | scorecard 0.4555, 6,249 s, 0 errors; levels on r11l (4.76), tn36 (3.57), lp85 (2.78), ka59 (0.17), ar25 (0.08), m0r0, sp80, vc33; 1,753 turns; moves 18,285 fallback, 7,003 sim, 422 experiment; 0 claims seeded in every game; 11 tool fixes tried, 1 adopted (sp80) |
 | 2026-10-26 | 2f90da9 | Kaggle eval v8, DRIVE with the review fixes and lenient reply parsing, 25 games, scaled budget | 8 | 0.31 | scorecard 0.3060, 6,247 s, 0 errors; levels on tn36 (3.57), lp85 (2.78), r11l (0.85), su15 (0.26), ar25 (0.10), cn04, m0r0, vc33; 1,500 turns, mean 29.6 s; 550 claims seeded; moves 14,947 fallback, 3,271 sim, 271 experiment |
 | 2026-10-26 | 6386c35 | Kaggle eval v9, DRIVE with JSON-only replies, a 4,096-token cap and more reply spellings, 25 games, scaled budget | 8 | 0.52 | scorecard 0.5194, 6,248 s, 0 errors; levels on tn36 (3.57), lp85 (2.78), m0r0 (2.12), lf52 (1.82), ls20 (1.59), r11l (0.73), ar25 (0.37), vc33; 1,488 turns, mean 27.9 s; 642 claims seeded; moves 13,265 fallback, 6,542 sim, 210 experiment |
+| 2026-10-26 | fea771b | Kaggle eval v10, DRIVE with wakes only on level start and game over while a modeled move remains, run-on plans and claims replaced by observation, 25 games, scaled budget | 11 | 0.53 | scorecard 0.5329, 6,247 s, 0 errors; levels on vc33 (2, 4.03), tn36 (3.57), lp85 (2, 2.78), m0r0 (1.01), ar25 (0.53), ls20 (0.50), cd82 (0.33), r11l (0.12), lf52 (0.03); 1,626 turns, mean 26.0 s; 622 claims seeded; moves 17,326 fallback, 5,333 sim, 210 experiment |
 
 v4 and v3 are one run each, and 0.38 against 0.41 is inside run to run
 variation. The cap of 200 tests per attempt didn't change the test count,
@@ -383,6 +384,13 @@ the prose. Sim moves doubled to 6,542. Misses still drove the wakes (601 of
 1,517), which c17cf7d removes. The parser still drops a lot: 837 move facts with no
 object, 830 reach goals aimed "off screen", and effects spelled `disappears` or
 `blocked`, which now parse. Logs: `bench/evals/2026-10-26-drive-v9/`.
+
+v10 reached 11 levels and 0.53, the best DRIVE run so far, and was merged to main. Wake
+labels still read "miss that matters" because a wake names its top pending reason; the
+trigger was no modeled move. That trigger is now the limit: 2.7 moves a turn, and 18,760
+of 23,156 moves came after a game's last turn. Every level the LLM stretch won came in its
+first 140 moves. The next build (DRIVE_GAP_MOVES = 5) lets the agent's own policy play 5
+unmodeled moves before a turn for no modeled move. Logs: `bench/evals/2026-10-26-drive-v10/`.
 
 ## Open items
 

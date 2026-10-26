@@ -86,7 +86,8 @@ def test_level_start_turn_before_first_move(tmp_path: Path) -> None:
     assert "Your model so far:\n(none yet)" in seen[0]
 
 
-def test_model_text_carried_to_next_turn(tmp_path: Path) -> None:
+def test_model_text_carried_to_next_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_drive, "DRIVE_GAP_MOVES", 0)
     seen: list[str] = []
     agent = make(tmp_path, chat_of(lambda _p: {"model": "A4 moves me right"}, seen))
     play(FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[]), agent, max_steps=3)
@@ -94,7 +95,8 @@ def test_model_text_carried_to_next_turn(tmp_path: Path) -> None:
     assert len(seen) >= 2 and "Your model so far:\nA4 moves me right" in seen[1]
 
 
-def test_unmodeled_choice_wakes(tmp_path: Path) -> None:
+def test_unmodeled_choice_wakes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_drive, "DRIVE_GAP_MOVES", 0)
     seen: list[str] = []
     agent = make(tmp_path, chat_of(lambda _p: {}, seen))
     play(FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[]), agent, max_steps=4)
@@ -250,7 +252,8 @@ def test_search_plan_that_wins_becomes_a_regression_case(tmp_path: Path) -> None
     assert len(cases) == 1 and cases[0].result.stop == "found"
 
 
-def test_wake_right_after_an_llm_plan_ends(tmp_path: Path) -> None:
+def test_wake_right_after_an_llm_plan_ends(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(llm_drive, "DRIVE_GAP_MOVES", 0)
     calls: list[str] = []
 
     def reply(prompt: str) -> dict[str, Any]:
@@ -349,3 +352,16 @@ def test_fix_turn_uses_the_fix_chat(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     play(FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[]), agent, max_steps=1)
     agent.close()
     assert used == [fix_chat]
+
+
+def test_unmodeled_moves_play_between_turns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # After a turn with nothing in it the agent's own tests play; the next turn waits
+    # for DRIVE_GAP_MOVES unmodeled moves (here the 4 "what does A_ do" tests).
+    monkeypatch.setattr(llm_drive, "DRIVE_GAP_MOVES", 3)
+    agent = make(tmp_path, chat_of(lambda _p: {}, []))
+    play(FakeGame(player=(2, 9), target=(40, 2), walls=[], lava=[]), agent, max_steps=6)
+    agent.close()
+    wakes = [r["step"] for r in records(tmp_path) if r["type"] == "wake"]
+    assert wakes == [0, 3]
