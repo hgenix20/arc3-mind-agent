@@ -25,7 +25,8 @@ Contract (``parse_reply``, never raises):
 - Lenient where the model is sloppy but clear: a lone object where ``goals``, ``plan`` or
   ``facts`` wants a list counts as a list of one, and an integer may be written as a
   string (``"3"``, ``"#3"`` for an id, ``"c11"`` for a color as the screen text writes
-  it), ``cover`` is ``reach``, and the effect ``no change`` is ``none``.
+  it), ``cover`` is ``reach``, the effects ``no change`` and ``blocked`` are ``none``, and
+  ``disappears`` is ``disappear``.
 - Unknown keys are ignored.
 """
 
@@ -51,7 +52,8 @@ _ACTION_RE = re.compile(r"^A([1-7])$")
 _CLICK_RE = re.compile(r"^click\s*#\s*(\d{1,6})$", re.IGNORECASE)
 _INT_RE = re.compile(r"^#?\s*(-?\d{1,6})$")
 _COLOR_RE = re.compile(r"^c?(\d{1,2})$", re.IGNORECASE)
-_NONE_WORDS = frozenset({"no change", "no_change", "nothing", "no effect"})
+_NONE_WORDS = frozenset({"no change", "no_change", "nothing", "no effect", "blocked"})
+_GONE_WORDS = frozenset({"disappears", "disappeared", "vanish", "vanishes", "removed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +269,8 @@ def _effect(f: dict[str, Any]) -> Effect | str:
     kind = f.get("effect")
     if isinstance(kind, str) and kind.strip().lower() in _NONE_WORDS:
         kind = "none"
+    elif isinstance(kind, str) and kind.strip().lower() in _GONE_WORDS:
+        kind = "disappear"
     if kind == "move":
         dx, dy = _int(f.get("dx", 0)), _int(f.get("dy", 0))
         if dx is None or dy is None or (dx, dy) == (0, 0):

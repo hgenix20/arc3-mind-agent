@@ -245,3 +245,21 @@ def test_colors_in_screen_notation_cover_and_no_change_parse() -> None:
         Goal("reach", a=SCENE.things[0].sig, b=SCENE.things[1].sig),
     )
     assert r.dropped == ()
+
+
+def test_disappears_and_blocked_effects_parse() -> None:
+    text = json.dumps(
+        {
+            "facts": [
+                {"action": "A1", "object": 1, "effect": "disappears"},
+                {"action": "A2", "object": 1, "effect": "blocked"},
+            ]
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    sig = SCENE.things[0].sig
+    assert r.claims == (
+        FactClaim("A1", sig, (Effect("disappear"),)),
+        FactClaim("A2", sig, (Effect("none"),)),
+    )
+    assert r.dropped == ()
