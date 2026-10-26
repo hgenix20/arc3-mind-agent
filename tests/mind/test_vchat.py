@@ -128,3 +128,11 @@ def test_record_then_replay_round_trip_with_image_part(tmp_path: Path) -> None:
     assert replaying(tmp_path)(MSGS, 9).text == "reply"
     other: list[VMessage] = [{"role": "user", "content": "no image"}]
     assert replaying(tmp_path)(other, 9).text == "{}"
+
+
+def test_http_json_reply_asks_for_a_json_object() -> None:
+    with _stub(200) as (url, seen):
+        http_vision_chat(url, "m", max_tokens=10, timeout_s=5, json_reply=True)(MSGS, 0)
+        http_vision_chat(url, "m", max_tokens=10, timeout_s=5)(MSGS, 0)
+    assert seen[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in seen[1]

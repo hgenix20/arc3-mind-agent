@@ -287,3 +287,39 @@ def test_turn_timeout_backs_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     agent.close()
     wakes = [r["step"] for r in records(tmp_path) if r["type"] == "wake"]
     assert wakes == [0]
+
+
+def test_fix_turn_uses_the_fix_chat(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    used: list[Any] = []
+
+    def fake_fix(chat: Any, *_a: Any, **_k: Any) -> FixResult:
+        used.append(chat)
+        return FixResult(None, "x")
+
+    monkeypatch.setattr(llm_drive, "try_fix", fake_fix)
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {
+            "facts": right_facts(p, t),
+            "goals": [{"kind": "reach", "a": p, "b": t}],
+            "plan": [{"action": "A4", "expect": "right"}] * 3,
+        }
+
+    fix_chat = chat_of(lambda _p: {}, [])
+    log = RunLog(tmp_path / "d.jsonl", "fake", "DRIVE", 0)
+    agent = llm_drive.DriveAgent(
+        "fake",
+        CONFIGS["FLUID-LLM"],
+        seed=0,
+        log=log,
+        game_deadline=1e12,
+        run_deadline=1e12,
+        chat=chat_of(reply, []),
+        pool=SyncPool(),
+        fix_chat=fix_chat,
+    )
+    agent._search_fn = lambda *_a, **_k: SearchResult(None, (), (), 0, 0, "exhausted")  # pyright: ignore[reportPrivateUsage]
+    play(FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[]), agent, max_steps=1)
+    agent.close()
+    assert used == [fix_chat]

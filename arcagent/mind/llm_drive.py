@@ -57,6 +57,7 @@ from arcagent.mind.search import SearchResult, search
 from arcagent.mind.tool_fix import FixResult, ToolFailure, try_fix
 from arcagent.mind.toolbox import TOOLBOX, SceneActions, ToolWorker, call_tool
 from arcagent.mind.turn import TurnInput
+from arcagent.mind.vchat import VisionChat
 
 DRIVE_TURN_S = 90.0  # the longest a move waits for its turn
 DRIVE_MAX_TOKENS = 4096  # per drive or fix turn (2048 cut 4% of turns, most fixes)
@@ -82,8 +83,10 @@ def modeled(choice: _Choice) -> bool:
 class DriveAgent(FluidAgent):
     """See the module docstring."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, fix_chat: VisionChat | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        # Fix turns answer with a code fence, so they may need a chat without JSON mode.
+        self._fix_chat = fix_chat if fix_chat is not None else self._chat
         self._model_text = ""
         self._rule_src = ""
         self._worker: ToolWorker | None = ToolWorker() if self._chat is not None else None
@@ -320,7 +323,7 @@ class DriveAgent(FluidAgent):
         assert goal is not None
         key = ("search", self._level)
         if (
-            self._chat is None
+            self._fix_chat is None
             or self._pool is None
             or self._worker is None
             or key in self._fixed_level
@@ -358,7 +361,7 @@ class DriveAgent(FluidAgent):
         try:
             fut = self._pool.submit(
                 try_fix,
-                self._chat,
+                self._fix_chat,
                 failure,
                 self._worker,
                 game=self.game,

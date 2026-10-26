@@ -76,6 +76,7 @@ def main() -> None:
         if not line.strip():
             continue
         rid = None
+        reply: dict[str, Any]
         try:
             req = json.loads(line)
             rid = req.get("rid")

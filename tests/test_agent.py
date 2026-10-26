@@ -830,6 +830,23 @@ def test_fluid_chat_replays_or_records(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert len(list((tmp_path / "replies").glob("*.json"))) == 1
 
 
+def test_drive_turns_ask_for_json_and_fix_turns_do_not(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[bool] = []
+
+    def fake_http(endpoint: str, model: str, **kw: Any) -> Any:
+        del endpoint, model
+        seen.append(kw.get("json_reply", False))
+        return lambda _m, _s: Completion("{}", 0, 0, 0.0)  # pyright: ignore[reportUnknownLambdaType]
+
+    monkeypatch.setattr(submit, "http_vision_chat", fake_http)
+    args = submit.parse_args(["--out", str(tmp_path), "--config", "DRIVE"])
+    submit.fluid_chat(args)
+    submit.fluid_chat(args, fix=True)
+    assert seen == [True, False]
+
+
 def test_mind_run_synthesis_pool_has_two_threads_per_game_slot(tmp_path: Path) -> None:
     # A call still running for a finished game must not hold the slot a new game needs.
     from arcagent.mind.config import CONFIGS  # noqa: PLC0415

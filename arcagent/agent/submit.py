@@ -413,6 +413,7 @@ class MindRun:
         seed: int,
         run_deadline: float,
         vchat: VisionChat | None = None,
+        fix_chat: VisionChat | None = None,
     ) -> None:
         if cfg.llm and cfg.fluid and vchat is None:
             raise ValueError(f"config {cfg.name} uses the LLM but no vision chat was given")
@@ -422,6 +423,7 @@ class MindRun:
         uses_synth = cfg.llm and not cfg.fluid
         self.synth = Synthesizer(chat, k=cfg.k) if uses_synth and chat is not None else None
         self.vchat = vchat if cfg.llm and cfg.fluid else None
+        self.fix_chat = fix_chat if cfg.drive else None  # drive fix turns (plain text)
         # Two threads per game slot: a call still running for a game that has ended
         # (its result is never read) must not hold the thread the next game needs.
         self.pool = ThreadPoolExecutor(max_workers=2 * workers, thread_name_prefix="synth")
@@ -443,6 +445,7 @@ class MindRun:
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
         if self.cfg.fluid:
             try:
+                extra: dict[str, Any] = {"fix_chat": self.fix_chat} if self.cfg.drive else {}
                 cls = DriveAgent if self.cfg.drive else FluidAgent
                 fluid = cls(
                     game,
@@ -453,6 +456,7 @@ class MindRun:
                     run_deadline=self._run_deadline,
                     chat=self.vchat,
                     pool=self.pool if self.vchat is not None else None,
+                    **extra,
                 )
             except BaseException:
                 log.close()
@@ -499,8 +503,12 @@ def mind_chat(args: argparse.Namespace) -> Chat:
     return recording_chat(http_chat(args.endpoint, args.model), replies)
 
 
-def fluid_chat(args: argparse.Namespace) -> VisionChat:
-    """The executive's vision chat: replayed with ``--replay``, else HTTP with replies saved."""
+def fluid_chat(args: argparse.Namespace, *, fix: bool = False) -> VisionChat:
+    """The executive's vision chat: replayed with ``--replay``, else HTTP with replies saved.
+
+    Drive turns ask for a JSON object (no prose before it, which was 43% of v7's reply
+    text); ``fix`` gives the drive fix turns' chat, which answers with a code fence.
+    """
     replies = Path(args.replies_dir)
     if args.replay:
         return replaying(replies)
@@ -510,6 +518,7 @@ def fluid_chat(args: argparse.Namespace) -> VisionChat:
         args.model,
         max_tokens=DRIVE_MAX_TOKENS if drive else TURN_MAX_TOKENS,
         timeout_s=DRIVE_TURN_S if drive else TURN_DEADLINE_S,
+        **({"json_reply": True} if drive and not fix else {}),
     )
     return recording(live, replies)
 
@@ -586,6 +595,7 @@ def play_mind(
         seed=args.seed,
         run_deadline=run_deadline,
         vchat=fluid_chat(args) if cfg.llm and cfg.fluid else None,
+        fix_chat=fluid_chat(args, fix=True) if cfg.llm and cfg.drive else None,
     )
     try:
         results, errors, scorecard = play_concurrent(
