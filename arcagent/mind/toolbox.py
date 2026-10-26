@@ -3,15 +3,22 @@
 Contract:
 - ``TOOLS`` names the patchable tools (``search.search``, ``route.route``) and, per tool,
   ``agrees(expected, got)``: whether a candidate's answer is at least as good as a
-  recorded one (used to check a fix against regression cases). Perception, wisdom, the
+  recorded one (used to check a fix against regression cases), and ``valid(got)``:
+  whether an answer has the original's type (a patched answer that isn't valid is
+  treated as a failure and the original answers). Perception, wisdom, the
   sandbox, the budget, the scheduler and submit are never patchable.
 - ``TOOLBOX`` is one process-wide ``Toolbox`` (games run on threads of one process, so a
   fix adopted in one game reaches every game's next call). Every method takes its lock:
   versions are numbered in adoption order and no update is lost. ``current`` is None
-  for the original. ``rollback`` drops the newest version and returns the number now
-  current (0 for the original). Each tool keeps its last ``MAX_CASES`` regression cases.
+  for the original. ``rollback(name, reason, failed=n)`` drops version ``n`` only while
+  it is still the current one (two games failing on it at once drop it once) and returns
+  the number now current (0 for the original). ``adopt(..., base=n)`` adopts only while
+  version ``n`` (0 = the original) is still current, else returns None: a fix written
+  against one version never buries a newer one. Each tool keeps its last ``MAX_CASES``
+  regression cases.
 - ``ToolWorker`` is one game's tools process (``_tool_worker.py``). ``call`` and
-  ``run_rule`` never raise: they return ``(ok, result or error text)``. A reply later
+  ``run_rule`` never raise: they return ``(ok, result or error text)``. Each request
+  carries an id and a reply with another id is skipped, so replies can't shift. A reply later
   than ``timeout_s`` or a dead process kills the worker, counts a restart, and starts a
   new one on the next request.
 - ``call_tool`` is how agents call a patchable tool: the original in-process when no
@@ -56,6 +63,26 @@ def _search_agrees(expected: Any, got: Any) -> bool:
     return getattr(got, "stop", None) == "found" and len(got.plan) <= len(expected.plan)
 
 
+def _search_valid(got: Any) -> bool:
+    from arcagent.mind.search import PlanStep, SearchResult  # noqa: PLC0415  (search imports objects only)
+
+    if not isinstance(got, SearchResult):
+        return False
+    steps: tuple[object, ...] = got.plan
+    return all(isinstance(s, PlanStep) for s in steps)  # pyright: ignore[reportUnnecessaryIsInstance]  (unpickled model output)
+
+
+def _route_valid(got: Any) -> bool:
+    if got is None:
+        return True
+    return (
+        isinstance(got, tuple)
+        and len(got) == 2  # pyright: ignore[reportUnknownArgumentType]
+        and isinstance(got[0], list)
+        and isinstance(got[1], int | float)
+    )
+
+
 def _route_agrees(expected: Any, got: Any) -> bool:
     """A route agrees when it exists wherever the recorded one did, no longer."""
     if expected is None:
@@ -69,14 +96,15 @@ class ToolSpec:
     module: str
     func: str
     agrees: Callable[[Any, Any], bool]
+    valid: Callable[[Any], bool]
 
     def original(self) -> Callable[..., Any]:
         return getattr(importlib.import_module(self.module), self.func)
 
 
 TOOLS: dict[str, ToolSpec] = {
-    "search": ToolSpec("search", "arcagent.mind.search", "search", _search_agrees),
-    "route": ToolSpec("route", "arcagent.mind.route", "route", _route_agrees),
+    "search": ToolSpec("search", "arcagent.mind.search", "search", _search_agrees, _search_valid),
+    "route": ToolSpec("route", "arcagent.mind.route", "route", _route_agrees, _route_valid),
 }
 
 
@@ -113,8 +141,13 @@ class Toolbox:
             stack = self._versions.get(name)
             return stack[-1] if stack else None
 
-    def adopt(self, name: str, source: str, game: str, reason: str) -> int:
+    def adopt(
+        self, name: str, source: str, game: str, reason: str, *, base: int | None = None
+    ) -> int | None:
         with self._lock:
+            stack = self._versions.get(name)
+            if base is not None and (stack[-1].no if stack else 0) != base:
+                return None
             no = self._next
             self._next += 1
             v = ToolVersion(no, source, game, reason, time.time())
@@ -122,10 +155,10 @@ class Toolbox:
             self._history.append(("adopt", name, no, reason))
             return no
 
-    def rollback(self, name: str, reason: str) -> int:
+    def rollback(self, name: str, reason: str, *, failed: int | None = None) -> int:
         with self._lock:
             stack = self._versions.get(name, [])
-            if stack:
+            if stack and (failed is None or stack[-1].no == failed):
                 gone = stack.pop()
                 self._history.append(("rollback", name, gone.no, reason))
             return stack[-1].no if stack else 0
@@ -164,6 +197,14 @@ def _pump(stream: IO[bytes], q: queue.Queue[bytes | None]) -> None:
     q.put(None)
 
 
+def _rid_of(line: bytes) -> int | None:
+    try:
+        rid = json.loads(line).get("rid")
+    except (ValueError, AttributeError):
+        return None
+    return rid if isinstance(rid, int) else None
+
+
 def _dump(obj: Any) -> str:
     return base64.b64encode(pickle.dumps(obj)).decode("ascii")
 
@@ -177,6 +218,7 @@ class ToolWorker:
         self._q: queue.Queue[bytes | None] = queue.Queue()
         self._lock = threading.Lock()
         self._closed = False
+        self._rid = 0
 
     def _spawn(self) -> None:
         self._q = queue.Queue()
@@ -201,14 +243,19 @@ class ToolWorker:
             if self._closed:
                 return False, "worker closed"
             first = self._proc is None
+            self._rid += 1
+            rid = req["rid"] = self._rid
             try:
                 if first:
                     self._spawn()
                 assert self._proc is not None and self._proc.stdin is not None
                 self._proc.stdin.write((json.dumps(req) + "\n").encode("utf-8"))
                 self._proc.stdin.flush()
-                wait = timeout_s + (SPAWN_TIMEOUT_S if first else 0.0)
-                line = self._q.get(timeout=wait)
+                end = time.monotonic() + timeout_s + (SPAWN_TIMEOUT_S if first else 0.0)
+                while True:
+                    line = self._q.get(timeout=max(end - time.monotonic(), 0.0))
+                    if line is None or _rid_of(line) == rid:
+                        break
             except queue.Empty:
                 self.restarts += 1
                 self._kill()
@@ -278,8 +325,10 @@ def call_tool(
     version = box.current(name)
     if version is not None and worker is not None:
         ok, got = worker.call(spec, version, args, kwargs, timeout_s)
-        if ok:
+        if ok and spec.valid(got):
             return got, version.no, ""
+        if ok:
+            got = f"wrong type: {type(got).__name__}"
         return spec.original()(*args, **kwargs), 0, str(got)
     return spec.original()(*args, **kwargs), 0, ""
 

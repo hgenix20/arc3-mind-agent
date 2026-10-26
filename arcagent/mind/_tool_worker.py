@@ -11,7 +11,10 @@ Requests:
   ``func`` with the unpickled ``(args, kwargs)``.
 - ``{"op": "rule", "source", "args"}``: exec ``source`` into a fresh namespace and call
   its ``rule(objects, action)``.
-Replies: ``{"ok": true, "result": <b64 pickle>}`` or ``{"ok": false, "error": <text>}``.
+Replies: ``{"ok": true, "result": <b64 pickle>}`` or ``{"ok": false, "error": <text>}``,
+each echoing the request's ``rid``. Replies go to the original stdout only: ``sys.stdout``
+is pointed at stderr before any model code runs, so a ``print`` there can't be read as a
+reply.
 A crash or hang is the parent's to handle (it kills and restarts this process).
 """
 
@@ -67,16 +70,22 @@ def _handle(req: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> None:
+    out = sys.stdout
+    sys.stdout = sys.stderr  # model code's prints never reach the reply stream
     for line in sys.stdin:
         if not line.strip():
             continue
+        rid = None
         try:
-            reply = _handle(json.loads(line))
+            req = json.loads(line)
+            rid = req.get("rid")
+            reply = _handle(req)
         except Exception as exc:  # model code: any failure is a reply, not a crash
             tb = traceback.format_exc(limit=3)
             reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}\n{tb}"[:2000]}
-        sys.stdout.write(json.dumps(reply) + "\n")
-        sys.stdout.flush()
+        reply["rid"] = rid
+        out.write(json.dumps(reply) + "\n")
+        out.flush()
 
 
 if __name__ == "__main__":

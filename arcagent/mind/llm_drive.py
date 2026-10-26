@@ -62,6 +62,7 @@ DRIVE_TURN_S = 90.0  # the longest a move waits for its turn
 DRIVE_MAX_TOKENS = 2048  # reply budget per drive turn (the model, facts and a plan)
 DRIVE_CUTOFF = 0.1  # no turn starts with less than this share of the game's budget left
 RULE_S = 2.0  # deadline per rule call in the tools worker
+DRIVE_BACKOFF_MOVES = 5  # moves without a turn after one timed out (level start excepted)
 NO_MODELED_MOVE = "no modeled move"
 EXPERIMENT_RESULT = "experiment result"
 # Wakes that run even while a modeled plan holds: the LLM looks before a level's first
@@ -98,6 +99,8 @@ class DriveAgent(FluidAgent):
         self._fix_count = 0
         self._rollbacks = 0
         self._case: tuple[bytes, SearchResult] | None = None  # the followed plan's search
+        self._cur_llm = False  # whether this move's choice is an LLM plan step
+        self._quiet_until = 0  # no turn before this move after a timeout
 
     # -- tools ----------------------------------------------------------------
 
@@ -114,13 +117,14 @@ class DriveAgent(FluidAgent):
         **kwargs: Any,
     ) -> SearchResult:
         args = (scene, self._scene_actions(), mem, list(goals))
+        called = TOOLBOX.current("search")
         res, version, err = call_tool("search", self._worker, *args, **kwargs)
-        if err and not err.startswith("unpicklable"):
-            self._rollback("search", f"patched search failed: {err[:200]}")
+        if err and called is not None and not err.startswith("unpicklable"):
+            self._rollback("search", f"patched search failed: {err[:200]}", called.no)
         elif version and res.stop != "found":
             orig = search(*args, **kwargs)
             if orig.stop == "found":
-                self._rollback("search", "original finds a plan the patch missed")
+                self._rollback("search", "original finds a plan the patch missed", version)
                 res = orig
         if res.stop == "found" and res.plan and self._chat is not None:
             try:
@@ -129,8 +133,8 @@ class DriveAgent(FluidAgent):
                 self._snap = b""
         return res
 
-    def _rollback(self, tool: str, reason: str) -> None:
-        now = TOOLBOX.rollback(tool, reason)
+    def _rollback(self, tool: str, reason: str, failed: int) -> None:
+        now = TOOLBOX.rollback(tool, reason, failed=failed)
         self._rollbacks += 1
         self._log.event("tool_rollback", step=self._action_no, tool=tool, reason=reason, now=now)
 
@@ -143,7 +147,11 @@ class DriveAgent(FluidAgent):
             objects: list[dict[str, Any]], action: dict[str, int]
         ) -> list[dict[str, Any]] | None:
             ok, got = worker.run_rule(src, objects, action, RULE_S)
-            return got if ok and isinstance(got, list) else None
+            if ok and isinstance(got, list):
+                return got  # pyright: ignore[reportUnknownVariableType]
+            if self._rule_src == src:
+                self._rule_src = ""  # a failed rule never runs again (a hang costs one deadline)
+            return None
 
         return rule
 
@@ -169,7 +177,19 @@ class DriveAgent(FluidAgent):
     def choose(self, obs: Observation) -> Action:
         self._snap = b""
         self._poll_fixes()
+        if self._case is not None and obs.levels_completed > self._level:
+            self._record_case()  # the followed search plan won the level
         return super().choose(obs)
+
+    def _record_case(self) -> None:
+        assert self._case is not None
+        snap, res = self._case
+        self._case = None
+        try:
+            args, kwargs = pickle.loads(snap)
+        except Exception:  # a bad snapshot costs the case only
+            return
+        TOOLBOX.add_case("search", args, kwargs, res)
 
     def _choose(self, obs: Observation, scene: Scene) -> _Choice:
         choice = super()._choose(obs, scene)
@@ -202,25 +222,20 @@ class DriveAgent(FluidAgent):
         return res
 
     def _check_plan(self, pred: Any, before: Scene, after: Scene, keys: Any, grid: Any) -> None:
-        had = bool(self._plan)
         super()._check_plan(pred, before, after, keys, grid)
         if self._case is None:
             return
         if "miss that matters" in self._notes:
             self._case = None
-        elif had and not self._plan:
-            snap, res = self._case
-            self._case = None
-            try:
-                args, kwargs = pickle.loads(snap)
-            except Exception:  # a bad snapshot costs the case only
-                return
-            TOOLBOX.add_case("search", args, kwargs, res)
+        elif "plan finished" in self._notes:
+            self._record_case()
 
     # -- turns -------------------------------------------------------------------
 
     def _wake_reason(self, choice: _Choice) -> str | None:
         if self._turns_off:
+            return None
+        if self._action_no < self._quiet_until and not self._pending & {"level start", "game over"}:
             return None
         if self._force is not None:
             self._pending.add(self._force)
@@ -228,7 +243,7 @@ class DriveAgent(FluidAgent):
         forced = next((r for r in FORCED_WAKES if r in self._pending), None)
         if forced is not None:
             return forced
-        if self._llm_step or modeled(choice):
+        if self._cur_llm or modeled(choice):
             return None
         if self._chat is not None:
             self._pending.add(NO_MODELED_MOVE)
@@ -240,6 +255,7 @@ class DriveAgent(FluidAgent):
         self, obs: Observation, scene: Scene, choice: _Choice, llm_step: bool, late: bool
     ) -> tuple[_Choice, bool]:
         self._pending |= self._notes
+        self._cur_llm = llm_step
         reason = self._wake_reason(choice)
         chat, pool = self._chat, self._pool
         if reason is None or chat is None or pool is None:
@@ -259,6 +275,7 @@ class DriveAgent(FluidAgent):
         got = self._await_turn(chat, pool, inp, call, min(DRIVE_TURN_S, self._deadline - now))
         self._turn_done = self._action_no
         if got is None:
+            self._quiet_until = self._action_no + DRIVE_BACKOFF_MOVES
             return choice, llm_step
         new, new_llm = self._apply(got[0], call, scene, got[1], late)
         return (choice, llm_step) if new is None else (new, new_llm)
@@ -321,17 +338,23 @@ class DriveAgent(FluidAgent):
         self._log.event(
             "tool_fail", step=self._action_no, tool="search", expected=expected, got=got
         )
-        mem = pickle.loads(pickle.dumps(self.mem))
+        # The failing call as fluid's _search makes it, snapshotted together on this thread
+        # so the kinematics keep pointing at the copied memory.
+        live = {"noop": self._known_noop(), "kin": self._kin, "max_depth": self._budget.remaining()}
+        args, kwargs = pickle.loads(
+            pickle.dumps(((scene, self._scene_actions(), self.mem, [goal]), live))
+        )
+        mem = args[2]
         steps = po.steps
+        rule = self._rule_fn()
 
         def check(found: Any) -> bool:
             if getattr(found, "stop", None) != "found" or len(found.plan) > steps:
                 return False
             acts = [s.action for s in found.plan]
-            return play_out(scene, acts, mem, [goal], protect).reached is not None
+            return play_out(scene, acts, mem, [goal], protect, rule=rule).reached is not None
 
-        args = (scene, self._scene_actions(), mem, [goal])
-        failure = ToolFailure("search", args, {"kin": self._kin}, expected, got, check)
+        failure = ToolFailure("search", args, kwargs, expected, got, check)
         try:
             fut = self._pool.submit(
                 try_fix,
@@ -359,6 +382,8 @@ class DriveAgent(FluidAgent):
             turns=self._calls,
             at=round(time.time(), 1),
         )
-        super().close()
-        if self._worker is not None:
-            self._worker.close()
+        try:
+            super().close()
+        finally:
+            if self._worker is not None:
+                self._worker.close()

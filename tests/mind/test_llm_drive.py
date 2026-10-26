@@ -15,6 +15,7 @@ from arcagent.mind.config import CONFIGS
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.search import SearchResult
 from arcagent.mind.tool_fix import FixResult
+from arcagent.mind.toolbox import TOOLBOX
 from arcagent.mind.vchat import VisionChat, VMessage
 from arcagent.synth.run import Completion
 from tests.mind.fakegames import FakeGame, play
@@ -185,3 +186,104 @@ def test_no_chat_plays_like_fluid(tmp_path: Path) -> None:
     base.close()
     drive.close()
     assert a == b
+
+
+def test_failed_rule_is_dropped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    agent = make(tmp_path, chat_of(lambda _p: {}, []))
+    calls: list[str] = []
+    worker = agent._worker  # pyright: ignore[reportPrivateUsage]
+    assert worker is not None
+
+    def hangs(*_a: Any) -> tuple[bool, Any]:
+        calls.append("rule")
+        return False, "timeout"
+
+    monkeypatch.setattr(worker, "run_rule", hangs)
+    agent._rule_src = "def rule(o, a):\n    while True: pass\n"  # pyright: ignore[reportPrivateUsage]
+    rule = agent._rule_fn()  # pyright: ignore[reportPrivateUsage]
+    assert rule is not None and rule([], {"id": 1, "x": 0, "y": 0}) is None
+    assert agent._rule_fn() is None and calls == ["rule"]  # pyright: ignore[reportPrivateUsage]
+    agent.close()
+
+
+def test_search_plan_that_wins_becomes_a_regression_case(tmp_path: Path) -> None:
+    TOOLBOX.clear()
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {"facts": right_facts(p, t), "goals": [{"kind": "reach", "a": p, "b": t}]}
+
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, []))
+    play(game, agent, max_steps=10, until=lambda: game.levels >= 1)
+    agent.choose(game.observe())  # the agent sees the level-up frame
+    agent.close()
+    assert game.levels == 1
+    cases = TOOLBOX.cases("search")
+    TOOLBOX.clear()
+    assert len(cases) == 1 and cases[0].result.stop == "found"
+
+
+def test_wake_right_after_an_llm_plan_ends(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        if calls[1:]:
+            return {}
+        p, t = ids(prompt)
+        return {"facts": right_facts(p, t), "plan": [{"action": "A4", "expect": "right"}]}
+
+    agent = make(tmp_path, chat_of(reply, calls))
+    play(FakeGame(player=(2, 9), target=(40, 2), walls=[], lava=[]), agent, max_steps=2)
+    agent.close()
+    steps = [r["step"] for r in records(tmp_path) if r["type"] == "wake"]
+    assert steps[:2] == [0, 1]
+
+
+def test_fix_replays_the_real_search_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Any] = []
+
+    def fake_fix(_chat: Any, failure: Any, *_a: Any, **_k: Any) -> FixResult:
+        seen.append(failure)
+        return FixResult(None, "x")
+
+    monkeypatch.setattr(llm_drive, "try_fix", fake_fix)
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {
+            "facts": right_facts(p, t),
+            "goals": [{"kind": "reach", "a": p, "b": t}],
+            "plan": [{"action": "A4", "expect": "right"}] * 3,
+        }
+
+    agent = make(tmp_path, chat_of(reply, []))
+    agent._search_fn = lambda *_a, **_k: SearchResult(None, (), (), 0, 0, "exhausted")  # pyright: ignore[reportPrivateUsage]
+    play(FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[]), agent, max_steps=1)
+    agent.close()
+    (failure,) = seen
+    assert {"noop", "kin", "max_depth"} <= set(failure.kwargs)
+    assert failure.kwargs["kin"].mem is failure.args[2]
+
+
+def test_turn_timeout_backs_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.mind.test_fluid_agent import NeverPool  # noqa: PLC0415
+
+    monkeypatch.setattr(llm_drive, "DRIVE_TURN_S", 0.01)
+    log = RunLog(tmp_path / "d.jsonl", "fake", "DRIVE", 0)
+    agent = llm_drive.DriveAgent(
+        "fake",
+        CONFIGS["FLUID-LLM"],
+        seed=0,
+        log=log,
+        game_deadline=1e12,
+        run_deadline=1e12,
+        chat=chat_of(lambda _p: {}, []),
+        pool=NeverPool(),
+    )
+    play(FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[]), agent, max_steps=4)
+    agent.close()
+    wakes = [r["step"] for r in records(tmp_path) if r["type"] == "wake"]
+    assert wakes == [0]

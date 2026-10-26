@@ -76,3 +76,18 @@ def test_fix_rejected_without_code(worker: ToolWorker) -> None:
 def test_extract_function_needs_the_name() -> None:
     assert extract_function("```python\ndef other():\n    pass\n```", "route") is None
     assert extract_function(FIXED, "route") is not None
+
+
+def test_fix_refused_when_the_tool_changed_meanwhile(worker: ToolWorker) -> None:
+    from arcagent.synth.run import Completion  # noqa: PLC0415
+
+    box = Toolbox()
+
+    def chat(_m: Any, _s: int) -> Completion:
+        box.adopt("route", "def route(s, t, d, *, exact_limit=6):\n    return [], 0\n", "g2", "x")
+        return Completion(FIXED, 0, 0, 0.0)
+
+    res = try_fix(chat, failure(), worker, game="g1", seed=0, box=box)
+    assert res.adopted is None and res.reason == "tool changed meanwhile"
+    v = box.current("route")
+    assert v is not None and v.game == "g2"

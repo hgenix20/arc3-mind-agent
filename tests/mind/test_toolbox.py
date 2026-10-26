@@ -79,6 +79,7 @@ def test_adopt_and_rollback_versions() -> None:
     a = box.adopt("route", REVERSED, "g1", "first")
     b = box.adopt("route", HANGS, "g2", "second")
     current = box.current("route")
+    assert a is not None and b is not None
     assert current is not None and current.no == b > a
     assert box.rollback("route", "worse") == a
     assert box.rollback("route", "worse") == 0 and box.current("route") is None
@@ -101,6 +102,7 @@ def test_concurrent_adopts_ordered() -> None:
     def adopt() -> None:
         for _ in range(50):
             n = box.adopt("route", REVERSED, "g", "r")
+            assert n is not None
             with lock:
                 nos.append(n)
 
@@ -125,3 +127,43 @@ def test_agrees_rules() -> None:
     assert TOOLS["route"].agrees(([0, 1], 5), ([1, 0], 4))
     assert not TOOLS["route"].agrees(([0, 1], 5), None)
     assert TOOLS["route"].agrees(None, None)
+
+
+PRINTS = (
+    'def route(start, targets, dist, *, exact_limit=6):\n    print("noise")\n    return [0], 1\n'
+)
+WRONG_TYPE = "def route(start, targets, dist, *, exact_limit=6):\n    return 'oops'\n"
+
+
+def test_prints_in_patched_code_do_not_shift_replies(worker: ToolWorker) -> None:
+    box = Toolbox()
+    box.adopt("route", PRINTS, "g1", "test")
+    for _ in range(3):
+        got, version, err = call_tool("route", worker, (0, 0), TARGETS, DIST, box=box)
+        assert (got, err) == (([0], 1), "") and version == 1
+
+
+def test_wrong_type_answers_with_original(worker: ToolWorker) -> None:
+    box = Toolbox()
+    box.adopt("route", WRONG_TYPE, "g1", "test")
+    got, version, err = call_tool("route", worker, (0, 0), TARGETS, DIST, box=box)
+    assert got == route((0, 0), TARGETS, DIST) and version == 0
+    assert err.startswith("wrong type")
+
+
+def test_rollback_only_pops_the_failed_version() -> None:
+    box = Toolbox()
+    a = box.adopt("route", REVERSED, "g1", "a")
+    b = box.adopt("route", REVERSED, "g2", "b")
+    assert box.rollback("route", "bad", failed=b) == a
+    assert box.rollback("route", "bad again", failed=b) == a  # already gone: no pop
+    current = box.current("route")
+    assert current is not None and current.no == a
+
+
+def test_adopt_refuses_a_stale_base() -> None:
+    box = Toolbox()
+    a = box.adopt("route", REVERSED, "g1", "a", base=0)
+    assert a == 1
+    assert box.adopt("route", REVERSED, "g2", "written against the original", base=0) is None
+    assert box.adopt("route", REVERSED, "g2", "written against a", base=a) == 2

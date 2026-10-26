@@ -11,8 +11,9 @@ Contract:
   defines the function, and adopts it in ``box`` only when, in the tools worker, it solves
   the failing case (``check``) and agrees with every stored regression case
   (``ToolSpec.agrees``), each call within ``FIX_CALL_S``. It never raises: any failure is
-  ``FixResult(None, reason)``. Candidates run under negative version numbers so the
-  worker never mistakes one for an adopted version.
+  ``FixResult(None, reason)``. The fix is adopted only while the version it was written
+  against is still current (``tool changed meanwhile`` otherwise). Candidates run under
+  negative version numbers so the worker never mistakes one for an adopted version.
 """
 
 from __future__ import annotations
@@ -111,6 +112,8 @@ def try_fix(  # noqa: PLR0911  (one return per rejection reason)
 ) -> FixResult:
     """Ask for a fix, check it, adopt it; see the module docstring."""
     spec = TOOLS[failure.tool]
+    start = box.current(failure.tool)
+    base = 0 if start is None else start.no
     try:
         text = chat(fix_messages(failure, box), seed).text
     except Exception as exc:  # the fix is lost, the game goes on
@@ -132,5 +135,7 @@ def try_fix(  # noqa: PLR0911  (one return per rejection reason)
         ok, got = worker.call(spec, cand, case.args, case.kwargs, FIX_CALL_S)
         if not ok or not spec.agrees(case.result, got):
             return FixResult(None, f"regression case {i} disagrees")
-    no = box.adopt(failure.tool, source, game, f"{failure.expected[:120]}")
+    no = box.adopt(failure.tool, source, game, failure.expected[:120], base=base)
+    if no is None:
+        return FixResult(None, "tool changed meanwhile")
     return FixResult(no, "adopted")
