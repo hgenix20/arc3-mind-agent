@@ -15,14 +15,16 @@ Turns (changes from the fluid executive):
 - No per-level or per-game caps and no spacing. A turn may start until ``DRIVE_CUTOFF``
   of the game's budget is left; it waits up to ``DRIVE_TURN_S`` for the reply.
 - A slice 1 choice that isn't modeled wakes the LLM (``no modeled move``) whatever the
-  other rules say, so the LLM picks experiments, not the tester.
+  other rules say, so the LLM picks experiments, not the tester. Only ``FORCED_WAKES``
+  wake while a modeled move remains.
 - The prompt carries the LLM's own model text from its last reply.
 
 Applying a reply: its fact claims go into memory first (``game_model.seed_claims``:
 observed facts win), its model text and rule are kept, then the plan is played out in
-the model (``game_model.play_out``; the rule runs in this game's tools worker). The plan
-is cut after the first step the model can't predict; that step is the experiment and a
-wake follows it. When the play-out reaches a goal, the search is asked for the same goal:
+the model (``game_model.play_out``; the rule runs in this game's tools worker). The first
+step the model can't predict is the experiment; the plan goes on after it, and its result
+joins the pending wake reasons. When the play-out reaches a goal, the search is asked for
+the same goal:
 no plan, or a longer one, is a ``search`` failure, and a fix turn (``tool_fix.try_fix``)
 runs on the pool while the LLM's plan is played. At most one fix per tool per level.
 
@@ -67,8 +69,10 @@ DRIVE_BACKOFF_MOVES = 5  # moves without a turn after one timed out (level start
 NO_MODELED_MOVE = "no modeled move"
 EXPERIMENT_RESULT = "experiment result"
 # Wakes that run even while a modeled plan holds: the LLM looks before a level's first
-# move, after a game over, after its model mispredicted, and after each experiment.
-FORCED_WAKES = ("level start", "game over", "miss that matters", EXPERIMENT_RESULT)
+# move and after a game over. A miss, an experiment's result or a blocked plan waits in
+# the pending reasons until no modeled move is left (v8: forcing them gave 1.2 moves a
+# turn, 50 to 300 moves a game).
+FORCED_WAKES = ("level start", "game over")
 _UNMODELED_BRANCHES = frozenset({"learn", "fallback", "forced", "commit"})
 _UNMODELED_WHYS = frozenset({NOVEL_WHY, "sequence try"})
 
@@ -301,7 +305,7 @@ class DriveAgent(FluidAgent):
         return super()._apply(reply, call, scene, seconds, late)
 
     def _played_out(self, reply: Reply, scene: Scene) -> Reply:
-        """The reply with its plan cut after the first step the model can't predict."""
+        """The reply with its plan cut where it reaches a goal; marks the experiment step."""
         goals = list(reply.goals) or self.goals.open()
         sigs: set[str] = set(mover_sigs(self.mem))
         for g in goals:
@@ -311,7 +315,7 @@ class DriveAgent(FluidAgent):
         po = play_out(scene, actions, self.mem, goals, protect, rule=self._rule_fn())
         if po.unknown_at is not None:
             self._exp_in = po.unknown_at
-            return replace(reply, plan=reply.plan[: po.unknown_at + 1])
+            return reply
         if po.reached is not None:
             self._check_search(scene, po, protect)
             return replace(reply, plan=reply.plan[: po.steps])

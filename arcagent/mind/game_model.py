@@ -30,12 +30,10 @@ from typing import Any
 
 from arcagent.core.types import GRID_SIZE, Action
 from arcagent.mind.contract import FactClaim
-from arcagent.mind.facts import FactKey, FactMemory
+from arcagent.mind.facts import CLAIM_MOVE, FactKey, FactMemory
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Cell, Scene, Thing, shape_of
 from arcagent.mind.predictor import predict
-
-CLAIM_MOVE = -1  # evidence id of a claimed (not observed) fact
 
 RuleFn = Callable[[list[dict[str, Any]], dict[str, int]], list[dict[str, Any]] | None]
 

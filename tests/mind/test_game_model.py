@@ -90,3 +90,15 @@ def test_failing_rule_adds_nothing() -> None:
 
     out = play_out(s, [Action(1)], claim_moves(), [], frozenset({PSIG}), rule=rule)
     assert out.unknown_at == 0
+
+
+def test_first_observation_replaces_a_claim() -> None:
+    # A claim is a guess: what the game shows replaces it instead of breaking it.
+    mem = FactMemory()
+    claim = FactClaim("A4", "c1:abc", (Effect("move", 2, 0),))
+    (key,) = seed_claims(mem, [claim])
+    assert mem.record(key, (Effect("move", 1, 0),), 7) == "new"
+    fact = mem.facts[key]
+    assert fact.effects == (Effect("move", 1, 0),) and fact.status != "broken"
+    assert fact.misses == 0 and CLAIM_MOVE not in fact.evidence
+    assert mem.record(key, (Effect("move", 2, 0),), 8) == "miss"  # observed facts still miss

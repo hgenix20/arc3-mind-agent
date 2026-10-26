@@ -122,7 +122,9 @@ def test_plan_played_out_runs_as_sim(tmp_path: Path) -> None:
     assert end["modes"] == {"sim": 3} and end["claims"] == 2
 
 
-def test_unknown_step_is_one_experiment(tmp_path: Path) -> None:
+def test_plan_runs_past_its_unknown_step(tmp_path: Path) -> None:
+    # The first step the model can't predict is the experiment; the LLM's plan goes on
+    # after it, and the next wake comes once no modeled move is left.
     calls: list[str] = []
 
     def reply(prompt: str) -> dict[str, Any]:
@@ -133,14 +135,38 @@ def test_unknown_step_is_one_experiment(tmp_path: Path) -> None:
         return {"facts": right_facts(p, t), "plan": plan}
 
     agent = make(tmp_path, chat_of(reply, calls))
-    acts = play(FakeGame(player=(2, 9), target=(40, 2), walls=[], lava=[]), agent, max_steps=3)
+    acts = play(FakeGame(player=(2, 9), target=(40, 2), walls=[], lava=[]), agent, max_steps=5)
     agent.close()
-    assert [a.id for a in acts[:2]] == [4, 1]
+    assert [a.id for a in acts[:4]] == [4, 1, 4, 4]
     recs = records(tmp_path)
-    wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
-    assert (2, llm_drive.EXPERIMENT_RESULT) in wakes
+    wakes = [r["step"] for r in recs if r["type"] == "wake"]
+    assert wakes[0] == 0 and not [w for w in wakes if 0 < w < 4]
     end = next(r for r in recs if r["type"] == "drive_end")
     assert end["modes"]["experiment"] == 1
+
+
+def test_a_miss_waits_while_a_modeled_move_remains(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        if len(calls) > 1:
+            return {}
+        p, t = ids(prompt)
+        # A wrong claim: A4 is said to move the player 2 cells, it moves 1.
+        facts = [
+            {"action": "A4", "object": p, "effect": "move", "dx": 2, "dy": 0},
+            {"action": "A4", "object": t, "effect": "none"},
+        ]
+        goals = [{"kind": "reach", "a": p, "b": t}]
+        return {"facts": facts, "goals": goals, "plan": [{"action": "A4", "expect": "right"}] * 4}
+
+    agent = make(tmp_path, chat_of(reply, calls))
+    # After the miss the observed fact (1 cell) replaces the claim and search still
+    # reaches the target, so no turn is needed for the next moves.
+    play(FakeGame(player=(2, 2), target=(12, 2), walls=[], lava=[]), agent, max_steps=4)
+    agent.close()
+    wakes = [(r["step"], r["reason"]) for r in records(tmp_path) if r["type"] == "wake"]
+    assert wakes == [(0, "level start")]
 
 
 def test_search_failure_triggers_fix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

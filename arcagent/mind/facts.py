@@ -62,6 +62,7 @@ Owner = Mapping[Cell, tuple[int, int]]  # cell -> (thing id, color)
 
 THIN_BELOW = 5  # a fact is solid once this many observations agreed with it
 BROKEN_MISSES = 2  # a fact is broken after this many misses in a row
+CLAIM_MOVE = -1  # evidence id of a claimed (not observed) fact
 EVIDENCE_KEEP = 20  # a fact keeps the move ids of its last this-many observations
 KIN_KEEP = 8  # sigs kept per tracked thing (FactMemory.kin)
 
@@ -419,7 +420,9 @@ class FactMemory:
 
         Callers apply context rules first; a miss here is never absorbed and never
         replaces the fact's effects. The first observation after a fact went broken
-        re-seeds it (effects replaced, hits 1, streak 0) and returns ``"new"``. ``tags``
+        re-seeds it (effects replaced, hits 1, streak 0) and returns ``"new"``, and so does
+        the first observation of a claimed fact (evidence only ``CLAIM_MOVE``) that
+        disagrees with the claim: the game wins over the LLM's guess. ``tags``
         adds behavior tags the effects alone can't show (``rotate`` needs cell counts).
         """
         fact = self.facts.get(key)
@@ -433,8 +436,11 @@ class FactMemory:
             if shape is not None:
                 self._siblings.setdefault((key[0], key[2], shape), set()).add(key)
             return "new"
+        claimed = fact.evidence == [CLAIM_MOVE]
+        if claimed:
+            fact.evidence = []  # the claim is no evidence once the game has shown one
         fact.note(move)
-        if fact.status == "broken":
+        if fact.status == "broken" or (claimed and fact.effects != effects):
             fact.effects, fact.hits, fact.streak = effects, 1, 0
             self._index(fact, _tags(key, effects) | tags)
             return "new"
