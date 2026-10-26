@@ -178,3 +178,30 @@ def test_model_and_rule_clipped() -> None:
     r = parse_reply(text, SCENE, AVAIL)
     assert len(r.model) == MAX_MODEL_CHARS and len(r.rule) == MAX_RULE_CHARS
     assert r.rule.startswith("def rule")
+
+
+def test_single_object_facts_and_goals_count_as_one_item_lists() -> None:
+    # Qwen often sends one fact or goal as a bare object instead of a list of one.
+    text = json.dumps(
+        {
+            "facts": {"action": "A1", "object": 1, "effect": "move", "dx": 0, "dy": -1},
+            "goals": {"kind": "reach", "a": 1, "b": 4},
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.claims == (FactClaim("A1", SCENE.things[0].sig, (Effect("move", 0, -1),)),)
+    assert r.goals == (Goal("reach", a=SCENE.things[0].sig, b=SCENE.things[1].sig),)
+    assert r.dropped == ()
+
+
+def test_ids_written_as_hash_strings_parse() -> None:
+    text = json.dumps(
+        {
+            "facts": [{"action": "A1", "object": "#1", "effect": "move", "dx": "1", "dy": 0}],
+            "goals": [{"kind": "reach", "a": "#1", "b": "4"}],
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.claims == (FactClaim("A1", SCENE.things[0].sig, (Effect("move", 1, 0),)),)
+    assert r.goals == (Goal("reach", a=SCENE.things[0].sig, b=SCENE.things[1].sig),)
+    assert r.dropped == ()

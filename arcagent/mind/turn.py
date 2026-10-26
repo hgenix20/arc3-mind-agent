@@ -83,11 +83,11 @@ Your job: keep a model of the game and use it to finish levels in few moves.
 1. "model": rewrite your model in plain text (under 1500 characters): what each action
    does, what each kind of object is, what ends or wins a level, what you are unsure of.
    It is shown to you next turn; nothing else of this turn is.
-2. "facts": the effects your model predicts, one per action and object, so code can
-   simulate moves: {"action": "A1" or "click #<id>", "object": <id> or "any",
+2. "facts": a list of the effects your model predicts, one per action and object, so
+   code can simulate moves: [{"action": "A1" or "click #12", "object": <id> or "any",
    "effect": "move" (with "dx", "dy" in cells), "none", "disappear",
-   "recolor" (with "color"), "game_over" or "level_up"}.
-3. "goals": predicates that are true when the level is won:
+   "recolor" (with "color"), "game_over" or "level_up"}, ...].
+3. "goals": a list of predicates that are true when the level is won:
    {"kind": "reach", "a": <id>, "b": <id>} (a ends on or touching b),
    {"kind": "clear", "color": c}, {"kind": "count", "color": c, "n": n},
    {"kind": "match", "region_a": [x0,y0,x1,y1], "region_b": [x0,y0,x1,y1]}.
@@ -99,7 +99,9 @@ Your job: keep a model of the game and use it to finish levels in few moves.
    can't express. objects is a list of dicts {"id","sig","color","x","y","cells"}
    (cells a list of [x,y]); action is {"id": n, "x": x, "y": y}. Return the list of
    changed objects as dicts. Keep it general: no fixed coordinates or move lists.
-Actions are "A1" to "A7" and "click #<id>". Ids are valid for this turn only.
+Actions are "A1" to "A7" and "click #<id>" with a real id, like "click #12".
+Write ids in "object", "a" and "b" as bare integers (12, not "#12").
+Ids are valid for this turn only.
 Prefer the cheapest move that both makes progress and tests your least certain fact.
 Reply with JSON only, one object with keys "model", "facts", "goals",
 "plan" or "test", and optionally "rule"."""

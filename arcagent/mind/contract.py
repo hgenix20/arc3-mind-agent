@@ -21,6 +21,9 @@ Contract (``parse_reply``, never raises):
   reason.
 - ``model`` (free text the LLM keeps across turns) is cut to ``MAX_MODEL_CHARS``; ``rule``
   (a Python function, run only in the tools worker) to ``MAX_RULE_CHARS``.
+- Lenient where the model is sloppy but clear: a lone object where ``goals``, ``plan`` or
+  ``facts`` wants a list counts as a list of one, and an integer may be written as a
+  string (``"3"``, ``"#3"`` for an id).
 - Unknown keys are ignored.
 """
 
@@ -44,6 +47,7 @@ MAX_RULE_CHARS = 4000
 _MAX_TEXT = 300
 _ACTION_RE = re.compile(r"^A([1-7])$")
 _CLICK_RE = re.compile(r"^click\s*#\s*(\d{1,6})$", re.IGNORECASE)
+_INT_RE = re.compile(r"^#?\s*(-?\d{1,6})$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +96,16 @@ def _first_object(text: str) -> dict[str, Any] | None:
 
 
 def _int(v: object) -> int | None:
-    return v if isinstance(v, int) and not isinstance(v, bool) else None
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v
+    if isinstance(v, str) and (m := _INT_RE.match(v.strip())):
+        return int(m.group(1))
+    return None
+
+
+def _as_list(raw: object) -> object:
+    """A lone object where a list belongs counts as a list of one."""
+    return [raw] if isinstance(raw, dict) else raw
 
 
 def _text(v: object) -> str:
@@ -202,6 +215,7 @@ def parse_reply(text: str, scene: Scene, available: Sequence[int]) -> Reply:
 
 def _goals(raw: object, by_id: dict[int, Thing], dropped: list[str]) -> list[Goal]:
     out: list[Goal] = []
+    raw = _as_list(raw)
     if not isinstance(raw, list):
         if raw:
             dropped.append("goals is not a list")
@@ -220,6 +234,7 @@ def _plan(
     raw: object, by_id: dict[int, Thing], available: frozenset[int], dropped: list[str]
 ) -> list[PlanItem]:
     out: list[PlanItem] = []
+    raw = _as_list(raw)
     if not isinstance(raw, list):
         if raw:
             dropped.append("plan is not a list")
@@ -287,6 +302,7 @@ def _claims(
     dropped: list[str],
 ) -> list[FactClaim]:
     out: list[FactClaim] = []
+    raw = _as_list(raw)
     if not isinstance(raw, list):
         if raw:
             dropped.append("facts is not a list")
