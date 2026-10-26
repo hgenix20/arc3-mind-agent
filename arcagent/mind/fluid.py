@@ -512,6 +512,9 @@ class FluidAgent:
         self._noise = NoiseMask()
         self._baseline = Baseline(seed)
         self._clicks = _Clicks()
+        self._search_fn: Callable[..., SearchResult] = (
+            search  # DriveAgent routes it via the toolbox
+        )
 
         self._action_no = 0
         self._level = 0
@@ -1371,7 +1374,7 @@ class FluidAgent:
         max_nodes: int = SEARCH_MAX_NODES,
         time_s: float = SEARCH_TIME_S,
     ) -> SearchResult:
-        res = search(
+        res = self._search_fn(
             scene,
             self._actions,
             self.mem,

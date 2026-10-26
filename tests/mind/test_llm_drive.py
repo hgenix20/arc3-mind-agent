@@ -1,0 +1,187 @@
+"""DriveAgent: the LLM looks first, plans are played out in its model, experiments and fixes."""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from arcagent.mind import fluid, llm_drive
+from arcagent.mind.config import CONFIGS
+from arcagent.mind.runlog import RunLog
+from arcagent.mind.search import SearchResult
+from arcagent.mind.tool_fix import FixResult
+from arcagent.mind.vchat import VisionChat, VMessage
+from arcagent.synth.run import Completion
+from tests.mind.fakegames import FakeGame, play
+from tests.mind.test_fluid_agent import SyncPool
+
+Rec = dict[str, Any]
+Replier = Callable[[str], dict[str, Any]]
+
+
+def _prompt(messages: list[VMessage]) -> str:
+    content = messages[1]["content"]
+    assert isinstance(content, list)
+    return str(content[0]["text"])
+
+
+def ids(prompt: str) -> tuple[int, int]:
+    """The player's (color 1) and the target's (color 4) ids in a prompt."""
+    player = re.search(r"#(\d+) c1 ", prompt)
+    target = re.search(r"#(\d+) c4 ", prompt)
+    assert player is not None and target is not None
+    return int(player.group(1)), int(target.group(1))
+
+
+def chat_of(replier: Replier, log: list[str]) -> VisionChat:
+    def call(messages: list[VMessage], seed: int) -> Completion:
+        del seed
+        text = _prompt(messages)
+        log.append(text)
+        return Completion(json.dumps(replier(text)), 0, 0, 0.0)
+
+    return call
+
+
+def make(tmp_path: Path, chat: VisionChat | None, name: str = "d") -> llm_drive.DriveAgent:
+    log = RunLog(tmp_path / f"{name}.jsonl", "fake", "DRIVE", 0)
+    return llm_drive.DriveAgent(
+        "fake",
+        CONFIGS["FLUID-LLM"],
+        seed=0,
+        log=log,
+        game_deadline=1e12,
+        run_deadline=1e12,
+        chat=chat,
+        pool=SyncPool() if chat is not None else None,
+    )
+
+
+def records(tmp_path: Path, name: str = "d") -> list[Rec]:
+    lines = (tmp_path / f"{name}.jsonl").read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def right_facts(p: int, t: int) -> list[dict[str, Any]]:
+    return [
+        {"action": "A4", "object": p, "effect": "move", "dx": 1, "dy": 0},
+        {"action": "A4", "object": t, "effect": "none"},
+    ]
+
+
+def test_level_start_turn_before_first_move(tmp_path: Path) -> None:
+    seen: list[str] = []
+    agent = make(tmp_path, chat_of(lambda _p: {"model": "first look"}, seen))
+    play(FakeGame(player=(2, 2), target=(9, 2), walls=[], lava=[]), agent, max_steps=1)
+    agent.close()
+    recs = records(tmp_path)
+    wake = next(r for r in recs if r["type"] == "wake")
+    assert wake["step"] == 0 and wake["reason"] == "level start"
+    assert "Your model so far:\n(none yet)" in seen[0]
+
+
+def test_model_text_carried_to_next_turn(tmp_path: Path) -> None:
+    seen: list[str] = []
+    agent = make(tmp_path, chat_of(lambda _p: {"model": "A4 moves me right"}, seen))
+    play(FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[]), agent, max_steps=3)
+    agent.close()
+    assert len(seen) >= 2 and "Your model so far:\nA4 moves me right" in seen[1]
+
+
+def test_unmodeled_choice_wakes(tmp_path: Path) -> None:
+    seen: list[str] = []
+    agent = make(tmp_path, chat_of(lambda _p: {}, seen))
+    play(FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[]), agent, max_steps=4)
+    agent.close()
+    reasons = [r["reason"] for r in records(tmp_path) if r["type"] == "wake"]
+    assert reasons[0] == "level start"
+    assert llm_drive.NO_MODELED_MOVE in reasons[1:]
+
+
+def test_plan_played_out_runs_as_sim(tmp_path: Path) -> None:
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {
+            "facts": right_facts(p, t),
+            "goals": [{"kind": "reach", "a": p, "b": t}],
+            "plan": [{"action": "A4", "expect": "player right"}] * 6,
+        }
+
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, []))
+    play(game, agent, max_steps=10, until=lambda: game.levels >= 1)
+    agent.close()
+    assert game.levels == 1 and game.level_up_steps[0] == 3
+    end = next(r for r in records(tmp_path) if r["type"] == "drive_end")
+    assert end["modes"] == {"sim": 3} and end["claims"] == 2
+
+
+def test_unknown_step_is_one_experiment(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        if len(calls) > 1:
+            return {}
+        p, t = ids(prompt)
+        plan = [{"action": a, "expect": "?"} for a in ("A4", "A1", "A4", "A4")]
+        return {"facts": right_facts(p, t), "plan": plan}
+
+    agent = make(tmp_path, chat_of(reply, calls))
+    acts = play(FakeGame(player=(2, 9), target=(40, 2), walls=[], lava=[]), agent, max_steps=3)
+    agent.close()
+    assert [a.id for a in acts[:2]] == [4, 1]
+    recs = records(tmp_path)
+    wakes = [(r["step"], r["reason"]) for r in recs if r["type"] == "wake"]
+    assert (2, llm_drive.EXPERIMENT_RESULT) in wakes
+    end = next(r for r in recs if r["type"] == "drive_end")
+    assert end["modes"]["experiment"] == 1
+
+
+def test_search_failure_triggers_fix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[str] = []
+
+    def fake_fix(*_a: Any, **_k: Any) -> FixResult:
+        asked.append("fix")
+        return FixResult(None, "no function in reply")
+
+    monkeypatch.setattr(llm_drive, "try_fix", fake_fix)
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {
+            "facts": right_facts(p, t),
+            "goals": [{"kind": "reach", "a": p, "b": t}],
+            "plan": [{"action": "A4", "expect": "player right"}] * 3,
+        }
+
+    agent = make(tmp_path, chat_of(reply, []))
+    agent._search_fn = lambda *_a, **_k: SearchResult(None, (), (), 0, 0, "exhausted")  # pyright: ignore[reportPrivateUsage]
+    play(FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[]), agent, max_steps=2)
+    agent.close()
+    recs = records(tmp_path)
+    assert asked == ["fix"]
+    fail = next(r for r in recs if r["type"] == "tool_fail")
+    assert fail["tool"] == "search" and fail["got"] == "no plan"
+    fix = next(r for r in recs if r["type"] == "tool_fix")
+    assert fix["adopted"] is None and fix["reason"] == "no function in reply"
+
+
+def test_no_chat_plays_like_fluid(tmp_path: Path) -> None:
+    def game() -> FakeGame:
+        return FakeGame(player=(2, 2), target=(12, 7), walls=[(5, 2), (5, 3)], lava=[(8, 7)])
+
+    log = RunLog(tmp_path / "f.jsonl", "fake", "FLUID", 0)
+    base = fluid.FluidAgent(
+        "fake", CONFIGS["FLUID"], seed=0, log=log, game_deadline=1e12, run_deadline=1e12
+    )
+    drive = make(tmp_path, None)
+    a = play(game(), base, max_steps=40)
+    b = play(game(), drive, max_steps=40)
+    base.close()
+    drive.close()
+    assert a == b

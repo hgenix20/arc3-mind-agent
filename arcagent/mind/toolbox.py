@@ -237,6 +237,10 @@ class ToolWorker:
         kwargs: dict[str, Any],
         timeout_s: float = CALL_TIMEOUT_S,
     ) -> tuple[bool, Any]:
+        try:
+            payload = _dump((args, kwargs))
+        except Exception as exc:  # e.g. a closure argument: the original must answer
+            return False, f"unpicklable: {type(exc).__name__}"
         req = {
             "op": "call",
             "name": spec.name,
@@ -244,7 +248,7 @@ class ToolWorker:
             "module": spec.module,
             "func": spec.func,
             "source": version.source,
-            "args": _dump((args, kwargs)),
+            "args": payload,
         }
         return self._request(req, timeout_s)
 
