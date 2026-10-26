@@ -59,7 +59,7 @@ from arcagent.mind.toolbox import TOOLBOX, SceneActions, ToolWorker, call_tool
 from arcagent.mind.turn import TurnInput
 
 DRIVE_TURN_S = 90.0  # the longest a move waits for its turn
-DRIVE_MAX_TOKENS = 2048  # reply budget per drive turn (the model, facts and a plan)
+DRIVE_MAX_TOKENS = 4096  # per drive or fix turn (2048 cut 4% of turns, most fixes)
 DRIVE_CUTOFF = 0.1  # no turn starts with less than this share of the game's budget left
 RULE_S = 2.0  # deadline per rule call in the tools worker
 DRIVE_BACKOFF_MOVES = 5  # moves without a turn after one timed out (level start excepted)

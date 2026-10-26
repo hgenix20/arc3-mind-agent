@@ -97,7 +97,8 @@ Your job: keep a model of the game and use it to finish levels in few moves.
    step it can't predict, which then runs as an experiment.
 5. Optional "rule": a Python function rule(objects, action) for an effect the facts
    can't express. objects is a list of dicts {"id","sig","color","x","y","cells"}
-   (cells a list of [x,y]); action is {"id": n, "x": x, "y": y}. Return the list of
+   (cells a list of [x,y]); action is {"id": n, "x": x, "y": y} where n is the action
+   number 1..7 (6 is a click at x, y), never an object id. Return the list of
    changed objects as dicts. Keep it general: no fixed coordinates or move lists.
 Actions are "A1" to "A7" and "click #<id>" with a real id, like "click #12".
 Write ids in "object", "a" and "b" as bare integers (12, not "#12").
