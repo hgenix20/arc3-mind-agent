@@ -13,6 +13,14 @@ Contract (``parse_reply``, never raises):
   in ``available`` and the id is on screen. Invalid steps are dropped with a reason.
 - ``test``: one step plus a question, kept only when the plan came back empty (a reply
   with a valid plan keeps the plan and the test is dropped). Ids are valid for one turn.
+- ``facts`` (the LLM's model of the game): ``{"action", "object", "effect", ...}`` with
+  ``object`` an id on screen or ``"any"`` and ``effect`` one of ``move`` (``dx``, ``dy``
+  integers), ``none``, ``disappear``, ``recolor`` (``color``), ``game_over``,
+  ``level_up``. Each valid one is a ``FactClaim`` keyed like an observed fact: the action
+  label (``facts.action_label``) and the thing's sig. Invalid ones are dropped with a
+  reason.
+- ``model`` (free text the LLM keeps across turns) is cut to ``MAX_MODEL_CHARS``; ``rule``
+  (a Python function, run only in the tools worker) to ``MAX_RULE_CHARS``.
 - Unknown keys are ignored.
 """
 
@@ -25,10 +33,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from arcagent.core.types import COORD_ACTION_ID, GRID_SIZE, Action
+from arcagent.mind.facts import Effect, action_label
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Thing, click_cell
 
 MAX_PLAN_STEPS = 8
+MAX_FACTS = 24  # fact claims kept per reply
+MAX_MODEL_CHARS = 1500
+MAX_RULE_CHARS = 4000
 _MAX_TEXT = 300
 _ACTION_RE = re.compile(r"^A([1-7])$")
 _CLICK_RE = re.compile(r"^click\s*#\s*(\d{1,6})$", re.IGNORECASE)
@@ -43,6 +55,15 @@ class PlanItem:
 
 
 @dataclass(frozen=True, slots=True)
+class FactClaim:
+    """The LLM's claim about what an action does to a subject (a sig or ``"any"``)."""
+
+    label: str
+    subject: str
+    effects: tuple[Effect, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Reply:
     """What was valid in a reply; ``dropped`` holds one reason per dropped part."""
 
@@ -51,6 +72,9 @@ class Reply:
     test: PlanItem | None = None
     notes: str = ""
     dropped: tuple[str, ...] = ()
+    claims: tuple[FactClaim, ...] = ()
+    model: str = ""
+    rule: str = ""
 
 
 def _first_object(text: str) -> dict[str, Any] | None:
@@ -212,6 +236,75 @@ def _plan(
     return out
 
 
+def _effect(f: dict[str, Any]) -> Effect | str:
+    kind = f.get("effect")
+    if kind == "move":
+        dx, dy = _int(f.get("dx", 0)), _int(f.get("dy", 0))
+        if dx is None or dy is None or (dx, dy) == (0, 0):
+            return "move needs integer dx, dy, not both 0"
+        return Effect("move", dx, dy)
+    if kind == "recolor":
+        color = _int(f.get("color"))
+        if color is None or not 0 <= color <= 15:
+            return "recolor needs a color 0..15"
+        return Effect("recolor", color=color)
+    if kind in ("none", "disappear", "game_over", "level_up"):
+        return Effect(kind)
+    return f"unknown effect: {str(kind)[:30]}"
+
+
+def _claim(
+    raw: object, scene: Scene, by_id: dict[int, Thing], available: frozenset[int]
+) -> FactClaim | str:
+    if not isinstance(raw, dict):
+        return "fact is not an object"
+    f: dict[str, Any] = raw  # pyright: ignore[reportUnknownVariableType]
+    name = f.get("action")
+    if not isinstance(name, str):
+        return "fact has no action name"
+    act = _action(name.strip(), by_id, available)
+    if isinstance(act, str):
+        return f"fact: {act}"
+    obj = f.get("object", "any")
+    if obj == "any":
+        subject = "any"
+    else:
+        oid = _int(obj)
+        if oid is None or oid not in by_id:
+            return f"fact object not on screen: #{str(obj)[:10]}"
+        subject = by_id[oid].sig
+    effect = _effect(f)
+    if isinstance(effect, str):
+        return f"fact: {effect}"
+    return FactClaim(action_label(act, scene), subject, (effect,))
+
+
+def _claims(
+    raw: object,
+    scene: Scene,
+    by_id: dict[int, Thing],
+    available: frozenset[int],
+    dropped: list[str],
+) -> list[FactClaim]:
+    out: list[FactClaim] = []
+    if not isinstance(raw, list):
+        if raw:
+            dropped.append("facts is not a list")
+        return out
+    for item in raw[:MAX_FACTS]:  # pyright: ignore[reportUnknownVariableType]
+        c = _claim(item, scene, by_id, available)
+        if isinstance(c, FactClaim):
+            if c not in out:
+                out.append(c)
+        else:
+            dropped.append(c)
+    return out
+
+
+def _long_text(v: object, cap: int) -> str:
+    return v.strip()[:cap] if isinstance(v, str) else ""
+
+
 def _parse(text: str, scene: Scene, available: frozenset[int]) -> Reply:
     obj = _first_object(text)
     if obj is None:
@@ -229,4 +322,14 @@ def _parse(text: str, scene: Scene, available: frozenset[int]) -> Reply:
             dropped.append("test dropped: the plan wins")
         else:
             test = item
-    return Reply(tuple(goals), tuple(plan), test, _text(obj.get("notes")), tuple(dropped))
+    claims = _claims(obj.get("facts", []), scene, by_id, available, dropped)
+    return Reply(
+        tuple(goals),
+        tuple(plan),
+        test,
+        _text(obj.get("notes")),
+        tuple(dropped),
+        tuple(claims),
+        _long_text(obj.get("model"), MAX_MODEL_CHARS),
+        _long_text(obj.get("rule"), MAX_RULE_CHARS),
+    )

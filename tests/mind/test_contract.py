@@ -7,7 +7,14 @@ import json
 import numpy as np
 
 from arcagent.core.types import Action
-from arcagent.mind.contract import MAX_PLAN_STEPS, parse_reply
+from arcagent.mind.contract import (
+    MAX_MODEL_CHARS,
+    MAX_PLAN_STEPS,
+    MAX_RULE_CHARS,
+    FactClaim,
+    parse_reply,
+)
+from arcagent.mind.facts import Effect, action_label
 from arcagent.mind.goals import Goal
 from arcagent.mind.objects import Scene, Thing, click_cell, shape_of
 
@@ -126,3 +133,48 @@ def test_deeply_nested_object_is_skipped_for_a_later_valid_one() -> None:
     text = "{" * 100000 + ' junk {"plan": [{"action": "A2"}]}'
     r = parse_reply(text, SCENE, AVAIL)
     assert r.plan[0].action == Action(2)
+
+
+def test_facts_parse_into_claims() -> None:
+    text = json.dumps(
+        {
+            "facts": [
+                {"action": "A1", "object": 1, "effect": "move", "dx": 0, "dy": -1},
+                {"action": "click #4", "object": 4, "effect": "recolor", "color": 9},
+                {"action": "A2", "object": "any", "effect": "none"},
+            ]
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    sig1, sig4 = SCENE.things[0].sig, SCENE.things[1].sig
+    assert r.claims[0] == FactClaim("A1", sig1, (Effect("move", 0, -1),))
+    x, y = click_cell(SCENE.things[1])
+    assert r.claims[1] == FactClaim(
+        action_label(Action(6, x, y), SCENE), sig4, (Effect("recolor", color=9),)
+    )
+    assert r.claims[2] == FactClaim("A2", "any", (Effect("none"),))
+    assert r.dropped == ()
+
+
+def test_bad_fact_dropped_with_reason() -> None:
+    text = json.dumps(
+        {
+            "facts": [
+                {"action": "A1", "object": 99, "effect": "move", "dx": 1, "dy": 0},
+                {"action": "A1", "object": 1, "effect": "fly"},
+                {"action": "A0", "object": 1, "effect": "none"},
+                {"action": "A1", "object": 1, "effect": "move", "dx": "x"},
+                "nope",
+            ]
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.claims == () and len(r.dropped) == 5
+    assert any("#99" in d for d in r.dropped)
+
+
+def test_model_and_rule_clipped() -> None:
+    text = json.dumps({"model": "m" * 5000, "rule": "def rule(o, a):\n" + "x" * 9000})
+    r = parse_reply(text, SCENE, AVAIL)
+    assert len(r.model) == MAX_MODEL_CHARS and len(r.rule) == MAX_RULE_CHARS
+    assert r.rule.startswith("def rule")
