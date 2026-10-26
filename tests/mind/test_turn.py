@@ -13,8 +13,10 @@ from arcagent.core.types import Action
 from arcagent.mind.facts import Effect, Fact
 from arcagent.mind.objects import Scene, Thing, shape_of
 from arcagent.mind.turn import (
+    DRIVE_SYSTEM_PROMPT,
     MAX_OBJECTS,
     MAX_PROMPT_CHARS,
+    MAX_PROMPT_CHARS_DRIVE,
     MOVE_LOG_LINES,
     SYSTEM_PROMPT,
     TurnInput,
@@ -236,3 +238,29 @@ def test_fact_lines_name_things_and_clicks_by_id() -> None:
     assert render_fact(elsewhere, sc).startswith("click on (off screen) self any")
     spawn = Fact(("A1", "spawn", "any"), (Effect("appear", sig=a.sig, at=(1, 1)),), [4], hits=1)
     assert render_fact(spawn, sc) == "A1 spawn any: spawns #1 at (1, 1) [thin 1/0]"
+
+
+def test_drive_prompt_has_model_block() -> None:
+    inp = replace(_inp(), drive=True, model="A1 moves the blue block up; goal: reach the door")
+    msgs = build_messages(inp)
+    assert msgs[0]["content"] == DRIVE_SYSTEM_PROMPT
+    text = _text(msgs)
+    assert "Your model so far:\nA1 moves the blue block up" in text
+    assert len(text) <= MAX_PROMPT_CHARS_DRIVE
+    big = replace(inp, facts=tuple("f" * 500 for _ in range(100)), model="m" * 1500)
+    assert len(_text(build_messages(big))) <= MAX_PROMPT_CHARS_DRIVE
+
+
+def test_non_drive_prompt_unchanged() -> None:
+    msgs = build_messages(replace(_inp(), model="ignored"))
+    assert msgs[0]["content"] == SYSTEM_PROMPT
+    assert "Your model so far" not in _text(msgs)
+
+
+def test_drive_prompt_names_no_known_game_and_asks_for_the_model() -> None:
+    low = DRIVE_SYSTEM_PROMPT.lower()
+    for name in KNOWN_GAMES:
+        assert name not in low, name
+    for key in ('"facts"', '"model"', '"rule"', '"plan"', '"test"', '"goals"'):
+        assert key in DRIVE_SYSTEM_PROMPT, key
+    assert "\u2014" not in DRIVE_SYSTEM_PROMPT

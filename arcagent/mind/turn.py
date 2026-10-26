@@ -36,6 +36,7 @@ from arcagent.mind.vchat import ImagesRejected, VisionChat, VMessage
 
 MAX_OBJECTS = 40
 MAX_PROMPT_CHARS = 6000
+MAX_PROMPT_CHARS_DRIVE = 9000  # drive turns add the model and show more facts and moves
 MOVE_LOG_LINES = 8
 MAX_IDS = 4  # ids listed per sig in a fact or goal line before ``+N``
 
@@ -73,6 +74,37 @@ Reply with JSON only, in this exact shape, one object:
 Omit any key you have nothing for."""
 
 
+DRIVE_SYSTEM_PROMPT = """\
+You drive an agent playing an unknown grid game. You decide; code assists you.
+You get the screen, an image of what changed (changed cells bright), and text:
+objects with exact positions (#<id> c<color> <w>x<h> at (x,y)), facts learned
+from real moves, goal guesses, the last moves, and your own model from earlier turns.
+Your job: keep a model of the game and use it to finish levels in few moves.
+1. "model": rewrite your model in plain text (under 1500 characters): what each action
+   does, what each kind of object is, what ends or wins a level, what you are unsure of.
+   It is shown to you next turn; nothing else of this turn is.
+2. "facts": the effects your model predicts, one per action and object, so code can
+   simulate moves: {"action": "A1" or "click #<id>", "object": <id> or "any",
+   "effect": "move" (with "dx", "dy" in cells), "none", "disappear",
+   "recolor" (with "color"), "game_over" or "level_up"}.
+3. "goals": predicates that are true when the level is won:
+   {"kind": "reach", "a": <id>, "b": <id>} (a ends on or touching b),
+   {"kind": "clear", "color": c}, {"kind": "count", "color": c, "n": n},
+   {"kind": "match", "region_a": [x0,y0,x1,y1], "region_b": [x0,y0,x1,y1]}.
+4. Either "plan": up to 8 steps [{"action": ..., "expect": "<object> <effect>"}],
+   or "test": {"action": ..., "question": "..."} when you need to learn something first.
+   Code plays your plan out in your model before any real move and stops at the first
+   step it can't predict, which then runs as an experiment.
+5. Optional "rule": a Python function rule(objects, action) for an effect the facts
+   can't express. objects is a list of dicts {"id","sig","color","x","y","cells"}
+   (cells a list of [x,y]); action is {"id": n, "x": x, "y": y}. Return the list of
+   changed objects as dicts. Keep it general: no fixed coordinates or move lists.
+Actions are "A1" to "A7" and "click #<id>". Ids are valid for this turn only.
+Prefer the cheapest move that both makes progress and tests your least certain fact.
+Reply with JSON only, one object with keys "model", "facts", "goals",
+"plan" or "test", and optionally "rule"."""
+
+
 @dataclass(frozen=True, slots=True)
 class TurnInput:
     """Everything one turn needs. ``movers`` are sigs that move; ``changed`` are ids changed
@@ -90,6 +122,8 @@ class TurnInput:
     wake: str
     movers: frozenset[str] = frozenset()
     changed: frozenset[int] = frozenset()
+    model: str = ""  # the LLM's own model from its last turn (drive turns only)
+    drive: bool = False
 
 
 def _clip(s: str, width: int) -> str:
@@ -187,11 +221,16 @@ def _block(title: str, lines: list[str]) -> str:
 
 
 def _text(inp: TurnInput) -> str:
-    facts = [_clip(f, _FACT_WIDTH) for f in inp.facts[-_MAX_FACTS:]]
+    n_facts = 2 * _MAX_FACTS if inp.drive else _MAX_FACTS
+    n_moves = 2 * MOVE_LOG_LINES if inp.drive else MOVE_LOG_LINES
+    cap = MAX_PROMPT_CHARS_DRIVE if inp.drive else MAX_PROMPT_CHARS
+    facts = [_clip(f, _FACT_WIDTH) for f in inp.facts[-n_facts:]]
     goals = [_clip(f"{g}: {s}", _GOAL_WIDTH) for g, s in inp.goals[:_MAX_GOALS]]
     questions = [_clip(q, _QUESTION_WIDTH) for q in inp.questions[:_MAX_QUESTIONS]]
-    moves = [_clip(m, _MOVE_WIDTH) for m in inp.moves[-MOVE_LOG_LINES:]]
+    moves = [_clip(m, _MOVE_WIDTH) for m in inp.moves[-n_moves:]]
+    head = [f"Your model so far:\n{inp.model or '(none yet)'}"] if inp.drive else []
     parts = [
+        *head,
         f"Wake: {_clip(inp.wake, 80)}",
         f"Level: {inp.level}",
         "Available actions: " + _available(inp.available),
@@ -202,7 +241,7 @@ def _text(inp: TurnInput) -> str:
         _block("Last moves", moves),
     ]
     text = "\n".join(parts)
-    return text if len(text) <= MAX_PROMPT_CHARS else text[:MAX_PROMPT_CHARS]
+    return text if len(text) <= cap else text[:cap]
 
 
 def build_messages(inp: TurnInput) -> list[VMessage]:
@@ -219,7 +258,7 @@ def build_messages(inp: TurnInput) -> list[VMessage]:
             }
         )
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": DRIVE_SYSTEM_PROMPT if inp.drive else SYSTEM_PROMPT},
         {"role": "user", "content": content},
     ]
 
