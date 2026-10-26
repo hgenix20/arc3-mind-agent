@@ -77,6 +77,7 @@ from arcagent.mind.agent import MAX_ERROR_CHARS, MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
 from arcagent.mind.fluid import TURN_DEADLINE_S, TURN_MAX_TOKENS, FluidAgent
+from arcagent.mind.llm_drive import DRIVE_MAX_TOKENS, DRIVE_TURN_S, DriveAgent
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
 from arcagent.mind.synthesizer import Synthesizer
@@ -442,7 +443,8 @@ class MindRun:
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
         if self.cfg.fluid:
             try:
-                fluid = FluidAgent(
+                cls = DriveAgent if self.cfg.drive else FluidAgent
+                fluid = cls(
                     game,
                     self.cfg,
                     seed=seed,
@@ -502,8 +504,12 @@ def fluid_chat(args: argparse.Namespace) -> VisionChat:
     replies = Path(args.replies_dir)
     if args.replay:
         return replaying(replies)
+    drive = CONFIGS[args.config].drive
     live = http_vision_chat(
-        args.endpoint, args.model, max_tokens=TURN_MAX_TOKENS, timeout_s=TURN_DEADLINE_S
+        args.endpoint,
+        args.model,
+        max_tokens=DRIVE_MAX_TOKENS if drive else TURN_MAX_TOKENS,
+        timeout_s=DRIVE_TURN_S if drive else TURN_DEADLINE_S,
     )
     return recording(live, replies)
 

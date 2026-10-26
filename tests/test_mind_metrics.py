@@ -305,3 +305,17 @@ def test_old_logs_have_none_for_event_based_metrics() -> None:
             assert out[key] is None, key
     mm.format_table(result)
     assert mm.compute([], human={})["overall"]["hit_rate"] is None
+
+
+def test_metrics_count_modes() -> None:
+    recs = [
+        act(0, 0, "a"),
+        act(1, 0, "b"),
+        ev("drive_end", 2, modes={"sim": 5, "experiment": 2, "fallback": 1}),
+        act(0, 0, "a", game="other"),
+        ev("drive_end", 1, game="other", modes={"sim": 1}),
+    ]
+    out = mm.compute(recs, human={})
+    assert out["games"][GAME]["modes"] == {"experiment": 2, "fallback": 1, "sim": 5}
+    assert out["overall"]["modes"] == {"experiment": 2, "fallback": 1, "sim": 6}
+    assert mm.compute([act(0, 0, "a")], human={})["games"][GAME]["modes"] is None

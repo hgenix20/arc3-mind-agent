@@ -218,6 +218,7 @@ class _Game:
         self.wakes: list[Rec] = []
         self.searches: list[Rec] = []
         self.goal_events: list[Rec] = []
+        self.modes: Counter[str] = Counter()  # DriveAgent's moves per mode (``drive_end``)
 
     def add(self, rec: Rec) -> None:
         kind = rec["type"]
@@ -236,6 +237,8 @@ class _Game:
             self.searches.append(rec)
         elif kind == "goal":
             self.goal_events.append(rec)
+        elif kind == "drive_end" and isinstance(rec.get("modes"), dict):
+            self.modes.update({str(k): int(v) for k, v in rec["modes"].items() if _is_num(v)})
         elif kind in ("game_over", "level_up"):
             idx = self.by_step.get(rec.get("step", -1))
             if idx is None:
@@ -302,6 +305,7 @@ class _Game:
             "goal_events": len(self.goal_events),
             "goal_final": Counter(final.values()),
             "goal_transitions": Counter(str(g.get("status")) for g in self.goal_events),
+            "modes": Counter(self.modes),
         }
 
     def raw(self) -> dict[str, Any]:
@@ -404,6 +408,7 @@ def _fluid_summary(raw: dict[str, Any]) -> dict[str, Any]:
         if raw["goal_events"]
         else None,
         "actions_vs_human": raw["vs_human"] or None,
+        "modes": dict(sorted(raw["modes"].items())) or None,
     }
 
 
@@ -445,6 +450,7 @@ def compute(records: Iterable[Rec], human: dict[str, list[int]] | None = None) -
         "goal_events": 0,
         "goal_final": Counter(),
         "goal_transitions": Counter(),
+        "modes": Counter(),
         "vs_human": [],
     }
     for raw in raws.values():

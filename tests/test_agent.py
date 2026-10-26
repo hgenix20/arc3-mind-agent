@@ -864,3 +864,40 @@ def test_mind_policy_refuses_a_log_dir_with_earlier_logs(
     with pytest.raises(FileExistsError, match=r"ls20-1.jsonl"):
         submit.main(["--mode", "offline", "--policy", "mind", "--replay", "--out", str(tmp_path)])
     assert calls == []  # nothing started, no scorecard opened
+
+
+def test_mind_run_drive_config_builds_a_drive_agent(tmp_path: Path) -> None:
+    import time  # noqa: PLC0415
+
+    from arcagent.mind.config import CONFIGS  # noqa: PLC0415
+    from arcagent.mind.llm_drive import DriveAgent  # noqa: PLC0415
+    from arcagent.mind.vchat import VMessage  # noqa: PLC0415
+
+    def vchat(messages: list[VMessage], seed: int) -> Completion:
+        del messages, seed
+        return Completion(text="{}", prompt_tokens=0, completion_tokens=0, seconds=0.0)
+
+    assert CONFIGS["DRIVE"].drive and CONFIGS["DRIVE"].fluid and CONFIGS["DRIVE"].llm
+    now = time.monotonic()
+    run = submit.MindRun(
+        CONFIGS["DRIVE"],
+        chat=None,
+        games=["g"],
+        workers=1,
+        log_dir=tmp_path,
+        seed=0,
+        run_deadline=now + 3600,
+        vchat=vchat,
+    )
+    game = run.make_agent("g", now + 3600)
+    assert isinstance(game.agent, DriveAgent)
+    grid = np.zeros((GRID_SIZE, GRID_SIZE), np.int8)
+    for i in range(3):
+        grid = grid.copy()
+        grid[0, i] = 1
+        game.choose(Observation(grid, Phase.NOT_FINISHED, 0, 1, (1, 2)))
+    run.pool.shutdown(wait=True)
+    game.close()
+    recs = [json.loads(x) for x in (tmp_path / "g.jsonl").read_text().splitlines()]
+    assert not [r for r in recs if r["type"] == "agent_error"]
+    assert [r for r in recs if r["type"] == "drive_end"]

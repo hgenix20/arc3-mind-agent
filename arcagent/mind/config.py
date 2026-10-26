@@ -11,7 +11,9 @@ Contract:
   (``arcagent.mind.fluid_modules``). ``FLUID-LLM`` is the same agent with the
   executive turn on (``llm=True``): a vision model proposes goal guesses, a plan
   or a test, and slice 1 logic checks and executes them. ``FLUID-LLM-<module>``
-  is ``FLUID-LLM`` with that one module null, the fluid ablations.
+  is ``FLUID-LLM`` with that one module null, the fluid ablations. ``DRIVE`` is
+  ``FLUID-LLM`` played by ``llm_drive.DriveAgent`` (``drive=True``): the LLM drives and
+  the deterministic code is its toolkit.
 - ``build_modules`` is the only code that maps a flag to a MindAgent module class
   (Transfer selects ``CarryTransfer`` or its null); ``fluid_modules.build_fluid_modules``
   does the same for the fluid agent.
@@ -67,6 +69,7 @@ class MindConfig:
     plan_min_trials: int = 5
     synth_cutoff_s: float = 300.0
     fluid: bool = False
+    drive: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,7 @@ def _all_configs() -> dict[str, MindConfig]:
     for m in MODULE_NAMES:
         name = f"FLUID-LLM-{m}"
         out[name] = replace(out["FLUID-LLM"], name=name, **{m: False})
+    out["DRIVE"] = replace(out["FLUID-LLM"], name="DRIVE", drive=True)
     return out
 
 
