@@ -348,6 +348,7 @@ Logs: `bench/evals/2026-10-23-fluid-llm-v3/`.
 | 2026-10-24 | a3c123b | Kaggle eval v4 of `arc3-mind-agent`, FLUID-LLM full build (slices 1 to 3), 25 games, scaled budget | 5 | 0.38 | scorecard 0.3774, 6,247 s, 0 errors; levels on r11l (4.76), lp85 (2.78), lf52 (1.82), tn36 (0.07), ft09 (0.005); 30 sleeps; hit rate 0.89; rule reuse 0.02; 593 tests per level |
 | 2026-10-25 | f2288a1 | Kaggle eval v5 of `arc3-mind-agent`, FLUID-LLM after the forced-move merge, 25 games, scaled budget | 14 | 0.43 | scorecard 0.4464, 6,246 s, 0 errors; prediction accuracy 0.92; levels on ar25 x2 (211, 399), lp85 x2 (7, 1,890), cd82 (1,065), dc22 (1,035), lf52 (149), ls20 (44), m0r0 (95), r11l (29), sp80 (1,189), su15 (628), tn36 (11), vc33 (120); submitted 2026-10-25 (submission 57637984, Kameron's go) |
 | 2026-10-26 | ea4e8b4 (llm-drive, before the review fixes) | Kaggle eval v7 of `arc3-mind-agent`, DRIVE (the LLM drives, code plays plans out in its model), 25 games, scaled budget | 8 | 0.46 | scorecard 0.4555, 6,249 s, 0 errors; levels on r11l (4.76), tn36 (3.57), lp85 (2.78), ka59 (0.17), ar25 (0.08), m0r0, sp80, vc33; 1,753 turns; moves 18,285 fallback, 7,003 sim, 422 experiment; 0 claims seeded in every game; 11 tool fixes tried, 1 adopted (sp80) |
+| 2026-10-26 | 2f90da9 | Kaggle eval v8, DRIVE with the review fixes and lenient reply parsing, 25 games, scaled budget | 8 | 0.31 | scorecard 0.3060, 6,247 s, 0 errors; levels on tn36 (3.57), lp85 (2.78), r11l (0.85), su15 (0.26), ar25 (0.10), cn04, m0r0, vc33; 1,500 turns, mean 29.6 s; 550 claims seeded; moves 14,947 fallback, 3,271 sim, 271 experiment |
 
 v4 and v3 are one run each, and 0.38 against 0.41 is inside run to run
 variation. The cap of 200 tests per attempt didn't change the test count,
@@ -364,6 +365,16 @@ of a list in 1,638 of 1,640 replies and wrote ids as `"#3"`, and the parser drop
 so play-out had only observed facts and most moves fell through to slice-1 fallback.
 2f90da9 reads a lone object as a list of one and integers written as strings; kernel v8 is
 d9f726e's review fixes plus that. Logs: `bench/evals/2026-10-26-drive-v7/`.
+v8 seeded 550 claims and scored the same. The cause is throughput. Nearly every move woke
+the LLM (612 wakes on a miss, 205 on an experiment's result), so each turn bought 1.2
+moves on average and a game made 50 to 320 moves before the last 10% of its budget, when
+turns stop and B0 plays out the clock (that's where most fallback moves come from: 3,594
+of ls20's in v7). Turns were 30 s because 8 games share the GPU and 43% of each reply was
+prose before the JSON. v9 (6386c35) asks for JSON-only replies, raises the reply cap to
+4,096 and reads more of the model's spellings (`c11`, `cover`, `no change`). c17cf7d then
+wakes only on level start and game over while a modeled move remains, lets an LLM plan run
+past its experiment step, and lets the first observation of a claimed fact replace the
+claim (it used to break the fact). Logs: `bench/evals/2026-10-26-drive-v8/`.
 
 ## Open items
 
