@@ -205,3 +205,18 @@ def test_ids_written_as_hash_strings_parse() -> None:
     assert r.claims == (FactClaim("A1", SCENE.things[0].sig, (Effect("move", 1, 0),)),)
     assert r.goals == (Goal("reach", a=SCENE.things[0].sig, b=SCENE.things[1].sig),)
     assert r.dropped == ()
+
+
+def test_move_claim_needs_an_object() -> None:
+    # A wide move fact would move every unmodeled thing, walls included, in play-outs.
+    text = json.dumps(
+        {
+            "facts": [
+                {"action": "A1", "effect": "move", "dx": 0, "dy": -1},
+                {"action": "A2", "object": "any", "effect": "none"},
+            ]
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.claims == (FactClaim("A2", "any", (Effect("none"),)),)
+    assert r.dropped == ("fact: a move names its object",)

@@ -85,7 +85,7 @@ Your job: keep a model of the game and use it to finish levels in few moves.
    It is shown to you next turn; nothing else of this turn is.
 2. "facts": a list of the effects your model predicts, one per action and object, so
    code can simulate moves: [{"action": "A1" or "click #12", "object": <id> or "any",
-   "effect": "move" (with "dx", "dy" in cells), "none", "disappear",
+   "effect": "move" (with "dx", "dy" in cells; needs a real object id), "none", "disappear",
    "recolor" (with "color"), "game_over" or "level_up"}, ...].
 3. "goals": a list of predicates that are true when the level is won:
    {"kind": "reach", "a": <id>, "b": <id>} (a ends on or touching b),

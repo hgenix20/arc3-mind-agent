@@ -17,7 +17,8 @@ Contract (``parse_reply``, never raises):
   ``object`` an id on screen or ``"any"`` and ``effect`` one of ``move`` (``dx``, ``dy``
   integers), ``none``, ``disappear``, ``recolor`` (``color``), ``game_over``,
   ``level_up``. Each valid one is a ``FactClaim`` keyed like an observed fact: the action
-  label (``facts.action_label``) and the thing's sig. Invalid ones are dropped with a
+  label (``facts.action_label``) and the thing's sig. A ``move`` needs a real object
+  (with ``"any"`` it would move every unmodeled thing). Invalid ones are dropped with a
   reason.
 - ``model`` (free text the LLM keeps across turns) is cut to ``MAX_MODEL_CHARS``; ``rule``
   (a Python function, run only in the tools worker) to ``MAX_RULE_CHARS``.
@@ -268,7 +269,7 @@ def _effect(f: dict[str, Any]) -> Effect | str:
     return f"unknown effect: {str(kind)[:30]}"
 
 
-def _claim(
+def _claim(  # noqa: PLR0911  (one return per rejection reason)
     raw: object, scene: Scene, by_id: dict[int, Thing], available: frozenset[int]
 ) -> FactClaim | str:
     if not isinstance(raw, dict):
@@ -291,6 +292,8 @@ def _claim(
     effect = _effect(f)
     if isinstance(effect, str):
         return f"fact: {effect}"
+    if subject == "any" and effect.kind == "move":
+        return "fact: a move names its object"  # a wide move moves walls in play-outs
     return FactClaim(action_label(act, scene), subject, (effect,))
 
 
