@@ -123,6 +123,10 @@ class GuidedExplorer(ExplorerPolicy):
             elif f[0] == "count" and v == hi and v > mid:
                 self.credit[f] = self.credit.get(f, 0.0) - (v - mid) / span
 
+    def guiding(self) -> bool:
+        """True when ``score`` means anything (some credit)."""
+        return bool(self.credit)
+
     def score(self, key: StateKey) -> float:
         fs = self.feats.get(key)
         if fs is None:
@@ -133,7 +137,7 @@ class GuidedExplorer(ExplorerPolicy):
         self, key: StateKey, obs: Observation, exclude: frozenset[ActionKey] = frozenset()
     ) -> Action:
         stuck = not [a for a in self.graph.untried(key) if a.key() not in exclude]
-        if self.credit and stuck and not self.plan:
+        if self.guiding() and stuck and not self.plan:
             self.plan = best_frontier_path(self.graph, key, self.score)
         return super()._pick(key, obs, exclude)
 

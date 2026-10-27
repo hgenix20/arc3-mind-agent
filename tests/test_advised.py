@@ -82,3 +82,37 @@ def test_a_failed_call_changes_nothing() -> None:
         time.sleep(0.005)
     p.close()
     assert p.llm_credit == {} and "error" in p.history[0]
+
+
+def test_match_measures_name_same_size_objects_and_score_their_difference() -> None:
+    from arcagent.agent.advised import mismatch, objects, parse_matches  # noqa: PLC0415
+
+    g = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+    g[2:5, 2:5] = 3  # a 3x3 key
+    g[3, 3] = 5
+    g[20:23, 30:33] = 3  # a 3x3 slot, not yet showing the key's centre
+    g[40:42, 40:46] = 7  # a 6x2 bar, the wrong size to match
+    boxes = objects(g)
+    key = next(i for i, b in enumerate(boxes) if b == (2, 2, 4, 4))
+    slot = next(i for i, b in enumerate(boxes) if b == (30, 20, 32, 22))
+    bar = next(i for i, b in enumerate(boxes) if b == (40, 40, 45, 41))
+    text = json.dumps({"measures": [{"match": [f"#{slot}", key]}, {"match": [slot, bar]}]})
+    pairs = parse_matches(text, boxes)
+    assert pairs == [(boxes[slot], boxes[key])]
+    assert mismatch(g, *pairs[0]) == 1
+    g[21, 31] = 5
+    assert mismatch(g, *pairs[0]) == 0
+
+
+def test_score_reads_match_pairs_from_the_state_key() -> None:
+    p = AdvisedExplorer(0)
+    g = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+    g[2:5, 2:5] = 3
+    g[20:23, 30:33] = 4
+    p.matches = [((30, 20, 32, 22), (2, 2, 4, 4))]
+    p._shape = g.shape  # pyright: ignore[reportPrivateUsage]
+    far = g.tobytes() + bytes([0, 0])
+    g[20:23, 30:33] = 3
+    near = g.tobytes() + bytes([0, 0])
+    p.close()
+    assert p.score(near) < p.score(far)
