@@ -441,6 +441,21 @@ colors that should stay, and choosing which known frontier to visit next is a we
 either way. Neither guidance helps a level that coverage can't reach within the move
 budget. Logs: `bench/evals/2026-10-27-bench-gpu-advised/`.
 
+Explorer fixes, Kaggle CPU bench, 4 seeds, 10,000 moves a game:
+
+| Code | Change | Mean levels | Mean scorecard |
+|---|---|---|---|
+| c14ed60 | baseline (counters left out of the state) | 18.8 | 0.544 |
+| 1dab62e | exhausted graph starts a clock-keyed round (g50t) | 19.2 | 0.546 |
+| cda6968 | no frontier at a game over, moves dead after 2 game overs | 19.0 | 0.455 |
+| e2cebdc | game-over frames keyed apart; idle kinds of move wait | 23.5 | 0.467 |
+
+The game-over frame of tu93 looks exactly like a normal frame; with terminal states
+getting no candidates, the shared key emptied that state's moves. Keyed apart, tu93 goes
+from 0 to 5 levels on every seed, and dc22, s5i5, m0r0 and sp80 win level 1 on all four.
+The scorecard doesn't follow the levels: the explorer wins in hundreds or thousands of
+moves where humans take tens, and the score is (human/agent moves) squared per level.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
