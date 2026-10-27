@@ -245,3 +245,12 @@ def test_a_move_that_ended_the_game_is_never_retried_or_routed_through() -> None
     assert p.key(over) not in p.graph.edges.get(p.key(obs(g, avail=(6,))), {}).values()
     nxt = p.choose(obs(g, avail=(6,)))
     assert nxt.key() != first.key()
+
+
+def test_untried_moves_of_an_idle_kind_wait() -> None:
+    p = ExplorerPolicy(0)
+    g = grid_with((5, 5, 3, 3, 9), (20, 20, 3, 3, 4))
+    p.tries[(6, 9)], p.changes[(6, 9)] = 40, 1
+    assert p.idle((6, 9)) and not p.idle((6, 4))
+    a = p.choose(obs(g, avail=(6,)))
+    assert g[a.y, a.x] == 4

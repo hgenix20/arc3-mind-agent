@@ -10,7 +10,8 @@ Contract:
   observation that resulted from the previous action (the play loop's
   contract), so the policy learns the outcome of its last action from the
   next observation.
-- State identity is the grid bytes plus the level counter, minus clock lines: a
+- State identity is the grid bytes plus the level counter and the game-over flag,
+  minus clock lines: a
   row or column within ``CLOCK_BAND`` cells of the edge that holds a move counter
   or budget bar. A line is one once it has changed alone ``CLOCK_TICKS`` times (a
   move whose whole change is at most ``TICK_CELLS`` cells, all in the band), or on
@@ -26,6 +27,10 @@ over; one that ended it ``DEAD_AFTER`` times from a state is dead there and neve
 from that state again (a single game over may just be the move budget running out). A
 terminal state gets no candidates, so it is never a frontier (before, the game-over
 screen counted as unexplored and paths led into it: dc22 died every 11 moves).
+
+Untried moves of an idle kind (``idle``: at least ``IDLE_TRIES`` tries, under
+``IDLE_RATE`` of them changed the screen) wait until no other untried move is left in
+the state (dc22: 2,075 of 3,000 moves were no-ops).
 
 Heuristics, in order:
 1. Untried actions in the current state, ranked by how often that action
@@ -60,6 +65,8 @@ StateKey = bytes
 MAX_TARGETS = 64
 MAX_STATES = 20_000
 UCB_C = 1.0
+IDLE_TRIES = 20  # tries before a kind of move can count as idle
+IDLE_RATE = 0.05  # an idle kind changed the screen on fewer than this share of tries
 DEAD_AFTER = 2  # game overs a move must cause from one state before it counts as dead
 CLOCK_WARMUP = 16  # moves seen before clock lines are judged
 CLOCK_RATE = 0.6  # share of moves on which a clock line changes (bars seen: 0.64)
@@ -69,7 +76,9 @@ TICK_CELLS = 2  # most cells a lone clock tick changes
 
 
 def state_key(obs: Observation) -> StateKey:
-    return obs.grid.tobytes() + bytes([obs.levels_completed & 0xFF])
+    """Grid bytes, the level counter, and whether the game is over (a game-over frame can
+    look exactly like a normal one: tu93)."""
+    return obs.grid.tobytes() + bytes([obs.levels_completed & 0xFF, obs.terminal])
 
 
 def click_candidates(grid: Grid, limit: int = MAX_TARGETS) -> list[tuple[int, int]]:
@@ -168,7 +177,7 @@ class ExplorerPolicy:
                 g[i, :] = 0
             else:
                 g[:, i] = 0
-        return g.tobytes() + bytes([obs.levels_completed & 0xFF])
+        return g.tobytes() + bytes([obs.levels_completed & 0xFF, obs.terminal])
 
     def _watch_clock(self, obs: Observation) -> bool:
         """Count edge lines changed since the last move; True when the clock lines change."""
@@ -208,6 +217,12 @@ class ExplorerPolicy:
         if action.id == COORD_ACTION_ID:
             return (COORD_ACTION_ID, int(grid[action.y, action.x]))
         return (action.id, -1)
+
+    def idle(self, kind: tuple[int, int]) -> bool:
+        """A kind that almost never changes the screen: ``IDLE_TRIES`` tries or more, under
+        ``IDLE_RATE`` of them changed it. Its untried moves wait until nothing else is left."""
+        n = self.tries[kind]
+        return n >= IDLE_TRIES and self.changes[kind] < IDLE_RATE * n
 
     def change_rate(self, kind: tuple[int, int]) -> float:
         """Laplace-smoothed fraction of tries of this kind that changed the frame."""
@@ -318,6 +333,8 @@ class ExplorerPolicy:
         self, key: StateKey, obs: Observation, exclude: frozenset[ActionKey] = frozenset()
     ) -> Action:
         untried = [a for a in self.graph.untried(key) if a.key() not in exclude]
+        live = [a for a in untried if not self.idle(self._kind(a, obs.grid))]
+        untried = live or untried
         if untried:
             self.plan = []
             return max(
