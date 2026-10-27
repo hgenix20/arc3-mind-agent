@@ -27,7 +27,11 @@ Heuristics, in order:
    color under the cursor as well as by the action id).
 2. Otherwise the shortest known path to a state with untried actions; the
    path is abandoned as soon as a step lands somewhere unexpected.
-3. Otherwise the action kind most likely to change the frame, at random.
+3. Otherwise, when the graph holds anything, a new round: the graph is cleared, the
+   clock lines count in the state key again, and exploration starts over from the
+   current state (the screen doesn't show all of the game's state, so what looked
+   exhausted may not be; with the clock in the key, history tells states apart).
+4. Otherwise the action kind most likely to change the frame, at random.
 
 Bounded: ``max_states`` caps the graph; beyond it the policy keeps playing
 from priors only.
@@ -143,10 +147,11 @@ class ExplorerPolicy:
         self._line_changes: Counter[tuple[str, int]] = Counter()
         self._ticks: Counter[tuple[str, int]] = Counter()
         self.clock: frozenset[tuple[str, int]] = frozenset()
+        self.rounds = 0  # times the graph was exhausted and started over on this level
 
     def key(self, obs: Observation) -> StateKey:
-        """``state_key`` with the clock lines blanked."""
-        if not self.clock:
+        """``state_key`` with the clock lines blanked (kept once a round has run out)."""
+        if not self.clock or self.rounds:
             return state_key(obs)
         g = obs.grid.copy()
         for axis, i in self.clock:
@@ -247,6 +252,7 @@ class ExplorerPolicy:
             self.level = obs.levels_completed
             self.graph = Graph()
             self.plan = []
+            self.rounds = 0
         if self.plan and key != self.expected:
             self.plan = []
         if key not in self.graph.cands and len(self.graph.cands) < self.max_states:
@@ -310,6 +316,15 @@ class ExplorerPolicy:
             action = self.plan.pop(0)
             self.expected = self.graph.edges.get(key, {}).get(action.key())
             return action
+        if self.graph.edges and not exclude:
+            # Nothing reachable is untried, yet the level isn't won: the screen doesn't
+            # show all the game's state. Start a new round on a fresh graph that keys on
+            # the clock lines too, so the same screen later in a life counts as new (g50t:
+            # 43 screens, then random moves that kept undoing progress).
+            self.graph = Graph()
+            self.graph.cands[key] = self._candidates(obs)
+            self.rounds += 1
+            return self._pick(key, obs, exclude)
         cands = self.graph.cands.get(key) or self._candidates(obs)
         if not cands:
             return Action(RESET_ID)

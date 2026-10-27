@@ -178,7 +178,7 @@ class CounterEnv:
 
     def step(self, a: Action) -> Observation:
         self.moves += 1
-        if a.id == 1 and self.x < 16:
+        if a.id == 1 and self.x < 50:  # room enough that the graph isn't exhausted
             self.x += 2
         return self.observe()
 
@@ -191,4 +191,40 @@ def test_a_move_counter_on_the_edge_is_left_out_of_the_state() -> None:
     a, b = env.observe(), env.step(Action(2))
     assert not np.array_equal(a.grid, b.grid)
     assert p.key(a) == p.key(b)  # only the counter changed
-    assert (2, -1, -1) in p.graph.noop.get(p.key(b), set())
+    assert any((2, -1, -1) in v for v in p.graph.noop.values())  # 2 is seen as a no-op
+
+
+class HiddenEnv:
+    """The screen shows only the block; the level is won after 12 moves in a row with the
+    block at x=4 (pressing 1 there changes nothing visible), a count the screen never
+    shows. The move counter on the bottom row is the only clue that time passed."""
+
+    def __init__(self) -> None:
+        self.x, self.moves, self.since, self.level = 0, 0, -1, 0
+
+    def observe(self) -> Observation:
+        g = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+        g[GRID_SIZE - 1, : self.moves % GRID_SIZE] = 9
+        g[20, 10 + self.x] = 7
+        return Observation(g, Phase.NOT_FINISHED, self.level, 3, (1, 2))
+
+    def step(self, a: Action) -> Observation:
+        self.moves += 1
+        self.x = min(self.x + 1, 4) if a.id == 1 else max(self.x - 1, 0)
+        if self.x != 4:
+            self.since = -1
+        elif self.since < 0:
+            self.since = self.moves
+        if self.since >= 0 and self.moves - self.since >= 12:
+            self.level += 1
+        return self.observe()
+
+
+def test_an_exhausted_graph_starts_a_round_that_keys_on_the_clock() -> None:
+    env, p = HiddenEnv(), ExplorerPolicy(0)
+    o = env.observe()
+    for _ in range(2000):
+        if env.level:
+            break
+        o = env.step(p.choose(o))
+    assert env.level == 1
