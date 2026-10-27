@@ -918,3 +918,19 @@ def test_mind_run_drive_config_builds_a_drive_agent(tmp_path: Path) -> None:
     recs = [json.loads(x) for x in (tmp_path / "g.jsonl").read_text().splitlines()]
     assert not [r for r in recs if r["type"] == "agent_error"]
     assert [r for r in recs if r["type"] == "drive_end"]
+
+
+def test_advised_policy_is_built_with_its_chat_and_its_history_is_written(tmp_path: Path) -> None:
+    from arcagent.agent.advised import AdvisedExplorer  # noqa: PLC0415  (only this test)
+
+    def chat(messages: Any, seed: int) -> Any:
+        raise TimeoutError
+
+    pol = submit.make_policy("advised", 3, chat)
+    assert isinstance(pol, AdvisedExplorer) and pol._chat is chat  # pyright: ignore[reportPrivateUsage]
+    pol.history.append({"level": 0, "goal": "g"})
+    submit._close_policy(pol, "ab12", tmp_path / "advice")  # pyright: ignore[reportPrivateUsage]
+    assert json.loads((tmp_path / "advice" / "ab12.json").read_text()) == [
+        {"level": 0, "goal": "g"}
+    ]
+    assert isinstance(submit.make_policy("guided", 0), submit.GuidedExplorer)

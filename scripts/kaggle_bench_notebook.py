@@ -10,6 +10,10 @@ into /kaggle/working, and runs the bench there. Output: ``bench/bench.json``, ev
     python scripts/kaggle_bench_notebook.py --policies explore guided --seeds 0 1 2 3 \\
         --max-actions 10000
     kaggle kernels push -p build/kaggle-bench
+
+``--gpu`` builds a GPU notebook instead: it serves Qwen3.6-27B-FP8 with vLLM first (the
+agent notebook's serve cell), so the ``advised`` policy can ask it; its replies and
+questions land under ``bench/<policy>/seed<n>/``.
 """
 
 from __future__ import annotations
@@ -29,8 +33,10 @@ from kaggle_mind_notebook import (  # noqa: E402  (needs the path above)
     USERNAME,
     code_cell,
     md_cell,
+    serve_cell,
     source_files,
 )
+from kaggle_synth_notebook import MODEL_SNAPSHOT, WHEELHOUSE  # noqa: E402  (needs the path above)
 
 OUT = ROOT / "build" / "kaggle-bench"
 
@@ -55,6 +61,7 @@ def main() -> None:
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3])
     p.add_argument("--max-actions", type=int, default=10000)
     p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--gpu", action="store_true", help="serve the model first (advised policy)")
     p.add_argument("--out", type=Path, default=OUT)
     a = p.parse_args()
     files = [*source_files(), ROOT / "scripts" / "bench_explore.py"]
@@ -66,6 +73,7 @@ def main() -> None:
     cells = [
         md_cell("# ARC-AGI-3 explorer bench\n\nExplorer policies over seeds, no model."),
         code_cell(INSTALL_CELL % {"wheels": f"{COMP_DIR}/arc_agi_3_wheels"}),
+        *([code_cell(serve_cell())] if a.gpu else []),
         code_cell(
             "from pathlib import Path\n"
             f"FILES = {json.dumps(sources)}\n"
@@ -95,13 +103,14 @@ def main() -> None:
         "language": "python",
         "kernel_type": "notebook",
         "is_private": True,
-        "enable_gpu": False,
+        "enable_gpu": a.gpu,
         "enable_tpu": False,
         "enable_internet": False,
-        "dataset_sources": [],
+        "dataset_sources": [WHEELHOUSE, MODEL_SNAPSHOT] if a.gpu else [],
         "competition_sources": [COMPETITION],
         "kernel_sources": [],
         "model_sources": [],
+        **({"machine_shape": "NvidiaRtxPro6000"} if a.gpu else {}),
         "docker_image_pinning_type": "original",
         "docker_image": DOCKER_IMAGE,
     }

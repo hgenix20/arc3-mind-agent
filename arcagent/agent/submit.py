@@ -68,6 +68,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
+from arcagent.agent.advised import AdvisedExplorer
 from arcagent.agent.explore import ExplorerPolicy
 from arcagent.agent.guided import GuidedExplorer
 from arcagent.agent.play import GameResult, Policy, play_game
@@ -87,7 +88,7 @@ from arcagent.synth.run import Chat, http_chat
 from arcagent.synth.trace import ProbePolicy
 
 MODES = ("auto", "offline", "competition")
-POLICIES = ("probe", "explore", "guided", "mind")
+POLICIES = ("probe", "explore", "guided", "advised", "mind")
 DEFAULT_ENV_DIR = r"C:\arc-study\data\environment_files"
 DEFAULT_MAX_ACTIONS = 300
 DEFAULT_GAME_SECONDS = 240.0
@@ -99,6 +100,8 @@ GATEWAY_POLL_S = 5.0
 PARQUET_COLUMNS = ("row_id", "game_id", "end_of_game", "score")
 TAGS = ["agent", "arcagent-probe"]
 DEFAULT_ENDPOINT = "http://127.0.0.1:1234/v1"
+ADVICE_MAX_TOKENS = 1024  # an advice reply is one short JSON object
+ADVICE_TIMEOUT_S = 180.0  # the explorer keeps playing while it waits
 # Must match SERVED_NAME in scripts/kaggle_synth_notebook.py (the name vLLM serves).
 DEFAULT_MODEL = "vrfai/Qwen3.6-27B-FP8"
 DEFAULT_WORKERS = 8
@@ -292,10 +295,11 @@ def write_parquet(rows: Sequence[Mapping[str, Any]], path: Path) -> None:
     pq.write_table(table, str(path))
 
 
-def make_policy(name: str, seed: int) -> Policy:
-    """A fresh ``probe``, ``explore`` or ``guided`` policy for one game.
+def make_policy(name: str, seed: int, chat: VisionChat | None = None) -> Policy:
+    """A fresh ``probe``, ``explore``, ``guided`` or ``advised`` policy for one game.
 
-    Raises ``ValueError`` for any other name.
+    ``chat`` is the advised policy's model (None plays it as ``guided``). Raises
+    ``ValueError`` for any other name.
 
     ``mind`` is not built here: it needs shared run resources (``MindRun``).
     """
@@ -305,7 +309,32 @@ def make_policy(name: str, seed: int) -> Policy:
         return ExplorerPolicy(seed)
     if name == "guided":
         return GuidedExplorer(seed)
-    raise ValueError(f"unknown policy {name!r}; choose 'probe', 'explore' or 'guided'")
+    if name == "advised":
+        return AdvisedExplorer(seed, chat=chat)
+    raise ValueError(f"unknown policy {name!r}; choose 'probe', 'explore', 'guided' or 'advised'")
+
+
+def _close_policy(pol: Policy, game_id: str, advice_dir: Path | None) -> None:
+    """Stop a policy's background work; write its ``history`` when it keeps one."""
+    close = getattr(pol, "close", None)
+    if callable(close):
+        close()
+    history = getattr(pol, "history", None)
+    if advice_dir is not None and isinstance(history, list):
+        advice_dir.mkdir(parents=True, exist_ok=True)
+        (advice_dir / f"{game_id}.json").write_text(json.dumps(history, indent=1), encoding="utf-8")
+
+
+def advice_chat(args: argparse.Namespace) -> VisionChat:
+    """The advised policy's chat: replayed with ``--replay``, else HTTP with replies saved."""
+    replies = Path(args.replies_dir)
+    if args.replay:
+        return replaying(replies)
+    live = http_vision_chat(
+        args.endpoint, args.model, max_tokens=ADVICE_MAX_TOKENS, timeout_s=ADVICE_TIMEOUT_S,
+        json_reply=True,
+    )  # fmt: skip
+    return recording(live, replies)
 
 
 def play_all(
@@ -319,8 +348,14 @@ def play_all(
     policy: str = "probe",
     clock: Callable[[], float] = time.monotonic,
     report: Callable[[str], None] = print,
+    chat: VisionChat | None = None,
+    advice_dir: Path | None = None,
 ) -> tuple[list[GameResult], list[dict[str, Any]], dict[str, Any] | None]:
-    """Play ``games`` under one scorecard; return results, per-game errors, the scorecard."""
+    """Play ``games`` under one scorecard; return results, per-game errors, the scorecard.
+
+    With ``advice_dir``, a policy that keeps a ``history`` (the advised explorer's
+    questions and answers) has it written to ``<advice_dir>/<game>.json``.
+    """
     t0 = clock()
     run_deadline = t0 + total_seconds
     results: list[GameResult] = []
@@ -337,14 +372,18 @@ def play_all(
                 env = arcade.make(game_id, scorecard_id=card, save_recording=False)
                 if env is None:
                     raise RuntimeError("arcade.make returned None")
-                r = play_game(
-                    env,
-                    make_policy(policy, seed + i),
-                    game_id,
-                    max_actions=max_actions,
-                    deadline=min(now + game_seconds, run_deadline),
-                    clock=clock,
-                )
+                pol = make_policy(policy, seed + i, chat)
+                try:
+                    r = play_game(
+                        env,
+                        pol,
+                        game_id,
+                        max_actions=max_actions,
+                        deadline=min(now + game_seconds, run_deadline),
+                        clock=clock,
+                    )
+                finally:
+                    _close_policy(pol, game_id, advice_dir)
             except Exception as exc:  # one game must not end the run
                 errors.append({"game_id": game_id, "error": f"{type(exc).__name__}: {exc}"})
                 results.append(GameResult(game_id, 0, 0, 0, "NOT_PLAYED", 0.0, "error"))
@@ -678,6 +717,8 @@ def main(
             game_seconds=args.game_seconds,
             total_seconds=args.total_seconds,
             policy=args.policy,
+            chat=advice_chat(args) if args.policy == "advised" else None,
+            advice_dir=out / "advice",
         )
         write_parquet(submission_rows(results, scorecard, games), out / "submission.parquet")
     rows = submission_rows(results, scorecard, games)

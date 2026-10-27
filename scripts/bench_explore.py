@@ -63,7 +63,9 @@ def summarize(policy: str, runs: list[tuple[int, Path]]) -> dict[str, Any]:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("--policies", nargs="+", default=["explore"], choices=["explore", "guided"])
+    p.add_argument(
+        "--policies", nargs="+", default=["explore"], choices=["explore", "guided", "advised"]
+    )
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--max-actions", type=int, default=3000)
     p.add_argument("--jobs", type=int, default=3, help="processes at a time")
