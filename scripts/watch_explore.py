@@ -3,8 +3,8 @@
 Why: the explorer writes no run log, so ``watch.py`` can't replay it. This plays
 ``ExplorerPolicy`` on one offline game and writes, to ``--out``:
 
-- ``sheet-<n>.png``: every Nth frame, labelled with move, level and action, plus every
-  frame where a level was completed or the game ended.
+- ``sheet-<n>.png``: every Nth frame, labelled with move, level and action, plus the
+  frame each winning move was made from (and ``--before`` frames ahead of it).
 - ``summary.txt``: per level the moves taken, the states and no-ops the graph holds,
   the clock lines found, and the game overs.
 
@@ -38,6 +38,7 @@ def main() -> None:
     p.add_argument("--moves", type=int, default=3000)
     p.add_argument("--every", type=int, default=100)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--before", type=int, default=0, help="also draw this many frames before a win")
     p.add_argument("--env-dir", default=DEFAULT_ENV_DIR)
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
@@ -50,14 +51,22 @@ def main() -> None:
     tiles: list[Image.Image] = []
     lines: list[str] = []
     level_start, overs = 0, 0
+    recent: list[Image.Image] = []
     for move in range(a.moves):
         if obs.won:
             lines.append(f"won at move {move}")
             break
         act = pol.choose(obs)
         before = obs
+        label = f"{move} L{obs.levels_completed} {act}"
         if move % a.every == 0:
-            tiles.append(tile(np.asarray(obs.grid), f"{move} L{obs.levels_completed} {act}"))
+            tiles.append(tile(np.asarray(obs.grid), label))
+        if a.before:
+            recent = (
+                [*recent[-(a.before - 1) :], tile(np.asarray(obs.grid), label)]
+                if a.before > 1
+                else [tile(np.asarray(obs.grid), label)]
+            )
         frame = env.step(*to_game_action(act))
         if frame is None:
             lines.append(f"move {move}: no frame")
@@ -72,7 +81,10 @@ def main() -> None:
                 f"({move - level_start} moves, {len(g.edges)} states, "
                 f"{sum(map(len, g.noop.values()))} no-ops, {overs} game overs)"
             )
-            tiles.append(tile(np.asarray(before.grid), f"{move} L{before.levels_completed} WON"))
+            tiles.extend(recent[:-1])
+            tiles.append(
+                tile(np.asarray(before.grid), f"{move} L{before.levels_completed} WON by {act}")
+            )
             level_start, overs = move, 0
     g = pol.graph
     lines.append(

@@ -69,6 +69,7 @@ from typing import Any
 from urllib.request import urlopen
 
 from arcagent.agent.explore import ExplorerPolicy
+from arcagent.agent.guided import GuidedExplorer
 from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.agent.scheduler import DEFAULT_MAX_ACTIONS as MIND_MAX_ACTIONS
 from arcagent.agent.scheduler import MIND_TAGS, play_concurrent
@@ -86,7 +87,7 @@ from arcagent.synth.run import Chat, http_chat
 from arcagent.synth.trace import ProbePolicy
 
 MODES = ("auto", "offline", "competition")
-POLICIES = ("probe", "explore", "mind")
+POLICIES = ("probe", "explore", "guided", "mind")
 DEFAULT_ENV_DIR = r"C:\arc-study\data\environment_files"
 DEFAULT_MAX_ACTIONS = 300
 DEFAULT_GAME_SECONDS = 240.0
@@ -292,7 +293,9 @@ def write_parquet(rows: Sequence[Mapping[str, Any]], path: Path) -> None:
 
 
 def make_policy(name: str, seed: int) -> Policy:
-    """A fresh ``probe`` or ``explore`` policy for one game; raises ``ValueError`` otherwise.
+    """A fresh ``probe``, ``explore`` or ``guided`` policy for one game.
+
+    Raises ``ValueError`` for any other name.
 
     ``mind`` is not built here: it needs shared run resources (``MindRun``).
     """
@@ -300,7 +303,9 @@ def make_policy(name: str, seed: int) -> Policy:
         return ProbePolicy(seed)
     if name == "explore":
         return ExplorerPolicy(seed)
-    raise ValueError(f"unknown policy {name!r}; choose 'probe' or 'explore'")
+    if name == "guided":
+        return GuidedExplorer(seed)
+    raise ValueError(f"unknown policy {name!r}; choose 'probe', 'explore' or 'guided'")
 
 
 def play_all(

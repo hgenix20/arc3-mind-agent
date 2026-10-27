@@ -22,6 +22,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--max-actions", type=int, default=3000)
+    p.add_argument("--policy", default="explore", choices=["explore", "guided"])
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
     procs = []
@@ -29,7 +30,7 @@ def main() -> None:
         out = a.out / f"seed{seed}"
         cmd = [
             sys.executable, "-m", "arcagent.agent.submit", "--mode", "offline",
-            "--policy", "explore", "--seed", str(seed), "--max-actions", str(a.max_actions),
+            "--policy", a.policy, "--seed", str(seed), "--max-actions", str(a.max_actions),
             "--game-seconds", "600", "--out", str(out),
         ]  # fmt: skip
         out.mkdir(parents=True, exist_ok=True)
