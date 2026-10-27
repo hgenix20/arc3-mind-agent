@@ -261,3 +261,14 @@ def test_metrics_cell_is_skipped_in_the_competition_rerun(
     monkeypatch.delenv("KAGGLE_IS_COMPETITION_RERUN")
     exec(compile(src, "<metrics>", "exec"), {})
     assert len(ran) == 1 and "scripts/mind_metrics.py" in ran[0]
+
+
+def test_an_explorer_policy_runs_submit_with_it_and_falls_back_without_the_model(
+    tmp_path: Path,
+) -> None:
+    nb, _ = build(tmp_path, "--policy", "advised", "--max-actions", "50000")
+    run = run_cell(nb)
+    assert "POLICY = 'advised'" in run
+    assert 'policy = POLICY if MODEL_OK or POLICY != "advised" else "explore"' in run
+    assert '"--max-actions", \'50000\'' in run
+    compile(run, "run_cell", "exec")  # the cell is valid Python

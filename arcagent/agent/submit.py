@@ -73,7 +73,7 @@ from arcagent.agent.explore import ExplorerPolicy
 from arcagent.agent.guided import GuidedExplorer
 from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.agent.scheduler import DEFAULT_MAX_ACTIONS as MIND_MAX_ACTIONS
-from arcagent.agent.scheduler import MIND_TAGS, play_concurrent
+from arcagent.agent.scheduler import MIND_TAGS, RESERVE_S, play_concurrent
 from arcagent.core.types import Action, Observation
 from arcagent.mind.agent import MAX_ERROR_CHARS, MindAgent
 from arcagent.mind.chat_store import recording_chat, replay_chat
@@ -314,6 +314,14 @@ def make_policy(name: str, seed: int, chat: VisionChat | None = None) -> Policy:
     raise ValueError(f"unknown policy {name!r}; choose 'probe', 'explore', 'guided' or 'advised'")
 
 
+def fair_share(game_seconds: float, left: float, games_left: int) -> float:
+    """A game's budget: ``game_seconds``, but no more than an even share of what is left
+    after ``RESERVE_S`` over the games still to play (the private set's size isn't known
+    until the gateway lists it, so a fixed per-game budget could run out before the end)."""
+    share = max(left - RESERVE_S, 0.0) / max(games_left, 1)
+    return max(min(game_seconds, share), 0.0)
+
+
 def _close_policy(pol: Policy, game_id: str, advice_dir: Path | None) -> None:
     """Stop a policy's background work; write its ``history`` when it keeps one."""
     close = getattr(pol, "close", None)
@@ -379,7 +387,7 @@ def play_all(
                         pol,
                         game_id,
                         max_actions=max_actions,
-                        deadline=min(now + game_seconds, run_deadline),
+                        deadline=now + fair_share(game_seconds, run_deadline - now, len(games) - i),
                         clock=clock,
                     )
                 finally:

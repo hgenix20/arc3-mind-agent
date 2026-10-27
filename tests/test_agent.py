@@ -934,3 +934,9 @@ def test_advised_policy_is_built_with_its_chat_and_its_history_is_written(tmp_pa
         {"level": 0, "goal": "g"}
     ]
     assert isinstance(submit.make_policy("guided", 0), submit.GuidedExplorer)
+
+
+def test_fair_share_caps_a_game_at_its_even_share_of_the_time_left() -> None:
+    assert submit.fair_share(600, 3300, 10) == 300  # (3300 - 300) / 10
+    assert submit.fair_share(100, 3300, 10) == 100
+    assert submit.fair_share(600, 200, 3) == 0

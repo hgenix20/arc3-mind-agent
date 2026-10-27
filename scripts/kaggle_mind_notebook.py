@@ -212,11 +212,22 @@ env = dict(os.environ, PYTHONPATH="/kaggle/working", PYTHONUNBUFFERED="1")
 config = %(config)r if MODEL_OK else %(fallback)r
 if config != %(config)r:
     print("model server not ready: playing", config)
-cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
-       "--env-dir", ENV_DIR, "--config", config, "--workers", %(workers)r,
-       "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
-       "--total-seconds", str(int(total)), "--out", "/kaggle/working",
-       "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies"]
+POLICY = %(policy)r
+if POLICY == "mind":
+    cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", "mind",
+           "--env-dir", ENV_DIR, "--config", config, "--workers", %(workers)r,
+           "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
+           "--total-seconds", str(int(total)), "--out", "/kaggle/working",
+           "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies"]
+else:
+    # An explorer policy plays one game at a time, each capped at an even share of the
+    # time left (submit.fair_share); the advised policy needs the model, else explore.
+    policy = POLICY if MODEL_OK or POLICY != "advised" else "explore"
+    cmd = [sys.executable, "-m", "arcagent.agent.submit", "--mode", "auto", "--policy", policy,
+           "--env-dir", ENV_DIR, "--max-actions", %(max_actions)r, "--game-seconds", "100000",
+           "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
+           "--total-seconds", str(int(total)), "--out", "/kaggle/working",
+           "--replies-dir", "/kaggle/working/replies"]
 cmd += %(games_args)r  # empty means every game; a game list applies offline only
 print(f"setup took {time.time() - NOTEBOOK_T0:.0f}s; rerun {rerun}; agent budget {total:.0f}s")
 print(" ".join(cmd))
@@ -283,12 +294,19 @@ def md_cell(src: str) -> dict[str, object]:
 
 
 def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--slug", default="arc3-mind-agent")
     ap.add_argument(
         "--games", nargs="+", default=["all"], help="'all' or 4-char ids (interactive commit only)"
     )
     ap.add_argument("--config", choices=sorted(CONFIGS), default="FULL")
+    ap.add_argument(
+        "--policy",
+        choices=["mind", "explore", "guided", "advised"],
+        default="mind",
+        help="mind runs --config; an explorer policy plays games one at a time",
+    )
+    ap.add_argument("--max-actions", type=int, default=60000, help="explorer policies only")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument(
@@ -338,6 +356,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             % {
                 "env_dir": f"{COMP_DIR}/environment_files",
                 "config": a.config,
+                "policy": a.policy,
+                "max_actions": str(a.max_actions),
                 "fallback": fallback_config(a.config),
                 "workers": str(a.workers),
                 "served": SERVED_NAME,
