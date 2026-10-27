@@ -228,3 +228,20 @@ def test_an_exhausted_graph_starts_a_round_that_keys_on_the_clock() -> None:
             break
         o = env.step(p.choose(o))
     assert env.level == 1
+
+
+def test_a_move_that_ended_the_game_is_never_retried_or_routed_through() -> None:
+    p = ExplorerPolicy(0)
+    g = grid_with((5, 5, 3, 3, 9), (20, 20, 3, 3, 4))
+    over = obs(grid_with((0, 0, 4, 4, 2)), phase=Phase.GAME_OVER, avail=(6,))
+    first = p.choose(obs(g, avail=(6,)))
+    assert p.choose(over).id == 0  # reset
+    p.graph.cands[p.key(obs(g, avail=(6,)))] = [first]  # the same move ends it again
+    assert p.choose(obs(g, avail=(6,))) == first
+    assert p.choose(over).id == 0
+    p.graph.cands[p.key(obs(g, avail=(6,)))] = p._candidates(obs(g, avail=(6,)))  # pyright: ignore[reportPrivateUsage]
+    assert p.graph.cands.get(p.key(over), []) == []
+    assert first.key() in p.graph.dead[p.key(obs(g, avail=(6,)))]
+    assert p.key(over) not in p.graph.edges.get(p.key(obs(g, avail=(6,))), {}).values()
+    nxt = p.choose(obs(g, avail=(6,)))
+    assert nxt.key() != first.key()

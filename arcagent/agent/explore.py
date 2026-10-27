@@ -21,6 +21,12 @@ Contract:
   priors (mechanics usually carry across levels).
 - RESET is chosen only when the game is terminal or offers nothing else.
 
+A move that ended the game is never an edge, so no frontier path runs through a game
+over; one that ended it ``DEAD_AFTER`` times from a state is dead there and never tried
+from that state again (a single game over may just be the move budget running out). A
+terminal state gets no candidates, so it is never a frontier (before, the game-over
+screen counted as unexplored and paths led into it: dc22 died every 11 moves).
+
 Heuristics, in order:
 1. Untried actions in the current state, ranked by how often that action
    kind changed the frame before (Laplace-smoothed; clicks are keyed by the
@@ -54,6 +60,7 @@ StateKey = bytes
 MAX_TARGETS = 64
 MAX_STATES = 20_000
 UCB_C = 1.0
+DEAD_AFTER = 2  # game overs a move must cause from one state before it counts as dead
 CLOCK_WARMUP = 16  # moves seen before clock lines are judged
 CLOCK_RATE = 0.6  # share of moves on which a clock line changes (bars seen: 0.64)
 CLOCK_BAND = 3  # rows and columns this close to the edge may be clock lines
@@ -99,9 +106,11 @@ class Graph:
     edges: dict[StateKey, dict[ActionKey, StateKey]] = field(default_factory=dict)
     noop: dict[StateKey, set[ActionKey]] = field(default_factory=dict)
     cands: dict[StateKey, list[Action]] = field(default_factory=dict)
+    dead: dict[StateKey, set[ActionKey]] = field(default_factory=dict)
+    deaths: Counter[tuple[StateKey, ActionKey]] = field(default_factory=Counter)
 
     def untried(self, key: StateKey) -> list[Action]:
-        tried = set(self.edges.get(key, {})) | self.noop.get(key, set())
+        tried = set(self.edges.get(key, {})) | self.noop.get(key, set()) | self.dead.get(key, set())
         return [a for a in self.cands.get(key, []) if a.key() not in tried]
 
     def path_to_frontier(self, start: StateKey) -> list[Action]:
@@ -205,12 +214,19 @@ class ExplorerPolicy:
         return (self.changes[kind] + 1.0) / (self.tries[kind] + 2.0)
 
     # -- bookkeeping ----------------------------------------------------------
-    def _record(self, key: StateKey) -> None:
+    def _record(self, key: StateKey, died: bool = False) -> None:
         if self.last is None:
             return
         prev_key, action, kind_color = self.last
         kind = (action.id, kind_color)
         self.tries[kind] += 1
+        if died:
+            # Never a path through a game over; a move that ended the game twice from
+            # here is never tried from here again (once may be the move budget).
+            self.graph.deaths[prev_key, action.key()] += 1
+            if self.graph.deaths[prev_key, action.key()] >= DEAD_AFTER:
+                self.graph.dead.setdefault(prev_key, set()).add(action.key())
+            return
         if key != prev_key:
             self.changes[kind] += 1
             if len(self.graph.edges) < self.max_states:
@@ -246,7 +262,7 @@ class ExplorerPolicy:
             self.plan = []
             self.last = None
         key = self.key(obs)
-        self._record(key)
+        self._record(key, died=obs.terminal and not obs.won)
         self.last = None
         if obs.levels_completed != self.level:
             self.level = obs.levels_completed
@@ -256,7 +272,7 @@ class ExplorerPolicy:
         if self.plan and key != self.expected:
             self.plan = []
         if key not in self.graph.cands and len(self.graph.cands) < self.max_states:
-            self.graph.cands[key] = self._candidates(obs)
+            self.graph.cands[key] = [] if obs.terminal else self._candidates(obs)
 
     def note(self, obs: Observation, action: Action) -> None:
         """Record that ``action`` was taken from ``obs`` (possibly by another branch).
