@@ -11,10 +11,12 @@ Contract:
   contract), so the policy learns the outcome of its last action from the
   next observation.
 - State identity is the grid bytes plus the level counter, minus clock lines: a
-  row or column within ``CLOCK_BAND`` cells of the edge that changed on at least
-  ``CLOCK_RATE`` of the moves once ``CLOCK_WARMUP`` moves are seen (a move counter
-  or budget bar). A grid that doesn't change outside them is a no-op for that
-  (state, action) pair. When the clock lines change, the graph starts over.
+  row or column within ``CLOCK_BAND`` cells of the edge that holds a move counter
+  or budget bar. A line is one once it has changed alone ``CLOCK_TICKS`` times (a
+  move whose whole change is at most ``TICK_CELLS`` cells, all in the band), or on
+  at least ``CLOCK_RATE`` of the moves once ``CLOCK_WARMUP`` moves are seen. A grid
+  that doesn't change outside them is a no-op for that (state, action) pair. When
+  the clock lines change, the graph starts over.
 - A level change clears the graph (layouts change) but keeps the action
   priors (mechanics usually carry across levels).
 - RESET is chosen only when the game is terminal or offers nothing else.
@@ -38,6 +40,8 @@ import random
 from collections import Counter, deque
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from arcagent.core.types import COORD_ACTION_ID, RESET_ID, Action, Grid, Observation
 from arcagent.mind.types import ActionKey
 from arcagent.synth.trace import components
@@ -47,8 +51,10 @@ MAX_TARGETS = 64
 MAX_STATES = 20_000
 UCB_C = 1.0
 CLOCK_WARMUP = 16  # moves seen before clock lines are judged
-CLOCK_RATE = 0.8  # share of moves on which a clock line changes
+CLOCK_RATE = 0.6  # share of moves on which a clock line changes (bars seen: 0.64)
 CLOCK_BAND = 3  # rows and columns this close to the edge may be clock lines
+CLOCK_TICKS = 3  # lone small changes that make an edge line a clock line
+TICK_CELLS = 2  # most cells a lone clock tick changes
 
 
 def state_key(obs: Observation) -> StateKey:
@@ -135,6 +141,7 @@ class ExplorerPolicy:
         self._prev_grid: Grid | None = None
         self._moves = 0
         self._line_changes: Counter[tuple[str, int]] = Counter()
+        self._ticks: Counter[tuple[str, int]] = Counter()
         self.clock: frozenset[tuple[str, int]] = frozenset()
 
     def key(self, obs: Observation) -> StateKey:
@@ -163,9 +170,19 @@ class ExplorerPolicy:
             self._line_changes["r", i] += bool(diff[i, :].any())
         for j in set(band_c):
             self._line_changes["c", j] += bool(diff[:, j].any())
-        if self._moves < CLOCK_WARMUP:
-            return False
-        clock = frozenset(k for k, n in self._line_changes.items() if n >= CLOCK_RATE * self._moves)
+        ys, xs = np.nonzero(diff)
+        in_band = [
+            (y, x)
+            for y, x in zip(ys.tolist(), xs.tolist(), strict=True)
+            if y in band_r or x in band_c
+        ]
+        if 0 < len(ys) <= TICK_CELLS and len(in_band) == len(ys):
+            for y, x in in_band:
+                self._ticks["r" if y in band_r else "c", y if y in band_r else x] += 1
+        clock = frozenset(k for k, n in self._ticks.items() if n >= CLOCK_TICKS)
+        if self._moves >= CLOCK_WARMUP:
+            rate = CLOCK_RATE * self._moves
+            clock |= {k for k, n in self._line_changes.items() if n >= rate}
         if clock == self.clock:
             return False
         self.clock = clock
