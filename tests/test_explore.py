@@ -161,3 +161,34 @@ def test_explorer_observe_and_note_learn_actions_taken_elsewhere() -> None:
     pol.observe(b)  # idempotent until an action is noted
     assert pol.graph.edges[state_key(a)][(1, -1, -1)] == state_key(b)
     assert pol.tries[(1, -1)] == 1
+
+
+class CounterEnv:
+    """A move counter fills the bottom row on every action; only action 1 moves the block."""
+
+    def __init__(self) -> None:
+        self.x = 10
+        self.moves = 0
+
+    def observe(self) -> Observation:
+        g = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+        g[GRID_SIZE - 1, : self.moves % GRID_SIZE] = 9
+        g[20:22, self.x : self.x + 2] = 7
+        return obs(g, avail=(1, 2))
+
+    def step(self, a: Action) -> Observation:
+        self.moves += 1
+        if a.id == 1 and self.x < 16:
+            self.x += 2
+        return self.observe()
+
+
+def test_a_move_counter_on_the_edge_is_left_out_of_the_state() -> None:
+    env, p = CounterEnv(), ExplorerPolicy(0)
+    o = env.observe()
+    for _ in range(explore.CLOCK_WARMUP + 4):
+        o = env.step(p.choose(o))
+    a, b = env.observe(), env.step(Action(2))
+    assert not np.array_equal(a.grid, b.grid)
+    assert p.key(a) == p.key(b)  # only the counter changed
+    assert (2, -1, -1) in p.graph.noop.get(p.key(b), set())

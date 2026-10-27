@@ -10,8 +10,11 @@ Contract:
   observation that resulted from the previous action (the play loop's
   contract), so the policy learns the outcome of its last action from the
   next observation.
-- State identity is the grid bytes plus the level counter. A grid that does
-  not change after an action is a no-op for that (state, action) pair.
+- State identity is the grid bytes plus the level counter, minus clock lines: a
+  row or column within ``CLOCK_BAND`` cells of the edge that changed on at least
+  ``CLOCK_RATE`` of the moves once ``CLOCK_WARMUP`` moves are seen (a move counter
+  or budget bar). A grid that doesn't change outside them is a no-op for that
+  (state, action) pair. When the clock lines change, the graph starts over.
 - A level change clears the graph (layouts change) but keeps the action
   priors (mechanics usually carry across levels).
 - RESET is chosen only when the game is terminal or offers nothing else.
@@ -43,6 +46,9 @@ StateKey = bytes
 MAX_TARGETS = 64
 MAX_STATES = 20_000
 UCB_C = 1.0
+CLOCK_WARMUP = 16  # moves seen before clock lines are judged
+CLOCK_RATE = 0.8  # share of moves on which a clock line changes
+CLOCK_BAND = 3  # rows and columns this close to the edge may be clock lines
 
 
 def state_key(obs: Observation) -> StateKey:
@@ -126,6 +132,44 @@ class ExplorerPolicy:
         self.plan: list[Action] = []
         self.expected: StateKey | None = None
         self._seen = False
+        self._prev_grid: Grid | None = None
+        self._moves = 0
+        self._line_changes: Counter[tuple[str, int]] = Counter()
+        self.clock: frozenset[tuple[str, int]] = frozenset()
+
+    def key(self, obs: Observation) -> StateKey:
+        """``state_key`` with the clock lines blanked."""
+        if not self.clock:
+            return state_key(obs)
+        g = obs.grid.copy()
+        for axis, i in self.clock:
+            if axis == "r":
+                g[i, :] = 0
+            else:
+                g[:, i] = 0
+        return g.tobytes() + bytes([obs.levels_completed & 0xFF])
+
+    def _watch_clock(self, obs: Observation) -> bool:
+        """Count edge lines changed since the last move; True when the clock lines change."""
+        prev, self._prev_grid = self._prev_grid, obs.grid
+        if self.last is None or prev is None or prev.shape != obs.grid.shape:
+            return False
+        self._moves += 1
+        diff = prev != obs.grid
+        h, w = diff.shape
+        band_r = [*range(min(CLOCK_BAND, h)), *range(max(h - CLOCK_BAND, 0), h)]
+        band_c = [*range(min(CLOCK_BAND, w)), *range(max(w - CLOCK_BAND, 0), w)]
+        for i in set(band_r):
+            self._line_changes["r", i] += bool(diff[i, :].any())
+        for j in set(band_c):
+            self._line_changes["c", j] += bool(diff[:, j].any())
+        if self._moves < CLOCK_WARMUP:
+            return False
+        clock = frozenset(k for k, n in self._line_changes.items() if n >= CLOCK_RATE * self._moves)
+        if clock == self.clock:
+            return False
+        self.clock = clock
+        return True
 
     # -- priors -------------------------------------------------------------
     @staticmethod
@@ -175,7 +219,11 @@ class ExplorerPolicy:
         if self._seen:
             return
         self._seen = True
-        key = state_key(obs)
+        if self._watch_clock(obs):
+            self.graph = Graph()
+            self.plan = []
+            self.last = None
+        key = self.key(obs)
         self._record(key)
         self.last = None
         if obs.levels_completed != self.level:
@@ -202,12 +250,12 @@ class ExplorerPolicy:
         if action.id == RESET_ID or obs.terminal:
             self.last = None
             return
-        self.last = (state_key(obs), action, self._kind(action, obs.grid)[1])
+        self.last = (self.key(obs), action, self._kind(action, obs.grid)[1])
 
     def choose(self, obs: Observation, exclude: frozenset[ActionKey] = frozenset()) -> Action:
         """Pick the next action, skipping ``exclude`` unless nothing else is left."""
         self.observe(obs)
-        key = state_key(obs)
+        key = self.key(obs)
         if obs.terminal or all(a == RESET_ID for a in obs.available_actions):
             self.last = None
             self.plan = []
