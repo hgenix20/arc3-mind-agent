@@ -1,0 +1,260 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 1501,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3001,
+  "goal": "Move the red object to touch the green object.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 4501,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 6001,
+  "goal": "Move the red object to touch the green object.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 7501,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9001,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 10501,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12001,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 13502,
+  "goal": "Move the red object to touch the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 14984,
+  "goal": "Move the red object down until it touches the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 16484,
+  "goal": "Move the red object down until it touches the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 17985,
+  "goal": "Move the red object down until it touches the green object.",
+  "measures": [
+   [
+    "gap",
+    2,
+    3
+   ],
+   [
+    "count",
+    10,
+    -1
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19724
+ }
+]

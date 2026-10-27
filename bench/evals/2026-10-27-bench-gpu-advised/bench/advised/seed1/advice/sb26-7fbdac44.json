@@ -1,0 +1,117 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": [
+   [
+    "gap",
+    9,
+    14
+   ],
+   [
+    "gap",
+    11,
+    15
+   ],
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 2985,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 4486,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": [
+   [
+    "gap",
+    9,
+    14
+   ],
+   [
+    "gap",
+    11,
+    15
+   ],
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 6996,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 11384,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": [
+   [
+    "gap",
+    9,
+    14
+   ],
+   [
+    "gap",
+    11,
+    15
+   ],
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12884,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 15217,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 16870,
+  "goal": "Move the colored blocks at the bottom to match the colors in the top row, likely by aligning them with the corresponding colored squares in the top row.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 19305
+ }
+]

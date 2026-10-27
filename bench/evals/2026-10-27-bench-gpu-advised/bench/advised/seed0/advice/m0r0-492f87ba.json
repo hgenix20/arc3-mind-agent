@@ -1,0 +1,28 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "The level likely requires the two white squares (c10) to move or interact with the gray structures (c11 and c12), possibly by aligning them or causing them to touch the gray areas.",
+  "measures": [
+   [
+    "gap",
+    10,
+    11
+   ],
+   [
+    "gap",
+    10,
+    12
+   ],
+   [
+    "count",
+    10,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 19163
+ }
+]

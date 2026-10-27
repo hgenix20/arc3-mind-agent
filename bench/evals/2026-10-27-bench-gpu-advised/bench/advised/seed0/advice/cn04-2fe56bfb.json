@@ -1,0 +1,114 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    14
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 2005,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    12
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 4332,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    14
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 7024,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    14
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9766,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    12
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12847,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    14
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 15687,
+  "goal": "Move the black object to touch the purple object.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 18955
+ }
+]

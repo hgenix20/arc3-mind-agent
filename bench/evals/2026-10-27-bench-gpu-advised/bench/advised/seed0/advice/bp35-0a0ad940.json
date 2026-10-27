@@ -1,0 +1,105 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7945,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 9445,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10945,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 12445,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 13945,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    9,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 15445,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 16945,
+  "goal": "Move the small red object (c9) to the right to interact with the green block (c11).",
+  "measures": []
+ }
+]

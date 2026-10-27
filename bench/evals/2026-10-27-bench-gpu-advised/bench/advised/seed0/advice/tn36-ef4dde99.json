@@ -1,0 +1,172 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1453,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2953,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 4453,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5953,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7454,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8954,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 10454,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 11954,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 13454,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 14955,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 16455,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 17955,
+  "goal": "Move the red object to touch the green elements inside the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 19455
+ }
+]

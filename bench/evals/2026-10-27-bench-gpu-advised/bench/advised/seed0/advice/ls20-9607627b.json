@@ -1,0 +1,57 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the green character to the right to reach the light blue blocks at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    3,
+    8
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 3575,
+  "goal": "Move the green character to the right to reach the light blue blocks at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    3,
+    8
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 12670,
+  "goal": "Move the green character to the right to reach the light blue blocks at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    3,
+    8
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 18931
+ }
+]

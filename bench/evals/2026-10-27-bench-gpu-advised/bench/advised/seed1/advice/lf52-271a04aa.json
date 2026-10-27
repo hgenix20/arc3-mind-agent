@@ -1,0 +1,88 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Clear all purple (c14) cells from the grid.",
+  "measures": [
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2474,
+  "goal": "Clear all purple (c14) cells from the grid.",
+  "measures": [
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5706,
+  "goal": "Clear all purple (c14) cells from the grid.",
+  "measures": [
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 9232,
+  "goal": "Move the player to the purple cell (c11) to collect it.",
+  "measures": [
+   [
+    "gap",
+    11,
+    15
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 12502,
+  "goal": "Move the player to the purple cell (c11) to collect it.",
+  "measures": [
+   [
+    "gap",
+    11,
+    15
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 15576,
+  "goal": "Move the player to the purple cell (c11) to collect it.",
+  "measures": [
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 18761
+ }
+]

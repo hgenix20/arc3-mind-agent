@@ -1,0 +1,127 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the green cross to the red cross by moving the single black cell to bridge them.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 1501,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3002,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 4502,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 6064,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 7712,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 9213,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 10872,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 12538,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 14415,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 16399,
+  "goal": "Move the single black cell to connect the green cross and the red cross.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 18184
+ }
+]

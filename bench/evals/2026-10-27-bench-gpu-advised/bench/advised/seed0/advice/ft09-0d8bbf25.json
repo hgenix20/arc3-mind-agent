@@ -1,0 +1,127 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the yellow square to cover the red and black pattern in the bottom left.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "gap",
+    0,
+    4
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3688,
+  "goal": "Move the yellow square to cover the red and black pattern in the bottom left.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "gap",
+    0,
+    4
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 6599,
+  "goal": "Move the yellow background to cover the central red and black pattern.",
+  "measures": [
+   [
+    "gap",
+    0,
+    4
+   ],
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    2,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 9416,
+  "goal": "Move the yellow background to cover the central red and black pattern.",
+  "measures": [
+   [
+    "gap",
+    0,
+    4
+   ],
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    2,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 12178,
+  "goal": "Move the yellow background to cover the central red and black pattern.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 15472,
+  "goal": "Move the yellow background to cover the central red, black, and purple pattern.",
+  "measures": [
+   [
+    "count",
+    0,
+    -1
+   ],
+   [
+    "count",
+    2,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19391
+ }
+]

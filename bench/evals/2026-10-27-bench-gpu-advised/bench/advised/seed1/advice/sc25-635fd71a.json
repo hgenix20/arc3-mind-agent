@@ -1,0 +1,216 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 1501,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3001,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 4502,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 6002,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 7502,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9002,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 10502,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12002,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 13503,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 15003,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 16503,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 18003,
+  "goal": "Move the red object to the right to touch the purple wall.",
+  "measures": [
+   [
+    "gap",
+    2,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 19504
+ }
+]

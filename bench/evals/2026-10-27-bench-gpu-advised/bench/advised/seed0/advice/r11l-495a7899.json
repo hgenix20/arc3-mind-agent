@@ -1,0 +1,132 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Guide the white square with the pink dot to the green cross at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    1,
+    3
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1352,
+  "goal": "Guide the white square with the pink dot to the green cross at the bottom right.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 3627,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": [
+   [
+    "gap",
+    3,
+    15
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5905,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": [
+   [
+    "gap",
+    1,
+    15
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8029,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": [
+   [
+    "gap",
+    1,
+    3
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10349,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 12269,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 14199,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": [
+   [
+    "gap",
+    1,
+    3
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 16149,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 17964,
+  "goal": "Guide the white square with the pink dot to the green cross.",
+  "measures": [
+   [
+    "gap",
+    1,
+    3
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19710
+ }
+]

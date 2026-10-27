@@ -1,0 +1,102 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Clear all purple (c14) cells from the grid.",
+  "measures": [
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2648,
+  "goal": "Navigate the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5384,
+  "goal": "Navigate the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8296,
+  "goal": "Move the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10872,
+  "goal": "Move the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 13362,
+  "goal": "Move the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 15500,
+  "goal": "Move the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 17602,
+  "goal": "Move the agent to the purple target cell.",
+  "measures": [
+   [
+    "count",
+    12,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19352
+ }
+]

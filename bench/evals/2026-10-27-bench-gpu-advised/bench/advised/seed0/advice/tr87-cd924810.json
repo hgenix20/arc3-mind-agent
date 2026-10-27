@@ -1,0 +1,216 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 1501,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3001,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 4515,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 6015,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 7515,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9015,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 10516,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12016,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 13516,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 15016,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 16516,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 18120,
+  "goal": "Connect the orange blocks on the left to the orange blocks on the right by filling the gaps with green.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 19620
+ }
+]

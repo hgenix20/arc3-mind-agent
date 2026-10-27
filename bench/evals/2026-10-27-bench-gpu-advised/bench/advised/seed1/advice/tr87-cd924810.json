@@ -1,0 +1,199 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 1501,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3001,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 4760,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 6431,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 8035,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9629,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 11129,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12815,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 14514,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 16190,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 17955,
+  "goal": "Connect the orange blocks on the top red background to the orange blocks on the bottom green background by extending the green paths.",
+  "measures": [
+   [
+    "gap",
+    5,
+    7
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 19624
+ }
+]

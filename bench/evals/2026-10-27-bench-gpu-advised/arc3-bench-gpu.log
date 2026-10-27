@@ -1,0 +1,65 @@
+[{"stream_name":"stderr","time":3.894549853,"data":"/usr/local/lib/python3.12/dist-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.\n"}
+,{"stream_name":"stderr","time":3.894588993,"data":"  validate(nb)\n"}
+,{"stream_name":"stderr","time":4.421541769,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.421558909,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.421561109,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.421562649,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":4.737646759,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.737666829,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.737668489,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.737669529,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":7.76086833,"data":"arc_agi /usr/local/lib/python3.12/dist-packages/arc_agi/__init__.py installed in 2s; pyarrow 24.0.0\n"}
+,{"stream_name":"stdout","time":7.7608848,"data":"competition rerun: \n"}
+,{"stream_name":"stdout","time":7.960651543,"data":"gpu: NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB\n"}
+,{"stream_name":"stdout","time":116.75664703,"data":"vllm wheelhouse installed in 109s\n"}
+,{"stream_name":"stdout","time":681.59201605,"data":"server ready after 674s: vrfai/Qwen3.6-27B-FP8\n"}
+,{"stream_name":"stdout","time":681.701368959,"data":"wrote 75 source files\n"}
+,{"stream_name":"stdout","time":1141.822027933,"data":"guided seed 0: played 25 games, 17 levels completed, scorecard score 0.4139, 0 errors, 401.5s; wrote /kaggle/working/bench/guided/seed0/submission.parquet\n"}
+,{"stream_name":"stdout","time":1141.822044273,"data":"guided seed 1: played 25 games, 21 levels completed, scorecard score 0.4255, 0 errors, 384.7s; wrote /kaggle/working/bench/guided/seed1/submission.parquet\n"}
+,{"stream_name":"stdout","time":1141.822046153,"data":"  ar25 [0, 2]\n"}
+,{"stream_name":"stdout","time":1141.822047363,"data":"  bp35 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822048383,"data":"  cd82 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822049452,"data":"  cn04 [1, 0]\n"}
+,{"stream_name":"stdout","time":1141.822050382,"data":"  ft09 [1, 2]\n"}
+,{"stream_name":"stdout","time":1141.822051362,"data":"  lf52 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822052272,"data":"  lp85 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822053172,"data":"  ls20 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822054072,"data":"  m0r0 [0, 1]\n"}
+,{"stream_name":"stdout","time":1141.822055002,"data":"  r11l [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822055892,"data":"  s5i5 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822056802,"data":"  sc25 [2, 2]\n"}
+,{"stream_name":"stdout","time":1141.822057702,"data":"  sp80 [0, 1]\n"}
+,{"stream_name":"stdout","time":1141.822058612,"data":"  su15 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822059512,"data":"  tn36 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822065622,"data":"  tu93 [2, 2]\n"}
+,{"stream_name":"stdout","time":1141.822066542,"data":"  vc33 [2, 2]\n"}
+,{"stream_name":"stdout","time":1141.822067282,"data":"guided: mean levels 19.0, mean scorecard 0.420, 2 seeds\n"}
+,{"stream_name":"stdout","time":1141.822068102,"data":"advised seed 0: played 25 games, 17 levels completed, scorecard score 0.4133, 0 errors, 458.4s; wrote /kaggle/working/bench/advised/seed0/submission.parquet\n"}
+,{"stream_name":"stdout","time":1141.822068962,"data":"advised seed 1: played 25 games, 16 levels completed, scorecard score 0.4248, 0 errors, 411.1s; wrote /kaggle/working/bench/advised/seed1/submission.parquet\n"}
+,{"stream_name":"stdout","time":1141.822069782,"data":"  ar25 [1, 0]\n"}
+,{"stream_name":"stdout","time":1141.822070492,"data":"  bp35 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822071172,"data":"  cd82 [2, 1]\n"}
+,{"stream_name":"stdout","time":1141.822071832,"data":"  ft09 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822072492,"data":"  lf52 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822073142,"data":"  lp85 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822073822,"data":"  ls20 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822074482,"data":"  m0r0 [0, 1]\n"}
+,{"stream_name":"stdout","time":1141.822075182,"data":"  r11l [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822075832,"data":"  s5i5 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822076522,"data":"  sc25 [1, 0]\n"}
+,{"stream_name":"stdout","time":1141.822077202,"data":"  sp80 [0, 1]\n"}
+,{"stream_name":"stdout","time":1141.822077872,"data":"  su15 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822078522,"data":"  tn36 [1, 1]\n"}
+,{"stream_name":"stdout","time":1141.822079212,"data":"  tu93 [2, 2]\n"}
+,{"stream_name":"stdout","time":1141.822079872,"data":"  vc33 [2, 2]\n"}
+,{"stream_name":"stdout","time":1141.822080592,"data":"advised: mean levels 16.5, mean scorecard 0.419, 2 seeds\n"}
+,{"stream_name":"stdout","time":1141.822081372,"data":"exit 0\n"}
+,{"stream_name":"stderr","time":1145.534354267,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":1145.534372687,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":1145.635053519,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":1145.635063199,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":1145.941599426,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":1146.080518767,"data":"[NbConvertApp] Writing 774340 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":1147.202365731,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":1147.670214665,"data":"[NbConvertApp] Writing 2101512 bytes to __results__.html\n"}
+]

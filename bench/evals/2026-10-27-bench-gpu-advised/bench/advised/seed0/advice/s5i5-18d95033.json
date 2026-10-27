@@ -1,0 +1,133 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the green vertical bar on the left to the green horizontal bar at the bottom.",
+  "measures": [
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2947,
+  "goal": "Connect the green horizontal bar at the top left to the green vertical bar at the bottom left.",
+  "measures": [
+   [
+    "gap",
+    3,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5110,
+  "goal": "Connect the purple vertical bar to the green horizontal bar at the bottom.",
+  "measures": [
+   [
+    "gap",
+    3,
+    14
+   ],
+   [
+    "count",
+    14,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7402,
+  "goal": "Connect the green horizontal bar to the white vertical structure.",
+  "measures": [
+   [
+    "gap",
+    3,
+    15
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 9697,
+  "goal": "Connect the green horizontal bar at the top left to the green horizontal bar at the bottom.",
+  "measures": [
+   [
+    "gap",
+    3,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 13199,
+  "goal": "Connect the purple horizontal bar to the white vertical structure.",
+  "measures": [
+   [
+    "gap",
+    12,
+    15
+   ],
+   [
+    "count",
+    12,
+    -1
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 15800
+ }
+]

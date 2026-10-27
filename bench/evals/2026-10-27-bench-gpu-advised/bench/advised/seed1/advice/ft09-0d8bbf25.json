@@ -1,0 +1,86 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2353,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 4216,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 6144,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 9150,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 12779,
+  "goal": "Move the red/black square to the center of the yellow grid.",
+  "measures": [
+   [
+    "gap",
+    2,
+    4
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 16965
+ }
+]

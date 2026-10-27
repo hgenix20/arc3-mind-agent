@@ -1,0 +1,40 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the yellow cell to the purple cell at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    4,
+    14
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 7554,
+  "goal": "Move the yellow cell to the purple cell at the bottom right.",
+  "measures": [
+   [
+    "gap",
+    4,
+    14
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 13777
+ }
+]

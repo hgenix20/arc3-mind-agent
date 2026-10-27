@@ -1,0 +1,63 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the two blue blocks by moving the white block to bridge the gap between them.",
+  "measures": [
+   [
+    "gap",
+    1,
+    15
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 3294,
+  "goal": "Connect the two blue blocks by moving the white block to bridge the gap between them.",
+  "measures": [
+   [
+    "gap",
+    1,
+    15
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 10096,
+  "goal": "Connect the two blue blocks by moving the white block to bridge the gap between them.",
+  "measures": []
+ },
+ {
+  "level": 0,
+  "move": 14904,
+  "goal": "Connect the two blue blocks by moving the white block to bridge the gap between them.",
+  "measures": [
+   [
+    "gap",
+    1,
+    15
+   ],
+   [
+    "count",
+    15,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 19101
+ }
+]

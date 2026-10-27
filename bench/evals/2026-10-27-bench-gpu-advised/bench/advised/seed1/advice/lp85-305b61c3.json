@@ -1,0 +1,205 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c9).",
+  "measures": [
+   [
+    "gap",
+    8,
+    9
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1002,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c9).",
+  "measures": [
+   [
+    "gap",
+    8,
+    9
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2502,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c9).",
+  "measures": [
+   [
+    "gap",
+    8,
+    9
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 4002,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c9).",
+  "measures": [
+   [
+    "gap",
+    8,
+    9
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5502,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c9).",
+  "measures": [
+   [
+    "gap",
+    8,
+    9
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7002,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8503,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10003,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 11504,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 13005,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 14516,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 16016,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 17593,
+  "goal": "Move the light blue object (c8) to the right until it touches the purple object (c11).",
+  "measures": [
+   [
+    "gap",
+    8,
+    11
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19500
+ }
+]

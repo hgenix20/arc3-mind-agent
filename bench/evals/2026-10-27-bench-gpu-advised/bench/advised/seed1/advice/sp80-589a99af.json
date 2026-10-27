@@ -1,0 +1,205 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1333,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2834,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 4334,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5835,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7335,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8836,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10336,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 11837,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 13337,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 15016,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 16516,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "gap",
+    6,
+    9
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 18017,
+  "goal": "Move the yellow and pink blocks to touch the red block.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 19518
+ }
+]

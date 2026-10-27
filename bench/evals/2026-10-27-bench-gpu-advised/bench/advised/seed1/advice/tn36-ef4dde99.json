@@ -1,0 +1,192 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2092,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 3772,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 5486,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 7403,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 9200,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 11099,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 13001,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 14910,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 16826,
+  "goal": "Move the red object to interact with the green elements inside the yellow and gray striped area.",
+  "measures": [
+   [
+    "gap",
+    1,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 18709
+ }
+]

@@ -1,0 +1,115 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": [
+   [
+    "gap",
+    3,
+    15
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1216,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": [
+   [
+    "gap",
+    3,
+    15
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 3211,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 5485,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": [
+   [
+    "gap",
+    12,
+    15
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 8111,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 10344,
+  "goal": "Guide the white object with the pink center to the green target at the bottom.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 12059,
+  "goal": "Guide the white object with the pink center to the purple ring target.",
+  "measures": [
+   [
+    "gap",
+    12,
+    15
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 14150,
+  "goal": "Guide the white object with the pink center to the purple ring target.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 16135,
+  "goal": "Guide the white object with the pink center to the green target.",
+  "measures": [
+   [
+    "gap",
+    12,
+    15
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 18317
+ }
+]

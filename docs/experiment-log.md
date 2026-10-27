@@ -432,6 +432,15 @@ tu93, vc33, sometimes ar25, ft09, ls20). The scorecard swings from 0.41 to 0.80 
 seeds at about the same levels: it rides on how fast a few first levels (lp85, r11l, tn36)
 are won.
 
+Kaggle GPU bench (84144c2, 2 seeds, 10,000 moves): guided 19.0 levels, advised 16.5, both
+scorecard 0.42. The advised explorer asks Qwen3.6-27B which color gaps and counts win the
+level, in the background. Its goal sentences are often sensible (tu93: "move the yellow
+cell to the purple cell"; su15: "connect the black cross to the red square by extending
+the green path"), but color gaps and counts lose most of that, it often names counts of
+colors that should stay, and choosing which known frontier to visit next is a weak lever
+either way. Neither guidance helps a level that coverage can't reach within the move
+budget. Logs: `bench/evals/2026-10-27-bench-gpu-advised/`.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a

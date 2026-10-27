@@ -1,0 +1,141 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the player (c0) to collect all the colored blocks (c1, c3, c6, c8, c9, c14) by touching them.",
+  "measures": [
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ],
+   [
+    "count",
+    6,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 2471,
+  "goal": "Move the player (c0) to collect all the colored blocks (c1, c3, c6, c8, c9, c14) by touching them.",
+  "measures": [
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ],
+   [
+    "count",
+    6,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 5462,
+  "goal": "Move the player (c0) to collect all the colored blocks (c1, c3, c6, c8, c9, c14) by touching them.",
+  "measures": [
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ],
+   [
+    "count",
+    6,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 9330,
+  "goal": "Move the player (c0) to collect all the colored blocks (c1, c3, c6, c8, c9, c14) by touching them.",
+  "measures": [
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ],
+   [
+    "count",
+    6,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 11534,
+  "goal": "Move the player (c0) to collect all the colored blocks (c1, c3, c6, c8, c9, c14) by touching them.",
+  "measures": [
+   [
+    "count",
+    1,
+    -1
+   ],
+   [
+    "count",
+    3,
+    -1
+   ],
+   [
+    "count",
+    6,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 14339
+ }
+]

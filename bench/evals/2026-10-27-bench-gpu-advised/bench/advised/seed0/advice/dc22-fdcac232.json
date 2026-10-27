@@ -1,0 +1,87 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the small colored blocks on the left side to match the shapes on the right side.",
+  "measures": [
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    13,
+    -1
+   ],
+   [
+    "count",
+    14,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 8159,
+  "goal": "Move the small colored blocks on the left side to match the shapes on the right side.",
+  "measures": [
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    13,
+    -1
+   ],
+   [
+    "count",
+    14,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 12703,
+  "goal": "Move the small colored blocks on the left side to match the shapes on the right side.",
+  "measures": [
+   [
+    "count",
+    11,
+    -1
+   ],
+   [
+    "count",
+    13,
+    -1
+   ],
+   [
+    "count",
+    14,
+    -1
+   ],
+   [
+    "count",
+    8,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 0,
+  "move": 17377
+ }
+]

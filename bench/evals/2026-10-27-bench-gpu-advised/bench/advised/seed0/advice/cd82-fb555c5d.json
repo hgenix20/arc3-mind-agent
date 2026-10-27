@@ -1,0 +1,114 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    2
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2711,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    2
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 5740,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    2
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 7241,
+  "goal": "Move the light blue object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    14,
+    15
+   ],
+   [
+    "count",
+    14,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 8803,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": []
+ },
+ {
+  "level": 2,
+  "move": 11619,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    2
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 15502,
+  "goal": "Move the black object to touch the red-bordered white object.",
+  "measures": [
+   [
+    "gap",
+    0,
+    2
+   ],
+   [
+    "count",
+    0,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 18308
+ }
+]

@@ -1,0 +1,138 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the black cross to the red square by extending the green path.",
+  "measures": [
+   [
+    "gap",
+    9,
+    15
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 1932,
+  "goal": "Connect the magenta block on the left to the central red shape by extending the magenta path.",
+  "measures": [
+   [
+    "gap",
+    6,
+    9
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 3432,
+  "goal": "Connect the magenta blocks on the left to the central red shape by extending the magenta path.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 4933,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": [
+   [
+    "gap",
+    6,
+    9
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 6434,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": [
+   [
+    "gap",
+    6,
+    9
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 7934,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 9435,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": [
+   [
+    "gap",
+    6,
+    9
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 10935,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 12435,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 14191,
+  "goal": "Connect the scattered magenta blocks to the central red shape by extending the magenta path.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 16167,
+  "goal": "Connect the scattered magenta blocks to the central red shape.",
+  "measures": [
+   [
+    "gap",
+    6,
+    9
+   ],
+   [
+    "count",
+    6,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 19161
+ }
+]

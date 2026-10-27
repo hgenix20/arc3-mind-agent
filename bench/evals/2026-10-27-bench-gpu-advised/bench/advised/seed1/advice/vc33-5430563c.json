@@ -1,0 +1,73 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Move the yellow object to touch the red object.",
+  "measures": [
+   [
+    "gap",
+    4,
+    9
+   ],
+   [
+    "count",
+    4,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 1607,
+  "goal": "Move the yellow objects to touch the red objects.",
+  "measures": [
+   [
+    "gap",
+    9,
+    15
+   ],
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "gap",
+    9,
+    14
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 5606,
+  "goal": "Move the yellow objects to touch the red objects.",
+  "measures": []
+ },
+ {
+  "level": 2,
+  "move": 13107,
+  "goal": "Move the yellow objects to touch the red objects.",
+  "measures": [
+   [
+    "gap",
+    9,
+    14
+   ],
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "gap",
+    9,
+    15
+   ]
+  ]
+ },
+ {
+  "level": 2,
+  "move": 18197
+ }
+]

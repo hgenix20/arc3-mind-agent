@@ -1,0 +1,146 @@
+[
+ {
+  "level": 0,
+  "move": 1,
+  "goal": "Connect the black cross to the red square by extending the green path.",
+  "measures": [
+   [
+    "gap",
+    9,
+    15
+   ],
+   [
+    "count",
+    3,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 2048,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 3548,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 5048,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 6548,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 8049,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 9549,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 11049,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ },
+ {
+  "level": 1,
+  "move": 12549,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 14049,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 15549,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 17049,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": []
+ },
+ {
+  "level": 1,
+  "move": 18550,
+  "goal": "Connect the green blocks at the top to the red square in the center.",
+  "measures": [
+   [
+    "gap",
+    9,
+    11
+   ],
+   [
+    "count",
+    11,
+    -1
+   ]
+  ]
+ }
+]
