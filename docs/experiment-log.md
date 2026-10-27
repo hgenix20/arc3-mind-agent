@@ -392,6 +392,39 @@ of 23,156 moves came after a game's last turn. Every level the LLM stretch won c
 first 140 moves. The next build (DRIVE_GAP_MOVES = 5) lets the agent's own policy play 5
 unmodeled moves before a turn for no modeled move. Logs: `bench/evals/2026-10-26-drive-v10/`.
 
+v11 (16fe583, 5 unmodeled moves between turns) scored 11 levels and 0.577 on Kaggle.
+
+### Watching the agent, and the explorer as the backbone (2026-10-27)
+
+Ten DRIVE runs moved the scorecard from 0.31 to 0.58 against a target of 60, so the
+work turned to watching games instead of tuning. `scripts/watch.py` replays a run log
+in the offline toolkit and draws the frames with the agent's reasons;
+`scripts/watch_explore.py` does the same live for the explorer. What the 16 zero-level
+games of v10 showed:
+
+- Most moves changed nothing but the move counter (ft09: 138 of 155 fallback moves;
+  s5i5: 3,312 of 4,420), and with a move budget those moves end in game overs.
+- Failed plans repeat: sb26 sent the same 8-click plan for over 200 moves.
+- Goals don't hold: ka59 put each piece on its target at different times, never both.
+- 80 to 90% of each game's wall time is spent waiting for the LLM.
+- Only one of v10's 11 wins confirmed any goal guess, because the frame a winning move
+  returns already shows the next level.
+
+The plain explorer (no LLM, 3,000 moves a game, 108 s for all 25 games locally)
+finished 8 levels, close to DRIVE's 11 in 2 hours. It keyed states by every pixel, and
+nearly every game draws a move counter on an edge, so no state ever repeated. Blanking
+edge lines that tick alone or change on 60% of moves (d889830) took it to 15.3 levels,
+scorecard 0.457 (3 seeds). At 30,000 moves it reaches about 20 levels: level 1 in 17
+games and almost never level 2. The 25 games have about 180 levels.
+
+`GuidedExplorer` (c14ed60) credits color gaps and counts at their level extreme on the
+frame before a win and heads for them on later levels: 19.3 levels at 10,000 moves
+(3 seeds, local). Its credit is often empty or noisy: on the pre-win frame most
+measurements sit at the level's usual value, and color gaps can't see a bar's end
+reaching its marker. Later levels also add mechanics (su15 level 2 brings in new
+pieces), which no credit from level 1 explains. Benches now run in a Kaggle CPU notebook
+(`scripts/kaggle_bench_notebook.py`) after a 6-process local bench ran out of memory.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
