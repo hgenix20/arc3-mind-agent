@@ -11,8 +11,9 @@ Contract:
 - A question is sent at the start of each level (the first frame of a new level) and
   again every ``REASK_MOVES`` moves on a level without a win, at most one at a time.
 - The prompt: the screen image; the colors on screen with cell counts and bounding
-  boxes; the numbered objects (single-color components of at least ``MIN_OBJECT``
-  cells, at most ``MAX_OBJECTS``, largest first) with their boxes; how often each
+  boxes; the numbered objects with their boxes: single-color components and
+  connected regions of any non-background colors (a picture on a tile is one region),
+  each of at least ``MIN_OBJECT`` cells, at most ``MAX_OBJECTS``, largest first; how often each
   action kind changed the screen; and the agent's earlier answers.
 - The reply is a JSON object ``{"goal": str, "measures": [...]}``. A measure is
   ``{"gap": [a, b]}`` (colors a and b should touch: smaller is better),
@@ -40,7 +41,7 @@ from arcagent.agent.guided import Feature, GuidedExplorer
 from arcagent.core.types import Action, Grid, Observation
 from arcagent.mind.screen import data_url, png
 from arcagent.mind.vchat import VisionChat, VMessage
-from arcagent.synth.trace import components
+from arcagent.synth.trace import background_color, components
 
 REASK_MOVES = 1500  # moves on a level without a win before asking again
 LLM_WEIGHT = 2.0  # credit per measure the model names
@@ -78,17 +79,43 @@ def screen_notes(grid: Grid) -> str:
     return "\n".join(lines)
 
 
+def regions(grid: Grid) -> list[list[tuple[int, int]]]:
+    """4-connected regions of any non-background colors, as ``(y, x)`` cells."""
+    bg = background_color(grid)
+    fg = (grid >= 0) & (grid != bg)
+    h, w = grid.shape
+    seen = np.zeros(grid.shape, dtype=bool)
+    out: list[list[tuple[int, int]]] = []
+    for y0, x0 in zip(*np.nonzero(fg), strict=True):
+        if seen[y0, x0]:
+            continue
+        stack = [(int(y0), int(x0))]
+        seen[y0, x0] = True
+        cells: list[tuple[int, int]] = []
+        while stack:
+            y, x = stack.pop()
+            cells.append((y, x))
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < h and 0 <= nx < w and fg[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    stack.append((ny, nx))
+        out.append(cells)
+    return out
+
+
 def objects(grid: Grid) -> list[Box]:
-    """Boxes of the single-color components of at least ``MIN_OBJECT`` cells, largest
-    first, at most ``MAX_OBJECTS``; the list index is the object's number."""
-    comps = [c for c in components(grid) if len(c) >= MIN_OBJECT]
-    comps.sort(key=len, reverse=True)
-    out: list[Box] = []
-    for cells in comps[:MAX_OBJECTS]:
+    """Boxes of the multi-color regions and the single-color components of at least
+    ``MIN_OBJECT`` cells (one box once), largest first, at most ``MAX_OBJECTS``; the
+    list index is the object's number."""
+    sized: dict[Box, int] = {}
+    for cells in [*regions(grid), *components(grid)]:
+        if len(cells) < MIN_OBJECT:
+            continue
         ys = [y for y, _ in cells]
         xs = [x for _, x in cells]
-        out.append((min(xs), min(ys), max(xs), max(ys)))
-    return out
+        box = (min(xs), min(ys), max(xs), max(ys))
+        sized[box] = max(sized.get(box, 0), len(cells))
+    return sorted(sized, key=lambda b: (-sized[b], b))[:MAX_OBJECTS]
 
 
 def object_notes(grid: Grid, boxes: list[Box]) -> str:

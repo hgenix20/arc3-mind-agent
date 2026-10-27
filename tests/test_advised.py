@@ -116,3 +116,12 @@ def test_score_reads_match_pairs_from_the_state_key() -> None:
     near = g.tobytes() + bytes([0, 0])
     p.close()
     assert p.score(near) < p.score(far)
+
+
+def test_a_picture_on_a_tile_is_one_object() -> None:
+    from arcagent.agent.advised import objects  # noqa: PLC0415
+
+    g = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+    g[10:17, 10:17] = 6  # a 7x7 tile
+    g[12:15, 12] = 5  # strokes drawn on it
+    assert (10, 10, 16, 16) in objects(g)

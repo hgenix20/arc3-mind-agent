@@ -456,6 +456,17 @@ from 0 to 5 levels on every seed, and dc22, s5i5, m0r0 and sp80 win level 1 on a
 The scorecard doesn't follow the levels: the explorer wins in hundreds or thousands of
 moves where humans take tens, and the score is (human/agent moves) squared per level.
 
+At 30,000 moves (e2cebdc, 4 seeds) the explorer averages 28.5 levels, scorecard 0.471;
+21 games win a level on some seed, ka59 on all four. re86, sb26, sk48 and wa30 never do.
+A game takes about 145 s at that length, so the competition rerun (about 260 s a game)
+could afford about 50,000 moves.
+
+GPU bench with object matches (bfbd8a7, 2 seeds, 10,000 moves): explorer 22.5 levels,
+advised 23.0. The model named a match in 20 of 181 replies, but only m0r0's ("make the
+two halves identical") got through, and m0r0 then won 2 levels on both seeds. The rest
+were dropped because single-color components split a picture tile into boxes of
+different sizes; objects now include multi-color regions.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
