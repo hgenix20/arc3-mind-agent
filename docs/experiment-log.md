@@ -467,6 +467,12 @@ two halves identical") got through, and m0r0 then won 2 levels on both seeds. Th
 were dropped because single-color components split a picture tile into boxes of
 different sizes; objects now include multi-color regions.
 
+With multi-color objects (b0c1044, 2 seeds, 10,000 moves) the advised explorer scored
+22.5 levels, the same as the plain explorer. Matches got through on 7 game runs, tr87
+among them, but the model's tr87 pair was the white row against the orange row (a copy),
+where the legend says each white picture maps to a different orange one. The model reads
+layouts but doesn't infer such rules from one screen, so its guidance nets out to zero.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
