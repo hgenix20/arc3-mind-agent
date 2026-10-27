@@ -425,6 +425,13 @@ reaching its marker. Later levels also add mechanics (su15 level 2 brings in new
 pieces), which no credit from level 1 explains. Benches now run in a Kaggle CPU notebook
 (`scripts/kaggle_bench_notebook.py`) after a 6-process local bench ran out of memory.
 
+First Kaggle CPU bench (4 seeds, 10,000 moves a game, c14ed60 code): plain explorer 18.8
+levels, guided 19.0, both mean scorecard 0.544. The statistical credit adds nothing
+measurable. Level 1 falls in the same 17 games for both, level 2 in about 5 (cd82, sc25,
+tu93, vc33, sometimes ar25, ft09, ls20). The scorecard swings from 0.41 to 0.80 across
+seeds at about the same levels: it rides on how fast a few first levels (lp85, r11l, tn36)
+are won.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
