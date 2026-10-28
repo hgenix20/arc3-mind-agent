@@ -473,6 +473,13 @@ among them, but the model's tr87 pair was the white row against the orange row (
 where the legend says each white picture maps to a different orange one. The model reads
 layouts but doesn't infer such rules from one screen, so its guidance nets out to zero.
 
+DRIVE v12 (5d6c5ba, the LLM-driven agent with the fixed explorer as its fallback) scored
+5 levels and 0.379 on Kaggle. It still made only 100 to 1,900 moves a game, waiting on
+the model, so the explorer fixes had no room to matter. DRIVE's last five runs average
+about 0.48 (0.31 to 0.58, 5 to 11 levels); the explorer alone averages 0.47 over four
+seeds with 23 to 28 levels and no GPU. The explorer is the base from here. Logs:
+`bench/evals/2026-10-28-drive-v12/`.
+
 ## Open items
 
 - The test flood (v4): on cd82, dc22 and s5i5 almost every test asks a
