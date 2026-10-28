@@ -191,6 +191,25 @@ without a level-up.
 - Missing: a model of which button changes which arm and how, and a cover goal (each tip
   on a marker), then planning the joint lengths around the walls.
 
+## lf52 (peg jumps)
+
+- Level 0 won at move 77 (human 32); level 1 not won (93 states, 1,733 no-ops).
+- Play: click a peg to select it (a green ring), click an empty cell two away to jump;
+  the jumped peg goes. Level 1 adds a second board joined by a track with a car.
+- Missing: clicks whose effect depends on what's selected. A click on an empty cell does
+  nothing unless a peg two cells away is selected, so the explorer's per-color click
+  statistics call those cells nearly idle yet keep trying them. The same gap the mind
+  hit on 2026-10-24 (click effects relative to a selected piece).
+
+## ft09 (paint a tile to follow the examples)
+
+- Level 0 won at move 3,344 (human 43; 2,648 no-ops); level 1 not won.
+- Screen: three example 3x3 tiles, each with a center glyph and a pattern of two colors;
+  a framed work tile with its own glyph; clicking a cell of the work tile flips it.
+- Missing: a match goal against the example with the same glyph (pick the reference by
+  a shared marker, then make the work tile's pattern equal it). The mind's
+  ``match_thing`` goal is close to this.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
