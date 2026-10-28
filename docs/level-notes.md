@@ -105,6 +105,34 @@ without a level-up.
 - The fluid mind won level 0 in 33 to 59 moves. Its goal book proposes match goals on
   twin framed regions, which is this pattern.
 
+## m0r0 (two dots move as mirror images and must meet)
+
+- Level 0 won at move 366 (human 30); level 1 not won in 3,600 more moves.
+- Level 1 spent 2,974 moves on clicks that never do anything: each new state brings
+  dozens of untried clicks, and once its arrow moves were used up the explorer tried
+  those rather than walk to a state with arrow moves left. Fixed in e2a542d (walk to a
+  live untried move first): 99 no-ops, 364 states; level 1 still not won.
+- Missing: the mirror rule as a model (one action moves both dots, one of them
+  reversed), so the meeting point can be planned; checkered cells look like hazards.
+
+## sp80 (place bars so a falling stream lands in the cups)
+
+- Level 0 won at move 425 (human 39); level 1 not won (1,663 states, 77 game overs).
+- Play: click a bar to select it, arrows move it, action 5 releases the stream. Level 1
+  turns the board upside down and adds bars.
+- Missing: a simulation of the stream's path given the bars (the effect shows only on
+  release), and the goal "stream ends in a cup", carried over from level 0 though the
+  board is flipped.
+
+## su15 (move pieces to the circle)
+
+- Level 0 won at move 453 (human 22): clicks move a white square along a dotted path
+  into the circle.
+- Level 1 (2,158 states, 83 game overs): several pink and white pieces, the circle, and
+  a row in the top bar that reads like an order of colors.
+- Missing: a model of click-to-move (a piece steps toward the click), several pieces,
+  and possibly an order given by the bar.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
