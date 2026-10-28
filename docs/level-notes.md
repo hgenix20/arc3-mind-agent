@@ -133,6 +133,25 @@ without a level-up.
 - Missing: a model of click-to-move (a piece steps toward the click), several pieces,
   and possibly an order given by the bar.
 
+## cn04 (fit two pegged pieces together)
+
+- Level 0 never won by the explorer (1,825 states in 4,000 moves, 52 game overs); the
+  fluid mind won it once in 832 moves.
+- Screen: two outlined pieces, each with a pair of cyan pegs; a move bar.
+- Play: click a piece to select it (it turns purple), arrows move it, action 5 rotates
+  it.
+- Missing: a fit goal (bring the pegs of one piece against the other piece, facing
+  each other), and rotation as part of a piece's model, so a fit can be planned.
+
+## dc22 (slide pieces to open a path)
+
+- Level 0 won at move 1,765 after e2a542d (3,500 to 4,400 before; human 59); level 1
+  not won (204 states, 1,466 no-ops still).
+- Screen: a board of sliding pieces on the left, two hat shapes on the right (one
+  outlined, one filled), a move bar.
+- Missing: what the hats mean (they look like a legend of which piece goes where);
+  still many no-ops, so some kind of move keeps being tried where it can't work.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
