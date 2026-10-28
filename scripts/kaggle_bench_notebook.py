@@ -61,6 +61,7 @@ def main() -> None:
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3])
     p.add_argument("--max-actions", type=int, default=10000)
     p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--hybrid-moves", type=int, default=400, help="mind moves per level (hybrid)")
     p.add_argument("--gpu", action="store_true", help="serve the model first (advised policy)")
     p.add_argument("--out", type=Path, default=OUT)
     a = p.parse_args()
@@ -69,6 +70,7 @@ def main() -> None:
     args = [
         "--policies", *a.policies, "--seeds", *map(str, a.seeds),
         "--max-actions", str(a.max_actions), "--jobs", str(a.jobs),
+        "--hybrid-moves", str(a.hybrid_moves),
     ]  # fmt: skip
     cells = [
         md_cell("# ARC-AGI-3 explorer bench\n\nExplorer policies over seeds, no model."),
