@@ -174,6 +174,23 @@ without a level-up.
 - Missing: what the hats mean (they look like a legend of which piece goes where);
   still many no-ops, so some kind of move keeps being tried where it can't work.
 
+## bp35 (clear blocks to let a small figure reach a goal)
+
+- Level 0 won at move 109 after e2a542d (human 21); level 1 not won (1,188 states, 82
+  game overs, 1,279 no-ops).
+- Screen: a small figure under a mass of blocks; level 0 has an orange cross to reach.
+  Clicks remove or shift blocks and the rest settle.
+- Missing: a model of settling (blocks fall into gaps), and on level 1 the goal itself:
+  the cross is gone, so the level 0 goal doesn't carry over as is.
+
+## s5i5 (buttons stretch arms until their tips reach the markers)
+
+- Level 0 won at move 1,319 (human 20); level 1 not won (915 states).
+- Screen: arms with a tip; paired buttons whose halves lengthen or shorten an arm; cyan
+  cross markers; on level 1 one jointed arm, four buttons and walls.
+- Missing: a model of which button changes which arm and how, and a cover goal (each tip
+  on a marker), then planning the joint lengths around the walls.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
