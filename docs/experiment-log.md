@@ -585,3 +585,19 @@ repo).
   condition several times; v6–v9 are one run each.
 - All code under this repo is to be released under MIT-0/CC0 before private
   scores, per the competition rules.
+
+## 2026-10-28: reach features (e34bbe9), Kaggle CPU, 4 seeds, 10k moves
+
+The guided explorer now measures the mover's distance to each color (the avatar wears
+its exit's color in tu93, so plain color gaps read zero).
+
+| Policy | Levels per seed | Mean | Scorecard mean |
+|---|---|---|---|
+| explore | 24, 21, 23, 26 | 23.5 | 0.467 |
+| guided (reach) | 24, 20, 24, 25 | 23.25 | 0.476 |
+
+- tu93 level 2: 862 to 979 moves became 407 to 602. Level 3: about 1,200 became 439 to
+  963. Level 4 got worse (3,300 to 3,950 became 6,400 to 7,100) and one seed lost it:
+  the credited exit color misleads there.
+- ar25 won level 1 once; cd82 lost level 1 on one seed. Same level count overall.
+- Per-level watching of the four never-won games is in `docs/level-notes.md`.
