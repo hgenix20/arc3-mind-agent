@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from watch import PER_SHEET, sheet, tile  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 from arcagent.agent.explore import ExplorerPolicy  # noqa: E402
+from arcagent.agent.guided import GuidedExplorer  # noqa: E402
 from arcagent.agent.play import to_game_action  # noqa: E402
 from arcagent.agent.submit import DEFAULT_ENV_DIR, make_arcade, select_games  # noqa: E402
 from arcagent.core.frames import observation_from_frame  # noqa: E402
@@ -38,7 +39,9 @@ def main() -> None:
     p.add_argument("--moves", type=int, default=3000)
     p.add_argument("--every", type=int, default=100)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--guided", action="store_true", help="play GuidedExplorer")
     p.add_argument("--before", type=int, default=0, help="also draw this many frames before a win")
+    p.add_argument("--from-level", type=int, default=0, help="draw no frames before this level")
     p.add_argument("--env-dir", default=DEFAULT_ENV_DIR)
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
@@ -47,7 +50,7 @@ def main() -> None:
     game = select_games([e.game_id for e in arcade.available_environments], [a.game])[0]
     env = arcade.make(game, save_recording=False)
     obs = observation_from_frame(env.reset())
-    pol = ExplorerPolicy(a.seed)
+    pol = GuidedExplorer(a.seed) if a.guided else ExplorerPolicy(a.seed)
     tiles: list[Image.Image] = []
     lines: list[str] = []
     level_start, overs = 0, 0
@@ -59,7 +62,7 @@ def main() -> None:
         act = pol.choose(obs)
         before = obs
         label = f"{move} L{obs.levels_completed} {act}"
-        if move % a.every == 0:
+        if move % a.every == 0 and obs.levels_completed >= a.from_level:
             tiles.append(tile(np.asarray(obs.grid), label))
         if a.before:
             recent = (
@@ -92,6 +95,9 @@ def main() -> None:
         f"{sum(map(len, g.noop.values()))} no-ops, {overs} game overs this level, "
         f"clock lines {sorted(pol.clock)}"
     )
+    if isinstance(pol, GuidedExplorer):
+        top = sorted(pol.credit.items(), key=lambda kv: -abs(kv[1]))[:6]
+        lines.append(f"credit: {[(f, round(w, 2)) for f, w in top]}")
     for i in range(0, len(tiles), PER_SHEET):
         sheet(tiles[i : i + PER_SHEET]).save(a.out / f"sheet-{i // PER_SHEET}.png")
     (a.out / "summary.txt").write_text("\n".join(lines), encoding="utf-8")

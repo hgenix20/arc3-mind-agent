@@ -14,6 +14,13 @@ the moves. Abilities that recur across levels get built first.
 - Missing: lives. A move budget ends each life (59 game overs on level 3); every life
   walks back from the start.
 
+- Level 4 (watched 2026-10-28, plain explorer: 3,294 moves, 311 states, 122 game
+  overs): the exit sits at the maze's central junction, and purple patrollers keep
+  crossing it. Touching one ends the life. The guided explorer did worse here (6,400+
+  moves) because it heads straight for the exit and meets the patrollers.
+- Missing: learning what kills (a color whose contact ends the life) and treating its
+  likely next cells as off limits; patrol paths repeat, so they can be predicted.
+
 ## sb26 (fill slots to copy a pattern)
 
 - Level 0 never won in 3,000 moves (505 states, 1,307 no-ops, 15 game overs).
