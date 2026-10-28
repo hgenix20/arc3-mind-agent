@@ -90,6 +90,21 @@ without a level-up.
   its own color. Missing: select-then-place as one unit, a goal pairing each body with
   the circle of its color, and a model of how the body follows its legs.
 
+## ls20 (walk to a door whose glyph matches the key)
+
+- Level 0 won at move 504 (human 22); level 1 not won in 3,500 more moves (172 states,
+  32 game overs).
+- Screen: an avatar on a green floor; a framed door with a glyph; a framed box in the
+  corner showing the key's glyph; a blue cross on the floor; on level 1, small framed
+  tiles; a move bar at the bottom.
+- Play: stepping on the cross turns the key's glyph. The door opens only when the key's
+  glyph matches the door's. The small tiles look like move refills.
+- Missing: a match goal between two framed boxes (key display and door), which comes
+  before the reach goal (the door); the order of goals matters. Also resources: tiles
+  that refill the move bar are worth a detour when the bar runs low.
+- The fluid mind won level 0 in 33 to 59 moves. Its goal book proposes match goals on
+  twin framed regions, which is this pattern.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
