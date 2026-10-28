@@ -4,6 +4,28 @@ One entry per level the explorer stalls on, written from watching it play
 (`scripts/watch_explore.py`). Each names the general ability the level needs, never
 the moves. Abilities that recur across levels get built first.
 
+## Where things stand (2026-10-28)
+
+Fourteen games watched. Ranked by how many stalled levels each ability would open:
+
+| Ability the agent lacks | Levels it blocks |
+|---|---|
+| A model of what an action does to a thing (step, mirror, rotate, slide, follow a click, a stream's path), so plans can be tried in imagination | almost all: m0r0, sp80, su15, r11l, lp85, cn04, tu93, dc22 |
+| A match goal: one region should come to look like a reference (legend, key, pattern) | sb26, sk48, ls20, lp85 |
+| Select-then-act moves treated as one unit (click a piece, then move or place it) | sb26, r11l, sp80, cn04, re86 |
+| A cover, fit or deliver goal: things brought onto targets, paired by color or shape | re86, wa30, cn04, r11l |
+| Lives and danger: what kills, what refills the move bar | tu93, ls20, every game with a bar |
+| Delayed effects (program, then run; place bars, then release) | tn36, sp80 |
+
+The fluid mind (`arcagent/mind`) already has the first two in part: facts about what
+each action does to a thing, a predictor and search over them, and goal guesses of the
+reach, clear, match and cover kinds. It wins levels in close to human moves but stalls
+often, and the explorer wins twice as many levels by coverage. The hybrid policy
+(`arcagent/agent/hybrid.py`, Kaggle bench arc3-bench-c) tests putting them together.
+Next: read the hybrid bench level by level; on each level the mind stalls on, find
+which of the abilities above it was missing, and add it to the mind (the generic
+version), keeping the explorer as the fallback that reaches the next level.
+
 ## tu93 (maze: avatar walks to an exit tile)
 
 - Levels 0 to 3 are won by coverage, at 10 to 25 times the human moves.
