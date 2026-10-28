@@ -778,7 +778,13 @@ class FluidAgent:
         )
         self._log_facts(keys, snap, move)
         after = self._pred.scene if self._pred is not None else None
-        self._log_goals(self.goals.level_up(before, self._last_grid, after=after), "confirmed")
+        confirmed = self.goals.level_up(before, self._last_grid, after=after)
+        if not confirmed:  # nothing guessed held: read what the winning move closed
+            confirmed = self.goals.learn_win(
+                before, self._last_grid, list(self._history.values()), self.mem,
+                static=self._static,
+            )  # fmt: skip
+        self._log_goals(confirmed, "confirmed")
         self._end_probe()  # a probing goal true before the win was just confirmed
         self._progress.reset_level()
         self._budget.new_level()

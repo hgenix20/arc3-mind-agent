@@ -6,7 +6,9 @@ play; a goal that holds on a logged frame (``rule_out``) or on the current frame
 (``note_reached``) while the level did not complete cannot be the win condition, so it is
 ``ruled_out`` or ``excluded``; a goal true in the frame before a level-up, or in the
 predicted outcome of the winning move, is ``confirmed`` and its form is carried to the
-next level as the first hypothesis. Only open goals change status, and ``propose`` skips
+next level as the first hypothesis. A win that confirms nothing is read back by
+``learn_win``: the guesses whose gap the winning move closed become confirmed forms.
+Only open goals change status, and ``propose`` skips
 every goal already in ``status``, so a refuted guess is not re-proposed within a game and
 a confirmed form is never excluded. A goal whose plans keep failing is ``stalled``
 (``stall``, called by the agent after repeated failed attempts in one level) and ``open``
@@ -64,6 +66,9 @@ MAX_MATCH_THINGS = 10  # match_thing goals a propose call adds, at most
 MAX_ROUTE_TARGETS = 20  # a clear goal routes its mover through at most this many things
 UNKNOWN_COST = 20  # the distance ranking assumes for a goal with no estimate
 SALIENCE = 2.0  # rank weight of a goal about a controlled thing or one that changed
+WIN_GAP = 2  # a goal the winning move closed was at most this far on the frame before
+WIN_LEARNED = 2  # forms a win that confirmed nothing teaches, at most
+WIN_FRAMES = 80  # history frames read per goal by learn_win
 _MOVE_KINDS = frozenset({"move", "slide", "teleport"})
 
 
@@ -579,6 +584,27 @@ class GoalBook:
         cells first (ties by sig), and at most ``MAX_OPEN_GOALS`` goals are open at once.
         ``source`` is kept in ``sources`` for logging.
         """
+        guesses = self.guesses(scene, mem, grid=grid, static=static)
+        added: list[Goal] = []
+        room = MAX_OPEN_GOALS - sum(1 for _ in self._open_goals())
+        for goal in guesses:
+            if len(added) >= room:
+                break  # dropped goals stay out of status so a later call can add them
+            if goal not in self.status:
+                self.status[goal] = "open"
+                self.sources[goal] = source
+                added.append(goal)
+        return added
+
+    def guesses(
+        self,
+        scene: Scene,
+        mem: FactMemory,
+        *,
+        grid: Grid | None = None,
+        static: Mask | None = None,
+    ) -> list[Goal]:
+        """Every heuristic guess for ``scene`` in ``propose``'s order, whatever its status."""
         present = {t.sig for t in scene.things} | {t.kind for t in scene.things}
         shadowed = {t.sig for t in scene.things if t.kind != t.sig}  # their kind stands in
         looks = {t.sig: t.kind for t in scene.things}  # never a target of its own kind
@@ -600,17 +626,7 @@ class GoalBook:
                 Goal("match", region_a=ra, region_b=rb) for ra, rb in twin_regions(scene, grid)
             ]
             guesses += _match_thing_guesses(scene, mem, grid, static)
-        guesses = [g for g in guesses if proposed(g.kind)]
-        added: list[Goal] = []
-        room = MAX_OPEN_GOALS - sum(1 for _ in self._open_goals())
-        for goal in guesses:
-            if len(added) >= room:
-                break  # dropped goals stay out of status so a later call can add them
-            if goal not in self.status:
-                self.status[goal] = "open"
-                self.sources[goal] = source
-                added.append(goal)
-        return added
+        return [g for g in guesses if proposed(g.kind)]
 
     def _open_goals(self) -> Iterator[Goal]:
         return (g for g, s in self.status.items() if s == "open")
@@ -674,6 +690,49 @@ class GoalBook:
             self.status[g] = "confirmed"
             if g not in self.confirmed_forms:
                 self.confirmed_forms.append(g)
+        return out
+
+    def learn_win(
+        self,
+        before: Scene,
+        grid: Grid | None,
+        history: Sequence[tuple[Scene, Grid | None]],
+        mem: FactMemory,
+        *,
+        static: Mask | None = None,
+    ) -> list[Goal]:
+        """Work back from a win that confirmed nothing: credit what the winning move closed.
+
+        ``level_up`` credits only goals guessed before the win and still in play. A goal
+        already true on the frame the winning move was made from was excluded there (it
+        held with no level-up yet), and one that the winning move made true is checked
+        only against a prediction, so most wins teach nothing (7 of 32 in the
+        2026-10-28 hybrid bench). This reads the outcome instead: among every guess for
+        ``before`` (``guesses``), keep those whose distance on ``before`` is at most
+        ``WIN_GAP``, is the smallest it took on any frame of ``history`` (the level's
+        distinct frames), and is below the largest (the level moved it). The closest
+        first, then the one the level moved most, at most ``WIN_LEARNED``, become
+        confirmed forms, so the next level starts with them. Distances use cell gaps (no
+        kinematics); at most ``WIN_FRAMES`` frames of history are read.
+        """
+        frames = list(history)[-WIN_FRAMES:]
+        scored: list[tuple[int, float, int, Goal]] = []
+        for i, g in enumerate(self.guesses(before, mem, grid=grid, static=static)):
+            if g in self.confirmed_forms:
+                continue
+            d = g.distance(before, grid)
+            if d is None or d > WIN_GAP:
+                continue
+            seen = [x for s, sg in frames if (x := g.distance(s, sg)) is not None]
+            if not seen or d > min(seen) or d >= max(seen):
+                continue
+            scored.append((d, -float(np.median(seen)) + d, i, g))
+        scored.sort(key=lambda x: (x[0], x[1], x[2]))
+        out = [g for *_, g in scored[:WIN_LEARNED]]
+        for g in out:
+            self.status[g] = "confirmed"
+            self.sources.setdefault(g, "win")
+            self.confirmed_forms.append(g)
         return out
 
     def start_probe(self, goal: Goal) -> bool:

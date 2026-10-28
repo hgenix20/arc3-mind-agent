@@ -345,3 +345,17 @@ def test_a_win_leaves_a_goal_excluded_without_a_probe_excluded() -> None:
     book.propose(BASE, mover_memory(), source="heuristic")
     book.note_reached(ON_T1)
     assert book.level_up(ON_T1) == [] and book.confirmed_forms == []
+
+
+def test_a_win_that_confirmed_nothing_learns_the_gap_the_winning_move_closed() -> None:
+    book = GoalBook()  # nothing guessed before the win
+    near_t2 = scene_of({(9, 38): 1}, T1, T2)  # two cells short of T2, far from T1
+    history = [(BASE, None), (near_t2, None)]
+    learned = book.learn_win(near_t2, None, history, mover_memory())
+    assert [(g.kind, g.b) for g in learned] == [("reach", T2SIG)]
+    assert book.confirmed_forms == learned and book.status[learned[0]] == "confirmed"
+
+
+def test_learn_win_skips_a_goal_the_level_never_moved() -> None:
+    book = GoalBook()
+    assert book.learn_win(BASE, None, [(BASE, None)], mover_memory()) == []
