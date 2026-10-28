@@ -601,3 +601,22 @@ its exit's color in tu93, so plain color gaps read zero).
   the credited exit color misleads there.
 - ar25 won level 1 once; cd82 lost level 1 on one seed. Same level count overall.
 - Per-level watching of the four never-won games is in `docs/level-notes.md`.
+
+## 2026-10-28: idle-move fix, 100k coverage, hybrid (Kaggle CPU)
+
+| Run | Levels per seed | Mean levels | Scorecard mean |
+|---|---|---|---|
+| explore, e2a542d (walk to a live untried move first), 10k | 27, 25, 24, 26 | 25.5 | 0.468 |
+| guided, e2a542d, 10k | 24, 25, 24, 24 | 24.25 | 0.477 |
+| explore, e34bbe9, 100k, seed 0 | 37 | 37 | 0.662 |
+| guided, e34bbe9, 100k, seed 0 | 36 | 36 | 0.420 |
+| hybrid (FLUID mind 400 moves per level, then explore; 3fbefd2, before the idle fix), 10k | 27, 27, 27, 25 | 26.5 | 0.453 |
+
+- The idle fix adds two levels at 10k (23.5 to 25.5), same score.
+- Ten times the moves takes the explorer from about 25 to 37 of 180 levels: coverage
+  alone stalls at level 1 or 2 in most games whatever the budget.
+- The hybrid's mind wins some first levels at or near human moves (lf52 22, r11l 15,
+  tn36 13, m0r0 111 to 116, ls20 103) and one seed took lp85 to level 5. Where the mind
+  doesn't win, its 400 moves come first and slow the level down (vc33 level 0: 414 to
+  445 moves against the explorer's 29 to 57). Net score unchanged.
+- Baseline submission 57746426 (DRIVE v11) was made today; public score pending.
