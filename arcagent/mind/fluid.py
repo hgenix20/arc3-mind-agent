@@ -56,7 +56,8 @@ Per ``choose(obs)``, in order:
    test`` doesn't count: a settled action can still be a plan step), it's taken with
    no search (branch ``forced``, why ``only move left``). Else ``goals.propose`` and
    ``search``: first over the open goals the executive named
-   (source ``llm``) alone, then, only if that finds no plan, over all of
+   (source ``llm``) alone, then over the confirmed forms not stalled (what won an
+   earlier level) alone, then, only if neither finds a plan, over all of
    ``goals.open()``. A found plan starts (branch ``plan``, why ``goal <id>``). A goal
    that already holds at the root is treated as reached (``note_reached``) and the
    search runs once more without it. A first step that a veto refuses counts as a
@@ -1071,6 +1072,13 @@ class FluidAgent:
         res: SearchResult | None = None
         if 0 < n_llm < len(goals):  # the executive's goals alone first
             res = self._search_toward(scene, lambda g: sources.get(g) == LLM_SOURCE)
+            if res.stop != "found" or not res.plan:
+                res = None
+        forms = set(self.goals.confirmed_forms) - self.goals.stalled_forms
+        if res is None and forms and not forms.issuperset(goals):
+            # What won an earlier level first: a cheap fresh guess would otherwise win
+            # the search (tn36 level 2 chased cover guesses, never the confirmed clear).
+            res = self._search_toward(scene, lambda g: g in forms)
             if res.stop != "found" or not res.plan:
                 res = None
         if res is None:
