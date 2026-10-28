@@ -270,3 +270,15 @@ def test_idle_moves_wait_for_a_live_move_elsewhere() -> None:
     p.graph.cands = {a: [Action(1), click], b: [Action(1), Action(2), click]}
     p.tries[6, 0], p.changes[6, 0] = 40, 0  # clicks on the background never did anything
     assert p._pick(a, obs) == Action(1)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_veto_never_forces_a_known_no_op() -> None:
+    g0 = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+    obs = Observation(g0, Phase.NOT_FINISHED, 0, 5, (1, 2))
+    p = ExplorerPolicy(0)
+    p.observe(obs)
+    a = p.key(obs)
+    p.graph = Graph()
+    p.graph.cands = {a: [Action(1), Action(2)]}
+    p.graph.noop = {a: {(1, -1, -1)}}  # action 1 is known to do nothing here
+    assert p._pick(a, obs, frozenset({(2, -1, -1)})) == Action(2)  # pyright: ignore[reportPrivateUsage]

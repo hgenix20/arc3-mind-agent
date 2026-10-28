@@ -319,7 +319,8 @@ class ExplorerPolicy:
         self.last = (self.key(obs), action, self._kind(action, obs.grid)[1])
 
     def choose(self, obs: Observation, exclude: frozenset[ActionKey] = frozenset()) -> Action:
-        """Pick the next action, skipping ``exclude`` unless nothing else is left."""
+        """Pick the next action, skipping ``exclude`` while an allowed move is untried here
+        or on a reachable state; past that the exclusion is dropped."""
         self.observe(obs)
         key = self.key(obs)
         if obs.terminal or all(a == RESET_ID for a in obs.available_actions):
@@ -385,9 +386,13 @@ class ExplorerPolicy:
             self.graph.cands[key] = self._candidates(obs)
             self.rounds += 1
             return self._pick(key, obs, exclude)
+        if exclude:
+            # Nothing allowed is untried here or on a reachable state: the veto would
+            # only force moves already known to do nothing, so drop it (vc33: 11 of 13
+            # moves vetoed, one top-edge click repeated 122 times).
+            return self._pick(key, obs)
         cands = self.graph.cands.get(key) or self._candidates(obs)
         if not cands:
             return Action(RESET_ID)
-        cands = [a for a in cands if a.key() not in exclude] or cands
         weights = [self.change_rate(self._kind(a, obs.grid)) for a in cands]
         return self.rng.choices(cands, weights=weights, k=1)[0]
