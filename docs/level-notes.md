@@ -4,27 +4,36 @@ One entry per level the explorer stalls on, written from watching it play
 (`scripts/watch_explore.py`). Each names the general ability the level needs, never
 the moves. Abilities that recur across levels get built first.
 
-## Where things stand (2026-10-28)
+## How to read these notes
 
-Fourteen games watched. Ranked by how many stalled levels each ability would open:
+Each game section below records what was seen on its levels. What gets built is never
+the game's rule: it is a way for the agent to learn faster from its own play, and an
+ability counts only when at least three games need it (Kameron, 2026-10-28: build the
+ability to learn and to apply what it already knows, not the concepts themselves).
+Changes are judged on games they weren't developed on, as a stand-in for the hidden
+set.
 
-| Ability the agent lacks | Levels it blocks |
-|---|---|
-| A model of what an action does to a thing (step, mirror, rotate, slide, follow a click, a stream's path), so plans can be tried in imagination | almost all: m0r0, sp80, su15, r11l, lp85, cn04, tu93, dc22 |
-| A match goal: one region should come to look like a reference (legend, key, pattern) | sb26, sk48, ls20, lp85 |
-| Select-then-act moves treated as one unit (click a piece, then move or place it) | sb26, r11l, sp80, cn04, re86 |
-| A cover, fit or deliver goal: things brought onto targets, paired by color or shape | re86, wa30, cn04, r11l |
-| Lives and danger: what kills, what refills the move bar | tu93, ls20, every game with a bar |
-| Delayed effects (program, then run; place bars, then release) | tn36, sp80 |
+## Learning abilities the levels call for
 
-The fluid mind (`arcagent/mind`) already has the first two in part: facts about what
-each action does to a thing, a predictor and search over them, and goal guesses of the
-reach, clear, match and cover kinds. It wins levels in close to human moves but stalls
-often, and the explorer wins twice as many levels by coverage. The hybrid policy
-(`arcagent/agent/hybrid.py`, Kaggle bench arc3-bench-c) tests putting them together.
-Next: read the hybrid bench level by level; on each level the mind stalls on, find
-which of the abilities above it was missing, and add it to the mind (the generic
-version), keeping the explorer as the fallback that reaches the next level.
+| Learning ability | What the agent must do from its own play | Games that show the need |
+|---|---|---|
+| Learn from a win | Work out what the winning move achieved, even with no guess made beforehand, and carry it to the next level as the first idea to try | tn36, r11l, lf52, m0r0, ar25 (the mind learned from only 7 of 32 wins) |
+| Blame the part that failed | When an idea fails, find which piece was wrong (a missing step, a wrong distance, a wrong target) and fix only that piece, keeping the rest | tn36 (the right goal dropped for a missing run step), tu93, cn04, sp80 |
+| Learn what an action does to a thing | From a few moves, learn a reusable effect (shifts by n, mirrors, rotates, follows a click, settles) that later predictions and plans use | m0r0, cn04, r11l, su15, bp35, s5i5, lp85 |
+| Learn that a move works only after another | Notice that an action's effect depends on an earlier one (select then place, set then run) and treat the pair as one step | sb26, r11l, sp80, cn04, re86, ka59, lf52, tn36 |
+| Learn that a region refers to another | Notice a legend, key, example or table and that some other region should come to match it | sb26, sk48, ls20, ft09, tr87, lp85 |
+| Learn what ends and what extends a life | Learn which contacts kill and which pickups refill the move bar, and plan around both | tu93, ls20, re86 and every game with a bar |
+| Reuse across games | Keep what was learned (effect types, which goal kinds win, how long things take) for the next game in the run | all: the hidden run plays 110 games in one process |
+
+## Built so far (2026-10-28)
+
+- Learn from a win: a goal dropped only because its finishing step was missing gets the
+  credit back at the win (ff484b7); a win that credited nothing is read back for the
+  gaps the winning move closed (eb350a1). r11l and tn36 now carry a goal into level 2.
+- Explorer waste found by watching: walk to a live untried move before idle ones
+  (e2a542d), and drop a veto that would only force known no-ops (2b48c31).
+- Hybrid policy: the mind plays first on each level, the explorer after a stall
+  (3fbefd2).
 
 ## tu93 (maze: avatar walks to an exit tile)
 
