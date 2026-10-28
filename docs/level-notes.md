@@ -210,6 +210,29 @@ without a level-up.
   a shared marker, then make the work tile's pattern equal it). The mind's
   ``match_thing`` goal is close to this.
 
+## tr87 (translate a row of glyphs by a rule table)
+
+- Level 0 never won (3,767 states in 4,000 moves, every move a new state).
+- Screen: a panel of six rules, each a white glyph joined to an orange glyph; below, a
+  row of white glyphs over a row of orange glyphs, with a bracket marking one slot.
+- Play: up and down cycle the orange glyph under the bracket; left and right move it.
+- Missing: a lookup goal. Each orange glyph should be the one the table pairs with the
+  white glyph above it: a match goal whose reference is found through a legend.
+
+## ka59 (two pieces onto two targets across a wall)
+
+- Level 0 never won (1,000 states, 1,257 no-ops, 39 game overs).
+- Screen: two small pieces, a yellow square target in each of two rooms, a corridor,
+  and a white bar between the rooms.
+- Play: click a piece to select it, arrows move it.
+- Missing: a cover goal over two movers (each on its own target), with select-then-move,
+  and whatever lets a piece past the white bar.
+
+## vc33 and sc25
+
+- Both win levels 0 and 1 by coverage (vc33 29 and 238 moves, sc25 1,590 and 99 in this
+  watch); vc33 level 2 (632 states, 873 no-ops) and sc25 level 3 not yet watched closely.
+
 ## Tried and dropped: best-first guidance (2026-10-28)
 
 The guided explorer acts on its credit only when the current state has no untried
