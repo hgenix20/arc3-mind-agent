@@ -71,6 +71,7 @@ from urllib.request import urlopen
 from arcagent.agent.advised import AdvisedExplorer
 from arcagent.agent.explore import ExplorerPolicy
 from arcagent.agent.guided import GuidedExplorer
+from arcagent.agent.hybrid import HybridPolicy
 from arcagent.agent.play import GameResult, Policy, play_game
 from arcagent.agent.scheduler import DEFAULT_MAX_ACTIONS as MIND_MAX_ACTIONS
 from arcagent.agent.scheduler import MIND_TAGS, RESERVE_S, play_concurrent
@@ -418,7 +419,9 @@ class MindGame:
     stand-in (it never uses a sandbox).
     """
 
-    def __init__(self, agent: MindAgent | FluidAgent, log: RunLog, sandbox: ProgramSandbox) -> None:
+    def __init__(
+        self, agent: MindAgent | FluidAgent | HybridPolicy, log: RunLog, sandbox: ProgramSandbox
+    ) -> None:
         self.agent = agent
         self._log = log
         self._sandbox = sandbox
@@ -466,6 +469,7 @@ class MindRun:
         run_deadline: float,
         vchat: VisionChat | None = None,
         fix_chat: VisionChat | None = None,
+        hybrid_moves: int = 0,
     ) -> None:
         if cfg.llm and cfg.fluid and vchat is None:
             raise ValueError(f"config {cfg.name} uses the LLM but no vision chat was given")
@@ -483,6 +487,7 @@ class MindRun:
         self._log_dir = log_dir
         self._seed = seed
         self._run_deadline = run_deadline
+        self._hybrid_moves = hybrid_moves
 
     def make_agent(self, game: str, deadline: float) -> MindGame:
         """A fresh agent for ``game`` that stops thinking at ``deadline``.
@@ -513,6 +518,9 @@ class MindRun:
             except BaseException:
                 log.close()
                 raise
+            if self._hybrid_moves > 0:
+                hybrid = HybridPolicy(fluid, ExplorerPolicy(seed), self._hybrid_moves)
+                return MindGame(hybrid, log, ProgramSandbox.dead())
             return MindGame(fluid, log, ProgramSandbox.dead())
         sandbox: ProgramSandbox | None = None
         try:
@@ -600,11 +608,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--log-dir", default=None, help="default <out>/logs")
     p.add_argument("--replies-dir", default=None, help="default <out>/replies")
     p.add_argument("--replay", action="store_true", help="answer from recorded replies")
+    p.add_argument(
+        "--hybrid-moves",
+        type=int,
+        default=0,
+        help="fluid configs: moves the mind gets per level before the explorer takes over; "
+        "0 plays the mind alone",
+    )
     args = p.parse_args(argv)
     if args.max_actions is None:
         args.max_actions = MIND_MAX_ACTIONS if args.policy == "mind" else DEFAULT_MAX_ACTIONS
     if args.max_actions < 1 or args.game_seconds <= 0 or args.total_seconds <= 0:
         p.error("need --max-actions >= 1 and positive --game-seconds / --total-seconds")
+    if args.hybrid_moves < 0:
+        p.error("need --hybrid-moves >= 0")
     if args.workers < 1 or (args.k is not None and args.k < 1):
         p.error("need --workers >= 1 and --k >= 1")
     out = Path(args.out)
@@ -648,6 +665,7 @@ def play_mind(
         run_deadline=run_deadline,
         vchat=fluid_chat(args) if cfg.llm and cfg.fluid else None,
         fix_chat=fluid_chat(args, fix=True) if cfg.llm and cfg.drive else None,
+        hybrid_moves=args.hybrid_moves if cfg.fluid else 0,
     )
     try:
         results, errors, scorecard = play_concurrent(
@@ -671,6 +689,7 @@ def play_mind(
         "model": args.model,
         "replay": bool(args.replay),
         "model_wait_seconds": round(waited, 1),
+        "hybrid_moves": args.hybrid_moves if cfg.fluid else 0,
     }
     return results, errors, scorecard, record
 

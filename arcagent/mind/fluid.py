@@ -634,6 +634,12 @@ class FluidAgent:
         self._action_no += 1
         return a
 
+    def resume(self) -> None:
+        """Take the next frame as a fresh start: another policy played since the last
+        ``choose``, so the frame isn't the outcome of this agent's last action."""
+        self._restart()
+        self._plan = []
+
     def _restart(self, *, new_attempt: bool = False) -> None:
         """Forget the tracked frame and noise tracks: the next frame is a fresh start.
 

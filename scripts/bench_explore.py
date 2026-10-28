@@ -64,8 +64,14 @@ def summarize(policy: str, runs: list[tuple[int, Path]]) -> dict[str, Any]:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument(
-        "--policies", nargs="+", default=["explore"], choices=["explore", "guided", "advised"]
+        "--policies",
+        nargs="+",
+        default=["explore"],
+        choices=["explore", "guided", "advised", "hybrid"],
+        help="hybrid: the fluid mind (config FLUID) first on each level, then the explorer",
     )
+    p.add_argument("--hybrid-moves", type=int, default=400, help="mind moves per level")
+    p.add_argument("--total-seconds", type=float, default=36000, help="hybrid runs only")
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--max-actions", type=int, default=3000)
     p.add_argument("--jobs", type=int, default=3, help="processes at a time")
@@ -78,9 +84,15 @@ def main() -> None:
             out = a.out / policy / f"seed{seed}"
             cmd = [
                 sys.executable, "-m", "arcagent.agent.submit", "--mode", "offline",
-                "--policy", policy, "--seed", str(seed), "--max-actions", str(a.max_actions),
-                "--game-seconds", "600", "--out", str(out),
+                "--seed", str(seed), "--max-actions", str(a.max_actions), "--out", str(out),
             ]  # fmt: skip
+            if policy == "hybrid":
+                cmd += [
+                    "--policy", "mind", "--config", "FLUID", "--workers", "1",
+                    "--hybrid-moves", str(a.hybrid_moves), "--total-seconds", str(a.total_seconds),
+                ]  # fmt: skip
+            else:
+                cmd += ["--policy", policy, "--game-seconds", "600"]
             if a.env_dir:
                 cmd += ["--env-dir", a.env_dir]
             cmds.append((policy, seed, out, cmd))

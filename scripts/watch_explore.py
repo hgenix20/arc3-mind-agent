@@ -33,7 +33,7 @@ from arcagent.agent.submit import DEFAULT_ENV_DIR, make_arcade, select_games  # 
 from arcagent.core.frames import observation_from_frame  # noqa: E402
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915  (one linear watch loop)
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("game", help="4-char game id")
     p.add_argument("--moves", type=int, default=3000)
