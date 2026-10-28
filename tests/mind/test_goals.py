@@ -326,3 +326,22 @@ def test_probing_goal_leaves_open_and_is_confirmed_or_excluded() -> None:
     other = Goal("reach", a=PSIG, b=T2SIG)
     book.start_probe(other)
     assert book.end_probe() == [other] and book.status[other] == "excluded"
+
+
+def test_a_win_confirms_a_goal_excluded_only_because_its_probe_found_no_commit() -> None:
+    # tn36: "clear c1" held, the commit probe found no move that won, the goal was
+    # excluded, and three moves later the level was won with it still holding.
+    book = GoalBook()
+    book.propose(BASE, mover_memory(), source="heuristic")
+    t1 = next(g for g in book.open() if g.b == T1SIG)
+    assert book.start_probe(t1)
+    assert book.end_probe() == [t1] and book.status[t1] == "excluded"
+    assert book.level_up(ON_T1) == [t1]
+    assert book.confirmed_forms == [t1]
+
+
+def test_a_win_leaves_a_goal_excluded_without_a_probe_excluded() -> None:
+    book = GoalBook()
+    book.propose(BASE, mover_memory(), source="heuristic")
+    book.note_reached(ON_T1)
+    assert book.level_up(ON_T1) == [] and book.confirmed_forms == []

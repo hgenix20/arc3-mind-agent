@@ -558,6 +558,7 @@ class GoalBook:
     confirmed_forms: list[Goal] = field(default_factory=list[Goal])
     sources: dict[Goal, str] = field(default_factory=dict[Goal, str])
     stalled_forms: set[Goal] = field(default_factory=set[Goal])
+    probed: set[Goal] = field(default_factory=set[Goal])  # excluded by a failed commit probe
 
     def propose(
         self,
@@ -656,8 +657,18 @@ class GoalBook:
         The frame a winning move returns already shows the next level, so the winning
         state is never seen. ``after``, the predicted outcome of that move, stands in for
         it: open goals true there are confirmed too.
+
+        A goal excluded by ``end_probe`` counts as live here too. Its probe found no move
+        that won, but the win can still need a step the probe didn't try (tn36: "clear
+        c1" held, the probe gave up, and three moves later a run button won the level
+        with it still holding). The exclusion blamed the goal for what the missing step
+        did, so the win puts the credit back.
         """
-        live = [g for g, s in self.status.items() if s in ("open", "probing")]
+        live = [
+            g
+            for g, s in self.status.items()
+            if s in ("open", "probing") or (s == "excluded" and g in self.probed)
+        ]
         out = [g for g in live if g.holds(before, grid) or (after is not None and g.holds(after))]
         for g in out:
             self.status[g] = "confirmed"
@@ -677,6 +688,7 @@ class GoalBook:
         out = [g for g, s in self.status.items() if s == "probing"]
         for g in out:
             self.status[g] = "excluded"
+        self.probed.update(out)
         return out
 
     def stall(self, goal: Goal) -> bool:
