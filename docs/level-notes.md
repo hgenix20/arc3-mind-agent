@@ -74,3 +74,36 @@ goals from any screen. The explorer uses none of them yet. The next step is to l
 those goal guesses steer the explorer's frontier choice on level 0, before any win
 has been seen: guess goals from the screen, head toward each, drop the ones that hold
 without a level-up.
+
+## lp85, tn36, r11l (level 0 at human speed, level 1 never)
+
+- lp85 level 1 (2,004 states in 3,000 moves): colored cells on loops; clicking a hub
+  turns its loop. Level 1 has two loops that share cells. Missing: a model of each
+  click as a fixed rearrangement of cells, so a goal can be searched for in
+  imagination; the reachable arrangements are far too many to visit.
+- tn36 level 1 (849 states): set switches on a program panel, then press the button to
+  run it; the figure moves only when the program runs. Missing: actions whose effect
+  shows up later (program, then run), and carrying level 0's goal over to a two-panel
+  screen.
+- r11l level 1 (724 states, 52 game overs): a body sits where its legs are; click a leg
+  to select it, click a spot to move it. Level 1 has two bodies, each with a circle of
+  its own color. Missing: select-then-place as one unit, a goal pairing each body with
+  the circle of its color, and a model of how the body follows its legs.
+
+## Tried and dropped: best-first guidance (2026-10-28)
+
+The guided explorer acts on its credit only when the current state has no untried
+action, which never happens in click games. Making it best-first everywhere was
+worse: tu93 level 3 went from 70 to 217 game overs, r11l level 1 died 82 times.
+The credit from one quick win is mostly noise (lp85 credited six unrelated color gaps
+at equal weight from an 8-state level), and following it walks back and forth until
+the budget runs out. Credit needs more evidence than one win, or a goal guess that
+can be tested in imagination before it's followed.
+
+## What the notes point to
+
+Almost every stalled level needs a model of what actions do: which thing moves, how
+far, what blocks it, what kills, what a click rearranges, what happens later. With a
+model the agent can try ideas in imagination and spend real moves only on testing a
+guess. The explorer has no model; it learns a graph of screens it has seen, which
+can't generalize to a screen it hasn't.
