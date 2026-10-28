@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from arcagent.agent import explore
-from arcagent.agent.explore import ExplorerPolicy, click_candidates, state_key
+from arcagent.agent.explore import ExplorerPolicy, Graph, click_candidates, state_key
 from arcagent.agent.submit import make_policy
 from arcagent.core.types import GRID_SIZE, Action, Grid, Observation, Phase
 
@@ -254,3 +254,19 @@ def test_untried_moves_of_an_idle_kind_wait() -> None:
     assert p.idle((6, 9)) and not p.idle((6, 4))
     a = p.choose(obs(g, avail=(6,)))
     assert g[a.y, a.x] == 4
+
+
+def test_idle_moves_wait_for_a_live_move_elsewhere() -> None:
+    g0 = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int8)
+    g1 = g0.copy()
+    g1[0, 0] = 3
+    obs = Observation(g0, Phase.NOT_FINISHED, 0, 5, (1, 6))
+    p = ExplorerPolicy(0)
+    p.observe(obs)
+    a, b = p.key(obs), p.key(Observation(g1, Phase.NOT_FINISHED, 0, 5, (1, 6)))
+    click = Action(6, 5, 5)
+    p.graph = Graph()
+    p.graph.edges = {a: {(1, -1, -1): b}, b: {(1, -1, -1): a}}
+    p.graph.cands = {a: [Action(1), click], b: [Action(1), Action(2), click]}
+    p.tries[6, 0], p.changes[6, 0] = 40, 0  # clicks on the background never did anything
+    assert p._pick(a, obs) == Action(1)  # pyright: ignore[reportPrivateUsage]

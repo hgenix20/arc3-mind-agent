@@ -29,8 +29,11 @@ terminal state gets no candidates, so it is never a frontier (before, the game-o
 screen counted as unexplored and paths led into it: dc22 died every 11 moves).
 
 Untried moves of an idle kind (``idle``: at least ``IDLE_TRIES`` tries, under
-``IDLE_RATE`` of them changed the screen) wait until no other untried move is left in
-the state (dc22: 2,075 of 3,000 moves were no-ops).
+``IDLE_RATE`` of them changed the screen) wait: before trying one, the explorer walks
+to the nearest known state with an untried move of a live kind, and tries idle moves
+only when no such state is reachable (dc22: 2,075 of 3,000 moves were no-ops; m0r0
+level 1: 2,974 of 3,600, dead clicks tried in every new state while arrow moves waited
+elsewhere).
 
 Heuristics, in order:
 1. Untried actions in the current state, ranked by how often that action
@@ -53,6 +56,7 @@ from __future__ import annotations
 import math
 import random
 from collections import Counter, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -122,13 +126,19 @@ class Graph:
         tried = set(self.edges.get(key, {})) | self.noop.get(key, set()) | self.dead.get(key, set())
         return [a for a in self.cands.get(key, []) if a.key() not in tried]
 
-    def path_to_frontier(self, start: StateKey) -> list[Action]:
-        """Shortest action path from ``start`` to a state with untried actions ([] if none)."""
+    def path_to_frontier(
+        self, start: StateKey, wanted: Callable[[StateKey, Action], bool] | None = None
+    ) -> list[Action]:
+        """Shortest action path from ``start`` to another state with an untried action
+        (one ``wanted`` accepts, when given); [] if none."""
         prev: dict[StateKey, tuple[StateKey, Action] | None] = {start: None}
         queue = deque([start])
         while queue:
             key = queue.popleft()
-            if key != start and self.untried(key):
+            untried = self.untried(key)
+            if wanted is not None:
+                untried = [a for a in untried if wanted(key, a)]
+            if key != start and untried:
                 path: list[Action] = []
                 while prev[key] is not None:
                     pk, act = prev[key]  # type: ignore[misc]
@@ -166,6 +176,7 @@ class ExplorerPolicy:
         self._ticks: Counter[tuple[str, int]] = Counter()
         self.clock: frozenset[tuple[str, int]] = frozenset()
         self.rounds = 0  # times the graph was exhausted and started over on this level
+        self._shape: tuple[int, int] | None = None
 
     def key(self, obs: Observation) -> StateKey:
         """``state_key`` with the clock lines blanked (kept once a round has run out)."""
@@ -272,6 +283,7 @@ class ExplorerPolicy:
         if self._seen:
             return
         self._seen = True
+        self._shape = (int(obs.grid.shape[0]), int(obs.grid.shape[1]))
         if self._watch_clock(obs):
             self.graph = Graph()
             self.plan = []
@@ -320,6 +332,22 @@ class ExplorerPolicy:
         self._seen = False
         return action
 
+    def _live_path(self, key: StateKey) -> list[Action]:
+        """Path to the nearest other state with an untried move of a live (not idle) kind."""
+        if self._shape is None:
+            return []
+        h, w = self._shape
+
+        def live(k: StateKey, a: Action) -> bool:
+            if a.id != COORD_ACTION_ID:
+                return not self.idle((a.id, -1))
+            if len(k) != h * w + 2:
+                return True
+            color = int(np.frombuffer(k, dtype=np.int8, count=h * w)[a.y * w + a.x])
+            return not self.idle((a.id, color))
+
+        return self.graph.path_to_frontier(key, live)
+
     def ucb(self, kind: tuple[int, int]) -> float:
         """Change rate plus an exploration bonus that shrinks with the kind's own tries.
 
@@ -334,15 +362,14 @@ class ExplorerPolicy:
     ) -> Action:
         untried = [a for a in self.graph.untried(key) if a.key() not in exclude]
         live = [a for a in untried if not self.idle(self._kind(a, obs.grid))]
-        untried = live or untried
-        if untried:
+        if live or (untried and not self.plan and not self._live_path(key)):
             self.plan = []
             return max(
-                untried,
+                live or untried,
                 key=lambda a: (self.ucb(self._kind(a, obs.grid)), self.rng.random()),
             )
         if not self.plan:
-            self.plan = self.graph.path_to_frontier(key)
+            self.plan = self._live_path(key) or self.graph.path_to_frontier(key)
         if self.plan and self.plan[0].key() in exclude:
             self.plan = []
         if self.plan:
