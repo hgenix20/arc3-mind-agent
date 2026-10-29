@@ -633,3 +633,21 @@ its exit's color in tu93, so plain color gaps read zero).
   search preferred cheap fresh guesses over them. Both addressed next: confirmed forms
   searched first (e5a218e), forms carried by color too (4a64461); bench running.
 - Hybrid 150 runs in about 1.5 h per 25 games against 4 h for hybrid 400.
+
+## 2026-10-29: hybrid variants collected (Kaggle CPU, 4 seeds, 10k moves) and the baseline submission
+
+| Run | Levels per seed | Mean levels | Scorecard mean | Time per run |
+|---|---|---|---|---|
+| hybrid, 150 mind moves per level, veto fix (2b48c31) | 25, 30, 26, 26 | 26.75 | 0.473 | about 1.5 h |
+| + credit probe-excluded goals, learn_win | 25, 31, 27, 26 | 27.25 | 0.474 | about 1.5 h |
+| + carried-forms-first search, color forms (4a64461) | 25, 31, 26, 26 | 27.0 | 0.473 | about 1.1 h |
+| hybrid, 400 mind moves per level | 30, 25, 27, 25 | 26.75 | 0.556 | about 4 h |
+
+- The 400-move run's higher mean (0.649 on seeds 0 and 2) is one level: tu93 level 1 in
+  15 moves (human 16, level score 113.8) on those two seeds; the other runs took 30 to 45.
+  Level counts match the 150-move run. It costs 2.6 times the time. Not adopted.
+- Learning from wins fired on 25 of 30 wins (5 of 30 before) and carrying goals by color
+  changed nothing in level counts. The next level's plan is the limit, not the carried goal.
+- Not yet benched: stall handover and shared explorer (uncommitted in the working tree).
+- Baseline submission 57746426 (DRIVE v11, Qwen3.6-27B): public score 0.39, the same as v5
+  (0.39), though its offline 25-game score was higher (0.577 against 0.446).
