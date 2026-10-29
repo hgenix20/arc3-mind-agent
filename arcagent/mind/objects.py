@@ -93,6 +93,17 @@ class Thing:
             object.__setattr__(self, "kind", self.sig)
 
 
+def answers(t: Thing, name: str) -> bool:
+    """Whether ``t`` answers to ``name``: its sig, its kind, or ``c<color>:*`` (any thing
+    of that color; a goal carried to a level whose things have new shapes)."""
+    return name in (t.sig, t.kind) or name == color_name(t.color)
+
+
+def color_name(color: int) -> str:
+    """The name every thing of ``color`` answers to."""
+    return f"c{color}:*"
+
+
 _UNSET: Grid = np.zeros((0, 0), dtype=np.int8)
 
 

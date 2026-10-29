@@ -48,7 +48,7 @@ from arcagent.mind.facts import Effect, FactMemory, clicked_sig
 from arcagent.mind.goal_rules import prior_of, proposed
 from arcagent.mind.kinds import base_sig
 from arcagent.mind.kinematics import Kinematics
-from arcagent.mind.objects import Scene, Thing
+from arcagent.mind.objects import Scene, Thing, answers, color_name
 from arcagent.mind.regions import framed_regions, twin_regions
 from arcagent.mind.route import route
 
@@ -325,8 +325,8 @@ def _bbox(t: Thing) -> tuple[int, int, int, int]:
 
 
 def _is(t: Thing, name: str) -> bool:
-    """Whether ``t`` answers to ``name``: its sig or its kind."""
-    return name in (t.sig, t.kind)
+    """Whether ``t`` answers to ``name`` (``objects.answers``)."""
+    return answers(t, name)
 
 
 def _reaches(scene: Scene, a: str, b: str) -> bool:
@@ -733,6 +733,31 @@ class GoalBook:
             self.status[g] = "confirmed"
             self.sources.setdefault(g, "win")
             self.confirmed_forms.append(g)
+        return out
+
+    def generalize_forms(self) -> list[Goal]:
+        """Add a color-only version of each confirmed reach or cover form; return the new.
+
+        A form learned on one level names its things by sig, a hash of their exact
+        shape, so on a level whose pieces have other sizes it matches nothing (r11l: the
+        learned "reach c1 > c3:012a..." never held on level 1). The added form keeps the
+        mover and names the target as any thing of its color (``objects.color_name``).
+        It goes after the original, which still wins where the shapes repeat.
+        """
+        out: list[Goal] = []
+        for g in list(self.confirmed_forms):
+            if g.kind not in ("reach", "cover") or not g.b.startswith("c") or ":" not in g.b:
+                continue
+            color = g.b[1 : g.b.index(":")]
+            if not color.isdigit():
+                continue
+            wide = Goal(g.kind, a=g.a, b=color_name(int(color)))
+            if wide == g or wide in self.confirmed_forms:
+                continue
+            self.status[wide] = "confirmed"
+            self.sources.setdefault(wide, self.sources.get(g, "carried"))
+            self.confirmed_forms.append(wide)
+            out.append(wide)
         return out
 
     def start_probe(self, goal: Goal) -> bool:

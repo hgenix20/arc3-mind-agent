@@ -359,3 +359,15 @@ def test_a_win_that_confirmed_nothing_learns_the_gap_the_winning_move_closed() -
 def test_learn_win_skips_a_goal_the_level_never_moved() -> None:
     book = GoalBook()
     assert book.learn_win(BASE, None, [(BASE, None)], mover_memory()) == []
+
+
+def test_a_learned_form_also_carries_by_color_to_a_level_with_new_shapes() -> None:
+    book = GoalBook()
+    book.propose(BASE, mover_memory(), source="heuristic")
+    book.level_up(ON_T2)  # learned: reach T2 by its exact shape
+    wide = book.generalize_forms()
+    assert [(g.kind, g.b) for g in wide] == [("reach", "c5:*")]
+    bigger_t2 = scene_of({(9, 50): 1}, {(10, 50): 5, (11, 50): 5, (12, 50): 5, (10, 51): 5})
+    assert not book.confirmed_forms[0].holds(bigger_t2)  # the exact shape is gone
+    assert wide[0].holds(bigger_t2) and wide[0].distance(bigger_t2) == 0
+    assert book.generalize_forms() == []  # added once

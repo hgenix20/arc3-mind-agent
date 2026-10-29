@@ -28,7 +28,7 @@ from dataclasses import dataclass
 
 from arcagent.core.types import GRID_SIZE
 from arcagent.mind.facts import FactMemory, cell_owner
-from arcagent.mind.objects import Cell, Scene, Thing, color_at
+from arcagent.mind.objects import Cell, Scene, Thing, answers, color_at
 
 KIN_LIMIT = 4096  # top-lefts visited per walk
 KIN_FIELDS = 8  # distance fields one Kinematics builds (one per move in the agent)
@@ -150,10 +150,7 @@ class Kinematics:
     def _walk_back(self, scene: Scene, body: Thing, name: str, target: str) -> dict[Cell, int]:
         fits = self._fits(scene, body, name)
         cells = frozenset(
-            c
-            for t in scene.things
-            if target in (t.sig, t.kind) and t.id != body.id
-            for c in t.cells
+            c for t in scene.things if answers(t, target) and t.id != body.id for c in t.cells
         )
         offs = [(x - body.x, y - body.y) for x, y in body.cells]
         dist: dict[Cell, int] = {}

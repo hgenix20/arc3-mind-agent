@@ -808,6 +808,7 @@ class FluidAgent:
         self._tests_attempt = 0
         self.mem.new_level()
         self.modules.transfer.carry(self.mem, self.goals)
+        self._log_goals(self.goals.generalize_forms(), "confirmed")
         self._plan, self._history, self._tried, self._frontier = [], {}, set(), ()
         self._noop = set()
         self._seen_at = set()
