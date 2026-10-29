@@ -620,3 +620,16 @@ its exit's color in tu93, so plain color gaps read zero).
   doesn't win, its 400 moves come first and slow the level down (vc33 level 0: 414 to
   445 moves against the explorer's 29 to 57). Net score unchanged.
 - Baseline submission 57746426 (DRIVE v11) was made today; public score pending.
+
+## 2026-10-28 evening: learning from wins (Kaggle CPU, hybrid, 4 seeds, 10k)
+
+| Run | Levels per seed | Mean levels | Scorecard mean | Wins the mind learned from |
+|---|---|---|---|---|
+| hybrid 150 mind moves per level, veto fix (2b48c31) | 25, 30, 26, 26 | 26.75 | 0.473 | 5 of 30 |
+| + credit probe-excluded goals, learn_win (eb350a1) | 25, 31, 27, 26 | 27.25 | 0.474 | 25 of 30 |
+
+- Learning from a win went from 17% to 83% of wins. The levels barely moved, because
+  the learned goals named exact shapes and didn't hold on the next level's pieces, and
+  search preferred cheap fresh guesses over them. Both addressed next: confirmed forms
+  searched first (e5a218e), forms carried by color too (4a64461); bench running.
+- Hybrid 150 runs in about 1.5 h per 25 games against 4 h for hybrid 400.
