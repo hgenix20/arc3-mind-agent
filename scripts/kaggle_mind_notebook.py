@@ -218,7 +218,8 @@ if POLICY == "mind":
            "--env-dir", ENV_DIR, "--config", config, "--workers", %(workers)r,
            "--endpoint", "http://127.0.0.1:1234/v1", "--model", %(served)r,
            "--total-seconds", str(int(total)), "--out", "/kaggle/working",
-           "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies"]
+           "--log-dir", "/kaggle/working/logs", "--replies-dir", "/kaggle/working/replies",
+           "--hybrid-moves", %(hybrid_moves)r]
 else:
     # An explorer policy plays one game at a time, each capped at an even share of the
     # time left (submit.fair_share); the advised policy needs the model, else explore.
@@ -307,6 +308,12 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="mind runs --config; an explorer policy plays games one at a time",
     )
     ap.add_argument("--max-actions", type=int, default=60000, help="explorer policies only")
+    ap.add_argument(
+        "--hybrid-moves",
+        type=int,
+        default=0,
+        help="fluid mind configs: mind moves per level before the explorer takes over (0: off)",
+    )
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", type=Path, default=OUT)
     ap.add_argument(
@@ -358,6 +365,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 "config": a.config,
                 "policy": a.policy,
                 "max_actions": str(a.max_actions),
+                "hybrid_moves": str(a.hybrid_moves),
                 "fallback": fallback_config(a.config),
                 "workers": str(a.workers),
                 "served": SERVED_NAME,
