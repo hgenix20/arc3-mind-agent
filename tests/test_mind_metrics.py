@@ -547,6 +547,23 @@ def test_v2_moves_vs_typical_in_either_event_order_and_after_a_death() -> None:
     ]
 
 
+def test_v2_moves_vs_typical_falls_back_to_the_instance_a_game_over_closed() -> None:
+    """A boundary directly before the consolidate hands over the instance it closed."""
+    records = [v2act(0, 0), v2act(1, 0), ev("game_over", 1, level=0), consolidate(0, 4)]
+    assert mm.v2_metrics(records)["moves_vs_typical"] == [
+        {"level": 0, "moves": 2, "typical": 4, "ratio": 0.5}
+    ]
+
+
+def test_v2_events_missing_their_name_field_count_under_none() -> None:
+    """The script's convention (as ``drop_reasons``): a missing name is the key ``"None"``."""
+    records = [ev("gate_trip", 1), ev("handoff", 1), {"type": "harm", "game": GAME, "step": 1}]
+    out = mm.v2_metrics(records)
+    assert out["gates"]["trips"] == 1 and out["gates"]["by_gate"] == {"None": 1}
+    assert out["handoffs"] == {"None": 1}
+    assert out["harm"] == {"events": 1, "by_kind": {"None": 1}}
+
+
 def test_v2_gate_trips_count_once_per_step_and_gate() -> None:
     records = [
         v2act(0, 0, gate=gate(1.0, 10, "time")),

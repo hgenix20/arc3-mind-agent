@@ -121,6 +121,22 @@ def test_runlog_self_keyword_collides_with_the_method_so_the_field_is_self_rec(
     assert path.read_text(encoding="utf-8") == ""
 
 
+def test_runlog_event_kind_is_positional_so_harm_and_flag_carry_a_kind_field(
+    tmp_path: Path,
+) -> None:
+    """The documented ``harm`` and ``flag`` events have a field named ``kind``."""
+    path = tmp_path / "g.jsonl"
+    log = RunLog(path, game="g", config="PLANNER", seed=0)
+    log.event("harm", step=3, kind="death", label="A3", p=0.9)
+    log.event("flag", step=4, kind="danger", state="on", source="rule", value=1.0, cost=0.2)
+    log.close()
+    rows = _lines(path)
+    assert [r["type"] for r in rows] == ["harm", "flag"]
+    assert [r["kind"] for r in rows] == ["death", "danger"]
+    assert rows[0]["label"] == "A3" and rows[0]["p"] == 0.9
+    assert rows[1]["state"] == "on" and rows[1]["cost"] == 0.2
+
+
 def test_runlog_rejects_unserializable_values_inside_nested_fields(tmp_path: Path) -> None:
     path = tmp_path / "g.jsonl"
     log = RunLog(path, game="g", config="c", seed=0)

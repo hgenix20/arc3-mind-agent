@@ -8,9 +8,10 @@ Every record starts with the same envelope ``type, t, game, config, seed``:
 ``action(**fields)`` writes ``{"type": "action", ...envelope, ...fields}`` and
 ``event(kind, **fields)`` writes ``{"type": kind, ...envelope, ...fields}``.
 ``t`` is ``time.time()`` rounded to milliseconds. A caller field named like an
-envelope key raises ``ValueError`` and nothing is written. Other keyword fields
-are accepted; the lists below document what later tasks
-write and what the metrics script reads.
+envelope key raises ``ValueError`` and nothing is written. ``event``'s ``kind``
+is positional-only, so a field may be named ``kind`` (the ``harm`` and ``flag``
+events carry one). Other keyword fields are accepted; the lists below document
+what later tasks write and what the metrics script reads.
 
 Action record fields: ``level, step, frame_hash, action [id, x, y], branch,
 why, programs [{"id", "pred", "matched", "fit"}], vetoes [[id, x, y]],
@@ -128,8 +129,12 @@ class RunLog:
         """Write one action record. Raises ``ValueError`` on an envelope field."""
         self._write(self._record("action", fields))
 
-    def event(self, kind: str, **fields: object) -> None:
-        """Write one event record of the given kind. Raises ``ValueError`` on an envelope field."""
+    def event(self, kind: str, /, **fields: object) -> None:
+        """Write one event record of the given kind. Raises ``ValueError`` on an envelope field.
+
+        ``kind`` is positional-only, so an event may carry a field named
+        ``kind`` (``harm`` and ``flag`` do).
+        """
         self._write(self._record(kind, fields))
 
     def close(self) -> None:

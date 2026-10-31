@@ -108,9 +108,10 @@ KeyErrors: with no v2 records the counts are 0, the dicts empty and the rates
     ``consolidate`` event, in event order. ``moves`` counts the action records
     of the level instance the event closes: the records since the previous
     ``level_up``, ``game_over`` or ``consolidate`` event, or, when a
-    ``level_up`` precedes the ``consolidate`` with no action record between
-    them, the records of the instance that ``level_up`` closed. ``typical`` is
-    the event's value when numeric, else ``None``; ``ratio`` is ``moves /
+    ``level_up`` or ``game_over`` precedes the ``consolidate`` with no action
+    record between them, the records of the instance that event closed (the
+    agent logs ``level_up`` and then ``consolidate``). ``typical`` is the
+    event's value when numeric, else ``None``; ``ratio`` is ``moves /
     typical`` when ``typical`` is positive, else ``None``.
   * ``gates``: ``trips`` and ``by_gate`` count distinct ``(step, gate name)``
     pairs over ``gate_trip`` events and action records whose ``gate.trip`` is
@@ -129,6 +130,9 @@ KeyErrors: with no v2 records the counts are 0, the dicts empty and the rates
     events.
   * ``harm``: ``events`` counts ``harm`` events and ``by_kind`` groups them by
     ``kind``.
+A ``gate_trip``, ``handoff`` or ``harm`` event without its ``gate``, ``rule`` or
+``kind`` field is counted under the key ``"None"``, the same convention as
+``drop_reasons``.
 
 Pooled ``v2`` sums the counts, recomputes ``rate`` and ``mean_segment_len``
 from the pooled totals, and concatenates ``moves_vs_typical`` in the order the
