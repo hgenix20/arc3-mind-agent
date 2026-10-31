@@ -319,3 +319,335 @@ def test_metrics_count_modes() -> None:
     assert out["games"][GAME]["modes"] == {"experiment": 2, "fallback": 1, "sim": 5}
     assert out["overall"]["modes"] == {"experiment": 2, "fallback": 1, "sim": 6}
     assert mm.compute([act(0, 0, "a")], human={})["games"][GAME]["modes"] is None
+
+
+# Planner agent (v2) metrics: "Planner agent (v2) metrics" in the script's docstring.
+
+BIN_LABELS = [
+    "0.0-0.1",
+    "0.1-0.2",
+    "0.2-0.3",
+    "0.3-0.4",
+    "0.4-0.5",
+    "0.5-0.6",
+    "0.6-0.7",
+    "0.7-0.8",
+    "0.8-0.9",
+    "0.9-1.0",
+]
+ZERO_V2: Rec = {
+    "calibration": [{"bin": b, "n": 0, "matched": 0, "rate": None} for b in BIN_LABELS],
+    "moves_vs_typical": [],
+    "gates": {"trips": 0, "by_gate": {}, "seconds_total": 0.0, "tokens_total": 0},
+    "handoffs": {},
+    "planner": {
+        "calls": 0,
+        "tokens": 0,
+        "segments": 0,
+        "mean_segment_len": None,
+        "skills": {},
+        "questions": {},
+    },
+    "forks": {"opened": 0, "failed": 0, "returns": 0, "root_replans": 0},
+    "harm": {"events": 0, "by_kind": {}},
+}
+
+
+def v2act(
+    step: int,
+    level: int,
+    *,
+    p_step: float | None = None,
+    prev_matched: bool | None = None,
+    gate: Rec | None = None,
+    action: tuple[int, int, int] = (1, 0, 0),
+    game: str = GAME,
+) -> Rec:
+    """An action record with the planner agent's fields; ``gate`` None leaves the field out."""
+    rec = act(step, level, f"f{step}", action=action, game=game)
+    rec["p_step"] = p_step
+    rec["prev_matched"] = prev_matched
+    if gate is not None:
+        rec["gate"] = gate
+    return rec
+
+
+def gate(seconds: float, tokens: int, trip: str | None = None) -> Rec:
+    return {"seconds": seconds, "tokens": tokens, "trip": trip}
+
+
+def consolidate(level: int, typical: float | None, game: str = GAME) -> Rec:
+    return {
+        "type": "consolidate",
+        "game": game,
+        "level": level,
+        "promoted": 2,
+        "sequences": 1,
+        "typical": typical,
+    }
+
+
+def harm(step: int, kind: str, label: str, p: float, game: str = GAME) -> Rec:
+    """A ``harm`` event; its ``kind`` field would collide with ``ev``'s first parameter."""
+    return {"type": "harm", "game": game, "step": step, "kind": kind, "label": label, "p": p}
+
+
+def v2_log() -> list[Rec]:
+    """Level 0: 4 moves then a level up; level 1: 2 moves. Answers are worked out in the tests."""
+    return [
+        v2act(0, 0, p_step=0.95, gate=gate(0.5, 100)),
+        v2act(1, 0, p_step=0.55, prev_matched=True, gate=gate(1.5, 200, "time")),
+        ev("gate_trip", 1, gate="time", seconds=1.5, tokens=200),
+        ev("fork_open", 1, id="f1", goal="g1", paths=2),
+        v2act(2, 0, p_step=0.5, prev_matched=False, gate=gate(0.25, 0)),
+        ev("handoff", 2, rule="H-b", method="replan", reason="segment broke"),
+        ev(
+            "planner_call",
+            2,
+            call=1,
+            seconds=3.2,
+            tokens=900,
+            segment_len=3,
+            skill=None,
+            question="Q-FORK",
+            dropped=[],
+        ),
+        ev("segment", 2, id="seg1", source="planner", length=3, p_path=0.42, ev=12.5, goal="g1"),
+        v2act(3, 0, p_step=None, prev_matched=True, gate=gate(0.25, 50)),
+        ev("branch_failed", 3, fork="f1", index=0, reason="miss that matters"),
+        ev("return_route", 3, fork="f1", length=2),
+        harm(3, "death", "A3", 0.9),
+        ev("level_up", 3, level=1),
+        consolidate(0, 8.0),
+        v2act(4, 1, p_step=1.0, prev_matched=True, gate=gate(2.0, 300, "tokens")),
+        ev("gate_trip", 4, gate="tokens", seconds=2.0, tokens=300),
+        ev("fork_open", 4, id="f2", goal="g2", paths=3),
+        v2act(5, 1, p_step=0.2, prev_matched=True),
+        ev("replan_root", 5, reason="no untried fork"),
+        harm(5, "health", "A1", 0.4),
+        {"type": "longterm", "game": GAME, "game_id": GAME, "rules": 4, "sequences": 1},
+    ]
+
+
+def bins(out: Rec) -> dict[str, tuple[int, int, float | None]]:
+    return {b["bin"]: (b["n"], b["matched"], b["rate"]) for b in out["calibration"]}
+
+
+def test_v2_calibration_pairs_p_step_with_the_next_prev_matched() -> None:
+    got = bins(mm.v2_metrics(v2_log()))
+    assert list(got) == BIN_LABELS
+    # (s0 .95, s1 hit) and (s4 1.0, s5 hit) fill the last bin; (s1 .55, s2 miss) and
+    # (s2 .5, s3 hit) fill 0.5-0.6. s3 has no p_step and the level_up follows it.
+    assert got["0.9-1.0"] == (2, 2, 1.0)
+    assert got["0.5-0.6"] == (2, 1, 0.5)
+    rest = [b for b in BIN_LABELS if b not in ("0.9-1.0", "0.5-0.6")]
+    assert all(got[b] == (0, 0, None) for b in rest)
+
+
+def test_v2_typical_gates_handoffs_planner_forks_harm() -> None:
+    out = mm.v2_metrics(v2_log())
+    assert out["moves_vs_typical"] == [{"level": 0, "moves": 4, "typical": 8.0, "ratio": 0.5}]
+    # The trips at steps 1 and 4 sit in the gate field and in an event: each counts once.
+    assert out["gates"] == {
+        "trips": 2,
+        "by_gate": {"time": 1, "tokens": 1},
+        "seconds_total": 4.5,
+        "tokens_total": 650,
+    }
+    assert out["handoffs"] == {"H-b": 1}
+    assert out["planner"] == {
+        "calls": 1,
+        "tokens": 900,
+        "segments": 1,
+        "mean_segment_len": 3.0,
+        "skills": {},
+        "questions": {"Q-FORK": 1},
+    }
+    assert out["forks"] == {"opened": 2, "failed": 1, "returns": 1, "root_replans": 1}
+    assert out["harm"] == {"events": 2, "by_kind": {"death": 1, "health": 1}}
+
+
+def test_v2_zero_shape_without_planner_records() -> None:
+    assert mm.v2_metrics([]) == ZERO_V2
+    assert mm.v2_metrics(slice3_log()) == ZERO_V2
+    result = mm.compute(slice3_log(), human={})
+    assert result["games"][GAME]["v2"] == ZERO_V2
+    assert result["overall"]["v2"] == ZERO_V2
+    assert mm.compute([], human={})["overall"]["v2"] == ZERO_V2
+
+
+def test_v2_calibration_half_right_reports_bin_half() -> None:
+    """Spec 4.13: predictions right half the time give the 0.5 bin a rate of 0.5."""
+    records = [v2act(0, 0, p_step=0.5)]
+    records += [v2act(i, 0, p_step=0.5, prev_matched=i % 2 == 1) for i in range(1, 21)]
+    assert bins(mm.v2_metrics(records))["0.5-0.6"] == (20, 10, 0.5)
+
+
+def test_v2_calibration_skips_boundaries_and_unusable_values() -> None:
+    not_bool = v2act(7, 1, p_step=0.3)
+    not_bool["prev_matched"] = 1
+    records = [
+        v2act(0, 0, p_step=0.3),
+        v2act(1, 0, p_step=0.3, prev_matched=True),  # pairs s0: hit
+        ev("game_over", 1, level=0),
+        v2act(2, 0, action=(0, 0, 0)),  # the RESET after a game over: across the event
+        v2act(3, 0, p_step=0.3, prev_matched=True),  # s2 has no p_step
+        v2act(4, 0, p_step=1.5, prev_matched=False),  # pairs s3: miss
+        v2act(5, 0, p_step=0.3, prev_matched=True),  # s4's p_step is out of range
+        ev("level_up", 5, level=1),
+        v2act(6, 1, p_step=0.3, prev_matched=True),  # across the level_up
+        not_bool,  # prev_matched is not a bool
+        v2act(8, 2, p_step=0.3, prev_matched=True),  # the level changed with no event
+    ]
+    got = bins(mm.v2_metrics(records))
+    assert got["0.3-0.4"] == (2, 1, 0.5)
+    assert sum(n for n, _, _ in got.values()) == 2
+
+
+def test_v2_calibration_bin_edges() -> None:
+    probabilities = [0.0, 0.1, 0.95, 1.0, 0.3, 0.7]
+    records = [v2act(i, 0, p_step=p, prev_matched=i > 0) for i, p in enumerate(probabilities)]
+    records.append(v2act(len(probabilities), 0, prev_matched=True))
+    got = bins(mm.v2_metrics(records))
+    assert got["0.0-0.1"] == (1, 1, 1.0)
+    assert got["0.1-0.2"] == (1, 1, 1.0)
+    assert got["0.3-0.4"] == (1, 1, 1.0)
+    assert got["0.7-0.8"] == (1, 1, 1.0)
+    assert got["0.9-1.0"] == (2, 2, 1.0)
+
+
+def test_v2_moves_vs_typical_in_either_event_order_and_after_a_death() -> None:
+    records = [
+        v2act(0, 0),
+        v2act(1, 0),
+        v2act(2, 0),
+        ev("level_up", 2, level=1),
+        consolidate(0, 6),  # the level_up closed the instance: 3 moves
+        v2act(3, 1),
+        v2act(4, 1),
+        ev("game_over", 4, level=1),
+        v2act(5, 1, action=(0, 0, 0)),
+        v2act(6, 1),
+        v2act(7, 1),
+        consolidate(1, 4),  # before its level_up: the records since the death, 3
+        ev("level_up", 7, level=2),
+        v2act(8, 2),
+        consolidate(2, None),  # no typical yet
+        ev("level_up", 8, level=3),
+        v2act(9, 3),
+        v2act(10, 3),
+        ev("level_up", 10, level=4),
+        consolidate(3, 0),  # a zero typical gives no ratio
+    ]
+    assert mm.v2_metrics(records)["moves_vs_typical"] == [
+        {"level": 0, "moves": 3, "typical": 6, "ratio": 0.5},
+        {"level": 1, "moves": 3, "typical": 4, "ratio": 0.75},
+        {"level": 2, "moves": 1, "typical": None, "ratio": None},
+        {"level": 3, "moves": 2, "typical": 0, "ratio": None},
+    ]
+
+
+def test_v2_moves_vs_typical_falls_back_to_the_instance_a_game_over_closed() -> None:
+    """A boundary directly before the consolidate hands over the instance it closed."""
+    records = [v2act(0, 0), v2act(1, 0), ev("game_over", 1, level=0), consolidate(0, 4)]
+    assert mm.v2_metrics(records)["moves_vs_typical"] == [
+        {"level": 0, "moves": 2, "typical": 4, "ratio": 0.5}
+    ]
+
+
+def test_v2_events_missing_their_name_field_count_under_none() -> None:
+    """The script's convention (as ``drop_reasons``): a missing name is the key ``"None"``."""
+    records = [ev("gate_trip", 1), ev("handoff", 1), {"type": "harm", "game": GAME, "step": 1}]
+    out = mm.v2_metrics(records)
+    assert out["gates"]["trips"] == 1 and out["gates"]["by_gate"] == {"None": 1}
+    assert out["handoffs"] == {"None": 1}
+    assert out["harm"] == {"events": 1, "by_kind": {"None": 1}}
+
+
+def test_v2_gate_trips_count_once_per_step_and_gate() -> None:
+    records = [
+        v2act(0, 0, gate=gate(1.0, 10, "time")),
+        ev("gate_trip", 0, gate="time", seconds=1.0, tokens=10),  # the same trip as the field
+        v2act(1, 0, gate=gate(0.5, 5, "tokens")),  # field only
+        v2act(2, 0, gate=gate(0.5, 5)),
+        ev("gate_trip", 2, gate="time", seconds=0.5, tokens=5),  # event only
+        v2act(3, 0, gate={"seconds": "slow", "tokens": None, "trip": None}),  # unusable
+    ]
+    assert mm.v2_metrics(records)["gates"] == {
+        "trips": 3,
+        "by_gate": {"time": 2, "tokens": 1},
+        "seconds_total": 2.0,
+        "tokens_total": 20,
+    }
+
+
+def test_v2_planner_skills_questions_and_segment_lengths() -> None:
+    def call(step: int, tokens: int | None, skill: object, question: str | None) -> Rec:
+        return ev(
+            "planner_call",
+            step,
+            call=step + 1,
+            seconds=2.0,
+            tokens=tokens,
+            segment_len=2,
+            skill=skill,
+            question=question,
+            dropped=[],
+        )
+
+    records = [
+        v2act(0, 0),
+        call(0, 500, "S-AROUND", None),
+        call(1, 700, {"name": "S-COLLECT", "args": {}}, "Q-HARM"),
+        call(2, None, None, "Q-HARM"),
+        ev("segment", 1, id="a", source="planner", length=4, p_path=0.5, ev=1.0, goal="g"),
+        ev("segment", 2, id="b", source="search", length=2, p_path=0.9, ev=2.0, goal="g"),
+        ev("segment", 3, id="c", source="skill", length=None, p_path=None, ev=None, goal="g"),
+    ]
+    assert mm.v2_metrics(records)["planner"] == {
+        "calls": 3,
+        "tokens": 1200,
+        "segments": 3,
+        "mean_segment_len": 3.0,
+        "skills": {"S-AROUND": 1, "S-COLLECT": 1},
+        "questions": {"Q-HARM": 2},
+    }
+
+
+def test_v2_in_compute_matches_v2_metrics_and_pools_overall() -> None:
+    other = "yy88-00000000"
+    records = v2_log() + [{**r, "game": other} for r in v2_log()]
+    result = mm.compute(records, human={})
+    assert result["games"][GAME]["v2"] == mm.v2_metrics(v2_log())
+    assert result["games"][other]["v2"] == mm.v2_metrics(v2_log())
+    overall = result["overall"]["v2"]
+    assert bins(overall)["0.9-1.0"] == (4, 4, 1.0)
+    assert bins(overall)["0.5-0.6"] == (4, 2, 0.5)
+    assert overall["moves_vs_typical"] == [
+        {"level": 0, "moves": 4, "typical": 8.0, "ratio": 0.5},
+        {"level": 0, "moves": 4, "typical": 8.0, "ratio": 0.5},
+    ]
+    assert overall["gates"] == {
+        "trips": 4,
+        "by_gate": {"time": 2, "tokens": 2},
+        "seconds_total": 9.0,
+        "tokens_total": 1300,
+    }
+    assert overall["handoffs"] == {"H-b": 2}
+    assert overall["planner"]["calls"] == 2
+    assert overall["planner"]["tokens"] == 1800
+    assert overall["planner"]["mean_segment_len"] == 3.0
+    assert overall["forks"] == {"opened": 4, "failed": 2, "returns": 2, "root_replans": 2}
+    assert overall["harm"] == {"events": 4, "by_kind": {"death": 2, "health": 2}}
+    mm.format_table(result)
+
+
+def test_main_writes_v2_into_the_json_report(tmp_path: Path) -> None:
+    path = tmp_path / f"{GAME}.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in v2_log()) + "\n", encoding="utf-8")
+    out = tmp_path / "metrics.json"
+    result = mm.main([str(path), "--json", str(out)])
+    saved = json.loads(out.read_text(encoding="utf-8"))
+    assert saved["games"][GAME]["v2"]["gates"]["trips"] == 2
+    assert saved["overall"]["v2"]["planner"]["calls"] == 1
+    assert result["games"][GAME]["v2"] == mm.v2_metrics(v2_log())
