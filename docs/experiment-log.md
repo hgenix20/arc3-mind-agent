@@ -651,3 +651,26 @@ its exit's color in tu93, so plain color gaps read zero).
 - Not yet benched: stall handover and shared explorer (uncommitted in the working tree).
 - Baseline submission 57746426 (DRIVE v11, Qwen3.6-27B): public score 0.39, the same as v5
   (0.39), though its offline 25-game score was higher (0.577 against 0.446).
+
+## 2026-10-31: agent v2 (PLANNER) built, evaluated and submitted
+
+Branch agent-v2 (4c24d08 agent, 4351b0c notebook): spec v2 (docs/superpowers/specs/2026-10-31-agent-spec-v2.md,
+Kameron's 43 review answers in its section 6), wave-1 modules (adverse book and inhibition net, long-term
+store, rollout with chain-rule path probability and expected value, plan tree with forks, self record and
+controller and flags, planner briefing and v2 reply contract, skills S-AROUND/S-COLLECT/S-EXPLORE, v2 log
+fields and metrics), PlannerAgent (model-first segments checked by rollout, explorer fallback), config
+PLANNER, `--hybrid-moves 150`.
+
+| Run | Levels | Scorecard | Time | Note |
+|---|---|---|---|---|
+| hgenix20/arc3-mind-agent v13, PLANNER, Qwen3.6-27B-FP8, 25 public games, 8 workers | 33 (lp85 5, tu93 5, vc33 3; 6 games at 0) | 0.5895 | 5511 s | 22 of 25 games hit the 20000-action cap: the explorer took most moves |
+
+- Best offline run so far (hybrid 26.75 to 27.25 levels at 0.47 to 0.56; DRIVE v11 11 levels at 0.577).
+- Per-game scores above 1: r11l 4.00, tn36 3.57, lf52 2.09, lp85 1.97, ls20 1.41, tu93 1.39.
+- Planner activity varied: tu93 267 calls and 231 segments (87 H-b handoffs, 68 resets); cn04 and ft09 had
+  one planner call that timed out (ReadTimeout on the shared server), then 25 fallbacks and the hybrid's
+  stall rule gave the level to the explorer for the rest of the game. sc25: 153 harm and 142 perseverance events.
+- SUBMITTED as 57844971 at 16:44 UTC (the 10-31 slot; Kameron: the last submission for this agent).
+  Public score pending. Gaps report: docs/superpowers/plans/2026-10-31-v2-gaps.md.
+- Notebook sources now ship as one zlib base64 blob: the plain dict passed 1 MB and SaveKernel returned 400.
+
