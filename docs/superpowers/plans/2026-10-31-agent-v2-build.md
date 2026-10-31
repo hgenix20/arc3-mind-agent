@@ -87,6 +87,12 @@ Decisions recorded here (Kameron may change them):
   (action label role, subject shape class, context tag, kind role flags, counter present)
   with a few hundred weights, trained from every observed transition; used when the
   adverse rule has fewer than 5 confirmations.
+- D-F. A fact's probability reads its lifetime miss count, so a fact re-seeded after a
+  break starts below 0.5 and a twice re-seeded fact starts retired (1 hit, 4 misses, p
+  0.2857). This is kept on purpose: the key has been wrong four times, and the rollout's
+  chain rule prices any plan that leans on it low, so the planner is steered away from it
+  without a hard rule. Promotion to "fact" uses a run counter of hits since the last miss
+  (WP1 review, 2026-10-31), not a proxy on the miss streak.
 
 ## 3. Planner reply contract (v2)
 
