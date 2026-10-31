@@ -15,8 +15,10 @@ Contract:
   same pair again adds the paths that are new and changes nothing else.
 - A fork holds at most ``MAX_PATHS`` paths. Empty paths and repeats are ignored.
 - At most one path in the whole tree is active. Starting a path makes any other active
-  path untried again. A failed or achieved status is final. An achieved path closes its
-  fork: the goal is reached, so its sibling paths are no longer offered.
+  path untried again; ``release`` puts the active path back to untried when the agent
+  stops following it without a verdict. A failed or achieved status is final. An
+  achieved path closes its fork: the goal is reached, so its sibling paths are no longer
+  offered.
 - No method raises on an unknown fork id, an index out of range, or a status change that
   the rules forbid: the request is ignored and ``misses`` grows by one, so the wiring
   agent can log it.
@@ -168,6 +170,23 @@ class PlanTree:
         """Mark one path achieved; the fork closes, so its siblings are not offered."""
         self._finish(fork_id, index, "achieved")
 
+    def release(self, fork_id: str, index: int) -> None:
+        """Put an active path back to untried: the agent stopped following it without a
+        verdict (a replan or a fallback replaced the segment). An untried path is left as
+        it is; a failed or achieved path is final, so the request is a miss."""
+        fork = self._lookup(fork_id, index)
+        if fork is None:
+            return
+        current = fork.status[index]
+        if current == "untried":
+            return
+        if current != "active":
+            self.misses += 1
+            return
+        fork.status[index] = "untried"
+        if self._active == (fork_id, index):
+            self._active = None
+
     def active(self) -> tuple[str, int] | None:
         """The (fork id, path index) being followed, or None."""
         return self._active
@@ -184,6 +203,12 @@ class PlanTree:
         """The fork with the highest ``created`` that still has an untried path (3.6)."""
         candidates = [fork for fork in self._forks.values() if _untried(fork)]
         return max(candidates, key=lambda fork: fork.created, default=None)
+
+    def forks_with_untried(self) -> list[Fork]:
+        """Every fork that still has an untried path, newest first (the replan order of
+        spec 4.7c rule 5)."""
+        candidates = [fork for fork in self._forks.values() if _untried(fork)]
+        return sorted(candidates, key=lambda fork: fork.created, reverse=True)
 
     def fork(self, fork_id: str) -> Fork | None:
         """The fork record by id, or None (and a miss) when unknown."""

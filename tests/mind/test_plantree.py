@@ -107,6 +107,34 @@ def test_failing_all_paths_empties_untried_and_newest_skips_the_fork() -> None:
     assert tree.counts() == {"forks": 2, "untried": 0, "failed": 4, "achieved": 0}
 
 
+def test_release_puts_the_active_path_back_to_untried() -> None:
+    tree, first, second = two_forks()
+    tree.start_path(second, 1)
+    assert tree.active() == (second, 1)
+    tree.release(second, 1)
+    assert tree.active() is None
+    fork = tree.fork(second)
+    assert fork is not None and fork.status == ["untried", "untried"]
+    assert tree.untried(second) == [0, 1]
+    tree.release(second, 1)  # already untried: nothing to do, not a miss
+    assert tree.misses == 0
+    tree.fail_branch(first, 0)
+    tree.release(first, 0)  # a final status is kept, and the request is a miss
+    assert tree.misses == 1
+    older = tree.fork(first)
+    assert older is not None and older.status[0] == "failed"
+
+
+def test_forks_with_untried_runs_newest_first_and_skips_spent_forks() -> None:
+    tree, first, second = two_forks()
+    assert [f.id for f in tree.forks_with_untried()] == [second, first]
+    tree.fail_branch(second, 0)
+    tree.fail_branch(second, 1)
+    assert [f.id for f in tree.forks_with_untried()] == [first]
+    tree.achieve(first, 0)
+    assert tree.forks_with_untried() == []
+
+
 def test_a_failed_path_cannot_be_started_again() -> None:
     tree, first, _ = two_forks()
     tree.fail_branch(first, 0)

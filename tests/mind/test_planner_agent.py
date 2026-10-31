@@ -16,16 +16,20 @@ from typing import Any
 import numpy as np
 import pytest
 
+from arcagent.core.types import Action, Phase
 from arcagent.mind import briefing, fluid, planner_agent
 from arcagent.mind.budget import Counter
 from arcagent.mind.config import CONFIGS
+from arcagent.mind.controller import STALL_MOVES
+from arcagent.mind.hypotheses import Hypothesis
 from arcagent.mind.longterm import LongTermStore
 from arcagent.mind.planner_agent import PlannerAgent
+from arcagent.mind.rollout import Rollout
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.vchat import VisionChat, VMessage
 from arcagent.synth.run import Completion
 from tests.mind.fakegames import FakeGame, play
-from tests.mind.test_fluid_agent import SyncPool
+from tests.mind.test_fluid_agent import CommitGame, SyncPool, a5_does_nothing
 
 Rec = dict[str, Any]
 Replier = Callable[[str], dict[str, Any]]
@@ -376,3 +380,212 @@ def test_a_second_agent_on_the_same_store_reads_lessons(tmp_path: Path) -> None:
     assert lines and lines[0] != "(none)"
     assert all("(p=" in line and "game" in line for line in lines if not line.startswith("(+"))
     assert lines[0] == reloaded.lessons()[0]
+
+
+def section(prompt: str, name: str) -> list[str]:
+    """The lines of one briefing section (sections are one newline apart)."""
+    title = briefing.SECTION_TITLES[name]
+    order = briefing.SECTION_ORDER
+    after = briefing.SECTION_TITLES[order[order.index(name) + 1]]
+    block = prompt.split(f"{title}:\n", 1)[1].split(f"\n{after}:\n", 1)[0]
+    return block.splitlines()
+
+
+def empty_reply(prompt: str) -> dict[str, Any]:
+    del prompt
+    return {}
+
+
+def test_a_search_plan_that_dies_is_never_the_segment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 3.9: a path with a predicted game over is dropped, even when nothing else
+    reaches a goal and its path probability would pass the take-the-best-anyway floor."""
+    plan = (Action(4), Action(4), Action(4))
+    ro = Rollout((), (), 0.9, None, None, (), "death", 3.0, 0, 2)
+    hyp = Hypothesis("dead1", "g", "search", plan, 0.9, 3.0, 0.0, 50.0, "death")
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(empty_reply, []))
+
+    def dying(*args: Any, **kwargs: Any) -> list[Hypothesis]:
+        del args, kwargs
+        agent._rollouts[hyp.id] = ro  # pyright: ignore[reportPrivateUsage]
+        return [hyp]
+
+    monkeypatch.setattr(agent, "_code_hypotheses", dying)
+    play(game, agent, max_steps=2)
+    agent.close()
+    recs = records(tmp_path)
+    assert of_type(recs, "planner_call"), "the planning loop never ran"
+    assert not of_type(recs, "segment")
+    acts = of_type(recs, "action")
+    assert all(a["segment_id"] is None and a["branch"] != "plan" for a in acts)
+
+
+def test_a_replanned_segment_that_dies_does_not_fail_the_fork_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fork path is active, a replan replaces it with a search segment, and that
+    segment dies: the fork path is released to untried and never marked failed."""
+    seen: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        if len(seen) > 1:
+            return {}
+        plan = steps("A1", "A4", "A4", "A4", "A2")  # around the wall, above it
+        return {"facts": claims(p, t), "goals": [reach(p, t)], "segment": plan}
+
+    # As in the fork test, plus lava across the row above the wall, so every route around
+    # the wall from the top crosses it. One big L (its box is over a quarter of the board)
+    # gets no reach guess of its own, which a small lava would and the search would chase.
+    lava = [(4, y) for y in range(1, 41)] + [(x, 40) for x in range(5, 41)]
+    game = FakeGame(player=(2, 2), target=(6, 2), walls=[(3, 2), (3, 3)], lava=lava)
+    agent = make(tmp_path, chat_of(reply, seen))
+    note_progress = agent._note_progress  # pyright: ignore[reportPrivateUsage]
+
+    def no_verdict(scene: Any) -> None:
+        note_progress(scene)
+        agent._verdict = "none"  # pyright: ignore[reportPrivateUsage]  # moving reads as progress
+
+    monkeypatch.setattr(agent, "_note_progress", no_verdict)
+    obs = game.observe()
+    for step in range(6):
+        if step == 2:
+            agent._no_progress = 10 * planner_agent.NO_PROGRESS_MOVES  # pyright: ignore[reportPrivateUsage]
+        action = agent.choose(obs)
+        if step == 1:
+            seg = of_type(records(tmp_path), "segment")[-1]
+            assert seg["source"] == "fork"
+            assert seg["id"] in agent._rollouts  # pyright: ignore[reportPrivateUsage]
+            assert any(h.id == seg["id"] for h in agent._hyps)  # pyright: ignore[reportPrivateUsage]
+        obs = game.step(action)
+        if game.game_overs:
+            agent.choose(obs)  # the game-over frame
+            break
+    agent.close()
+    assert game.game_overs == 1
+    recs = records(tmp_path)
+    fork = of_type(recs, "fork_open")[0]
+    hands = of_type(recs, "handoff")
+    assert [(h["step"], h["rule"]) for h in hands[:2]] == [(1, "H-b"), (2, "H-c")]
+    segs = of_type(recs, "segment")
+    assert [s["source"] for s in segs[:3]] == ["search", "fork", "search"]
+    failed = of_type(recs, "branch_failed")
+    assert [(f["fork"], f["index"], f["reason"]) for f in failed] == [
+        (fork["id"], 0, "miss that matters")
+    ]
+    tree_fork = agent._tree.fork(fork["id"])  # pyright: ignore[reportPrivateUsage]
+    assert tree_fork is not None and tree_fork.status == ["failed", "untried"]
+    # Spec 4.9a item 8: the replan briefing lists the segment being replaced.
+    lines = section(seen[1], "sequence")
+    assert len(lines) == 5
+    assert lines[0].startswith("1. A1 expect fork") and lines[0].endswith(": played")
+    assert lines[1].startswith("2. A4 expect fork") and lines[1].endswith(": not played")
+
+
+def test_a_new_attempt_resets_the_explorer_handoff(tmp_path: Path) -> None:
+    """The hybrid rule holds within one level instance; a game over gives the planner
+    another chance on the next attempt."""
+    seen: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {"facts": claims(p, t), "goals": [reach(p, t)], "segment": steps("A4", "A4")}
+
+    game = FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, seen))
+    obs = game.step(agent.choose(game.observe()))  # step 0: the planner's segment
+    agent._fallbacks = STALL_MOVES  # pyright: ignore[reportPrivateUsage]
+    obs = game.step(agent.choose(obs))  # step 1: H-e hands the level to the explorer
+    game.phase = Phase.GAME_OVER  # the attempt ends
+    game.game_overs += 1
+    reset = agent.choose(game.observe())  # step 2
+    obs = game.step(reset)
+    agent.choose(obs)  # step 3: the new attempt's first move
+    agent.close()
+    recs = records(tmp_path)
+    hands = of_type(recs, "handoff")
+    assert [(h["step"], h["rule"]) for h in hands if h["step"] == 1] == [(1, "H-e")]
+    assert not [h for h in hands if h["step"] == 3]
+    assert [c["step"] for c in of_type(recs, "planner_call")] == [0, 3]
+    acts = of_type(recs, "action")
+    assert acts[1]["branch"] == "fallback" and acts[3]["branch"] == "plan"
+
+
+def test_return_to_fork_tries_older_forks_when_the_newest_is_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    game = FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(empty_reply, []))
+    obs = game.step(agent.choose(game.observe()))  # step 0
+    here = agent.explorer.key(obs)
+    agent.explorer.graph.edges.setdefault(here, {})[Action(4).key()] = b"older"
+    tree = agent._tree  # pyright: ignore[reportPrivateUsage]
+    older = tree.open_fork(b"older", "g", [(Action(1),)], [])
+    newer = tree.open_fork(b"nowhere", "g", [(Action(2),)], [])
+    transition = agent._transition  # pyright: ignore[reportPrivateUsage]
+
+    def broke(*args: Any) -> Any:
+        after = transition(*args)
+        agent._segment_broke = True  # pyright: ignore[reportPrivateUsage]  # set after the transition
+        return after
+
+    monkeypatch.setattr(agent, "_transition", broke)
+    action = agent.choose(obs)  # step 1
+    agent.close()
+    assert action == Action(4)
+    recs = records(tmp_path)
+    hand = [h for h in of_type(recs, "handoff") if h["step"] == 1]
+    assert hand and hand[0]["method"] == "return_to_fork"
+    routes = of_type(recs, "return_route")
+    assert [(r["step"], r["fork"], r["length"]) for r in routes] == [(1, older, 1)]
+    failed = of_type(recs, "branch_failed")
+    assert [(f["fork"], f["index"]) for f in failed] == [(newer, 0)]
+    assert "no known route" in failed[0]["reason"]
+    assert not [r for r in of_type(recs, "replan_root") if r["step"] == 1]
+    seg = of_type(recs, "segment")[-1]
+    assert seg["step"] == 1 and seg["source"] == "route" and seg["length"] == 1
+
+
+def test_a_replan_decision_drops_a_pending_fork_resume(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {"facts": claims(p, t), "goals": [reach(p, t)], "segment": steps("A4", "A4")}
+
+    game = FakeGame(player=(2, 2), target=(30, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, seen))
+    obs = game.step(agent.choose(game.observe()))  # step 0
+    tree = agent._tree  # pyright: ignore[reportPrivateUsage]
+    fork = tree.open_fork(agent.explorer.key(obs), "g", [(Action(1), Action(1))], [])
+    agent._pending_fork = (fork, 0)  # pyright: ignore[reportPrivateUsage]
+    agent._no_progress = 10 * planner_agent.NO_PROGRESS_MOVES  # pyright: ignore[reportPrivateUsage]
+    agent.choose(obs)  # step 1
+    agent.close()
+    assert agent._pending_fork is None  # pyright: ignore[reportPrivateUsage]
+    recs = records(tmp_path)
+    hand = [h for h in of_type(recs, "handoff") if h["step"] == 1]
+    assert hand and hand[0]["method"] == "replan" and hand[0]["rule"] == "H-c"
+    assert [c["step"] for c in of_type(recs, "planner_call")] == [0, 1]
+    segs = [s for s in of_type(recs, "segment") if s["step"] == 1]
+    assert segs and segs[0]["source"] != "fork"
+    assert tree.active() is None
+
+
+def test_a_commit_probe_move_carries_the_planner_fields(tmp_path: Path) -> None:
+    game = CommitGame()
+    agent = make(tmp_path, None)
+    a5_does_nothing(agent)
+    play(game, agent, max_steps=120)
+    agent.choose(game.observe())
+    agent.close()
+    assert game.levels == 1
+    acts = of_type(records(tmp_path), "action")
+    commits = [a for a in acts if a["branch"] == "commit"]
+    assert commits
+    for act in commits:
+        assert act["self_rec"] is not None and act["focus"] is not None
+        assert act["focus"]["mode"] == "commit"
+        assert set(act["gate"]) == {"seconds", "tokens", "trip"}

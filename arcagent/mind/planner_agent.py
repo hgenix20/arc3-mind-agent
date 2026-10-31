@@ -11,22 +11,32 @@ book, the inhibition network, the flags). With a chat it is the model-first agen
 2. The controller (4.5c) reads the move's signals in its order and names the method:
    ``keep``, ``replan`` (H-c, H-d), ``return_to_fork`` (H-b), ``fallback`` (H-a, deadline)
    or ``explore`` (H-e). Every handoff is logged with its rule.
-3. ``return_to_fork``: the newest fork with an untried path gets a return route over the
-   explorer's known transitions (3.6, 4.7c rule 6); an empty route starts the next
-   untried path at once. No fork, or no known route, logs ``replan_root`` and replans.
+3. ``return_to_fork``: forks with an untried path are tried newest first (3.6, 4.7c
+   rule 5): the first with a known return route over the explorer's transitions (4.7c
+   rule 6) gets the route as its segment, and an empty route starts its next untried
+   path at once. A fork with no known route, or past ``ROUTE_TRIES`` routes, has its
+   untried paths failed. When no fork is left, ``replan_root`` is logged and the move
+   replans. A ``replan`` decision drops any pending fork resume first, so the planning
+   loop really runs.
 4. ``replan``, or no segment left: the planning loop (3.2). The horizon is the level's
    typical moves from the long-term store, else ``HORIZON_CAP``. Hypotheses come from the
    code (a search toward each of the top ``TOP_GOALS`` open goals, rolled out with
    probabilities, 4.7a, 4.8a) and from the planner: a briefing (4.9a, 4.9c) and one
    planner call ask for a segment or a skill (4.9f, decision D-A); the proposal is rolled
    out and, when it dies or reaches an unknown step before any goal, the planner is asked
-   once more with the failing step named (3.5). The winner by expected value (3.4, 4.7b,
-   decision D-C) becomes the segment; two or more distinct plans that reach the same goal
-   open a fork (4.7c). When nothing reaches a goal, the best hypothesis still plays when
-   its path probability is at least ``BAND_LOW``; else the base ladder plays the move.
+   once more with the failing step named (3.5). A hypothesis whose rollout died is
+   dropped wherever a plan is chosen (3.9: a predicted game over is an adverse path).
+   The winner by expected value (3.4, 4.7b, decision D-C) becomes the segment; two or
+   more distinct plans that reach the same goal open a fork (4.7c). When nothing reaches
+   a goal, the best hypothesis still plays when its path probability is at least
+   ``BAND_LOW``; else the base ladder plays the move. The briefing's sequence list (4.9a
+   item 8) shows the segment being followed or replaced, step by step, with whether each
+   step was played.
 5. The segment runs one move per ``choose`` through the base's reply executor
    (``_llm_plan``): each step is vetoed, predicted and checked, and a miss that matters
-   stops it (4.9e); the active fork branch is then marked failed.
+   stops it (4.9e). When the segment is a fork path, that path (and only that path) is
+   then marked failed; a fork path replaced by a replan or a fallback goes back to
+   untried, so the tree's active path is always the segment being followed.
 6. Gates (4.10d): a move that passed ``T_MOVE`` seconds or spent more than ``N_TOKEN``
    planner tokens logs ``gate_trip``; the next move's controller sees it (H-a). When the
    planner call itself overran the gate, its proposal is dropped and the move is the
@@ -36,8 +46,12 @@ book, the inhibition network, the flags). With a chat it is the model-first agen
    colour-free canonical key, with the evidence gathered since their last promotion,
    the completion's move count is recorded (the horizon rule, 4.7) and the level's move
    sequence is written; then the tree, the flags and the level counters reset. Game over
-   keeps the tree (the level restarts from the same frame) and fails the active branch.
-   ``close`` writes the network's weights to the store (4.12c).
+   keeps the tree (the level restarts from the same frame) and fails the fork path the
+   segment was following, when it was one. Either way the level instance ends: the
+   fallback and no-progress counts restart with it, so every attempt gives the planner
+   another chance, while within one instance the explorer keeps the level once H-e has
+   fired after ``STALL_MOVES`` fallbacks in a row (the hybrid rule). ``close`` writes the
+   network's weights to the store (4.12c).
 
 Harm (4.10a, decision D-D): with a health bar, a move after which the bar is lower; a
 counter the noise mask flagged is a health bar once its drops happened on fewer than
@@ -291,8 +305,9 @@ class PlannerAgent(FluidAgent):
         self._segment_source = ""
         self._hypothesis_id = ""
         self._fork_id = ""
-        self._need_segment = True
-        self._return_route: list[Action] = []
+        self._segment_path: tuple[str, int] | None = None  # the fork path the segment is
+        self._segment_items: list[PlanItem] = []  # the segment's steps, for the briefing
+        self._segment_played = 0  # steps of the segment played so far
         self._level_moves = 0  # moves in this level instance
         self._level_start_moves: list[Action] = []  # moves from the level start
         self._no_progress = 0  # moves since the active goal last came closer
@@ -373,7 +388,11 @@ class PlannerAgent(FluidAgent):
         # Roles are read by the vetoes the base runs before ``_choose`` (the commit probe).
         self._controlled_now = controlled_sigs(self.mem)
         self._roles_now = self._roles(scene)
-        return super()._decide(obs, scene)
+        # The base returns a commit probe without ``_choose``, so the per-move bookkeeping
+        # runs here, after whichever branch chose.
+        choice = super()._decide(obs, scene)
+        self._after_choice(obs, scene, choice)
+        return choice
 
     def _choose(self, obs: Observation, scene: Scene) -> _Choice:
         if self._prev_grid is None:  # a start frame: nothing to compare with
@@ -381,11 +400,8 @@ class PlannerAgent(FluidAgent):
             self._bar_last = None
         self._no_progress = 0 if self._verdict in _PROGRESS else self._no_progress + 1
         if self._chat is None:
-            choice = super()._choose(obs, scene)
-        else:
-            choice = self._planner_choose(obs, scene)
-        self._after_choice(obs, scene, choice)
-        return choice
+            return super()._choose(obs, scene)
+        return self._planner_choose(obs, scene)
 
     def _planner_choose(self, obs: Observation, scene: Scene) -> _Choice:
         """The model-first move (module docstring steps 2 to 6)."""
@@ -418,6 +434,7 @@ class PlannerAgent(FluidAgent):
             self._return_to_fork(obs, scene)
         elif decision.method == "replan":
             self._no_progress = 0
+            self._pending_fork = None  # the planning loop runs, not the fork resume
             self._llm_plan, self._llm_test = [], None
         if not self._llm_plan and self._llm_test is None and self._pending_fork is not None:
             self._resume_fork(obs, scene)
@@ -527,6 +544,11 @@ class PlannerAgent(FluidAgent):
     # -- the segment -------------------------------------------------------------
 
     def _clear_segment(self) -> None:
+        """Forget the segment; a fork path it was following goes back to untried."""
+        path = self._segment_path
+        if path is not None and self._tree.active() == path:
+            self._tree.release(*path)
+        self._segment_path = None
         self._segment_id = ""
         self._segment_source = ""
         self._hypothesis_id = ""
@@ -551,6 +573,9 @@ class PlannerAgent(FluidAgent):
         self._llm_scene = scene
         self._llm_protect = protect
         self._plan, self._plan_goal = [], None
+        self._segment_path = None  # a fork path's caller sets it after this
+        self._segment_items = list(items)
+        self._segment_played = 0
         self._segment_id = hyp_id
         self._segment_source = source
         self._hypothesis_id = hyp_id
@@ -568,39 +593,47 @@ class PlannerAgent(FluidAgent):
         )
 
     def _fail_active(self, reason: str) -> None:
-        """Mark the fork path being followed failed for this level instance (4.7c rule 7)."""
-        active = self._tree.active()
-        if active is None:
+        """Mark the fork path the segment follows failed for this level instance (4.7c
+        rule 7). A segment that is not a fork path fails nothing in the tree."""
+        path = self._segment_path
+        if path is None or self._tree.active() != path:
             return
-        fork_id, index = active
+        fork_id, index = path
+        self._segment_path = None
         self._tree.fail_branch(fork_id, index)
         self._log.event(
             "branch_failed", step=self._action_no, fork=fork_id, index=index, reason=reason
         )
 
     def _return_to_fork(self, obs: Observation, scene: Scene) -> None:
-        """Spec 3.6: a return route to the newest fork with an untried path, or a replan
-        from the root when no fork or no known route exists."""
-        fork = self._tree.newest_with_untried()
-        if fork is None:
-            self._replan_root("no fork with an untried path")
-            return
-        tries = self._route_tries.get(fork.id, 0)
-        if tries >= ROUTE_TRIES:
-            self._give_up_fork(fork, f"return route failed {tries} times")
-            return
+        """Spec 3.6 and 4.7c rule 5: forks with an untried path, newest first; the first
+        with a known return route gets the route as the segment (an empty route starts
+        its path at once). A fork with no route, or past ``ROUTE_TRIES``, has its untried
+        paths failed. No fork left: a replan from the root."""
         current = self.explorer.key(obs)
-        route = return_route(self.explorer.graph.edges, current, fork.state_key)
-        if route is None:
-            self._give_up_fork(fork, "no known route to the fork")
+        for fork in self._tree.forks_with_untried():
+            tries = self._route_tries.get(fork.id, 0)
+            if tries >= ROUTE_TRIES:
+                self._give_up_fork(fork, f"return route failed {tries} times")
+                continue
+            route = return_route(self.explorer.graph.edges, current, fork.state_key)
+            if route is None:
+                self._give_up_fork(fork, "no known route to the fork")
+                continue
+            self._route_tries[fork.id] = tries + 1
+            self._log.event("return_route", step=self._action_no, fork=fork.id, length=len(route))
+            if not route:
+                if self._start_fork_path(fork, scene):
+                    return
+                continue
+            self._set_route_segment(fork, route, scene)
             return
-        self._route_tries[fork.id] = tries + 1
-        self._log.event("return_route", step=self._action_no, fork=fork.id, length=len(route))
-        if not route:
-            self._start_fork_path(fork, scene)
-            return
+        self._replan_root("no fork with an untried path and a known route")
+
+    def _set_route_segment(self, fork: Fork, route: Sequence[Action], scene: Scene) -> None:
+        """The return route as the segment; ``_pending_fork`` names the path to take on
+        arrival."""
         self._pending_fork = (fork.id, self._tree.untried(fork.id)[0])
-        self._return_route = list(route)
         self._fork_id = fork.id
         items = [PlanItem(a, f"return to fork {fork.id}") for a in route]
         self._set_segment(
@@ -626,11 +659,12 @@ class PlannerAgent(FluidAgent):
         if self.explorer.key(obs) != fork.state_key:
             self._replan_root(f"return route did not reach fork {fork_id}")
             return
-        self._start_fork_path(fork, scene)
+        if not self._start_fork_path(fork, scene):
+            self._replan_root(f"every path of fork {fork_id} is failed")
 
-    def _start_fork_path(self, fork: Fork, scene: Scene) -> None:
+    def _start_fork_path(self, fork: Fork, scene: Scene) -> bool:
         """Start the fork's first untried path that still rolls out alive (at most one
-        rollout per path); paths that now die are failed."""
+        rollout per path); paths that now die are failed. False when none is left."""
         goal = self._goal_by_id.get(fork.goal_id)
         goals = [goal] if goal is not None else self._rollout_goals()
         protect = protected_sigs(self.mem, [] if goal is None else [goal], scene)
@@ -658,6 +692,9 @@ class PlannerAgent(FluidAgent):
                 continue
             self._tree.start_path(fork.id, index)
             self._fork_id = fork.id
+            # The hypothesis carries the segment's id, so perseverance (``_no_other_way``,
+            # ``_ev_gain``) and the questions find it under ``_hypothesis_id``.
+            seg_id = hypothesis_id(fork.goal_id, FORK_SOURCE, path)
             hyp = from_rollout(
                 fork.goal_id,
                 "search",
@@ -666,28 +703,32 @@ class PlannerAgent(FluidAgent):
                 typical=self._typical(),
                 restart_moves=self._level_moves + len(path),
             )
-            self._rollouts[hyp.id] = ro
+            hyp = replace(hyp, id=seg_id)
+            self._rollouts[seg_id] = ro
+            same = (hyp.goal_id, hyp.plan)
+            self._hyps = rank([hyp, *[h for h in self._hyps if (h.goal_id, h.plan) != same]])
             items = [PlanItem(a, f"fork {fork.id} path {index}") for a in path]
             self._set_segment(
                 scene,
                 items,
                 FORK_SOURCE,
-                hypothesis_id(fork.goal_id, FORK_SOURCE, path),
+                seg_id,
                 fork.goal_id,
                 p_path=ro.path_probability,
                 ev=hyp.expected_value,
                 protect=protect,
             )
-            return
-        self._replan_root(f"every path of fork {fork.id} is failed")
+            self._segment_path = (fork.id, index)
+            return True
+        return False
 
     def _give_up_fork(self, fork: Fork, reason: str) -> None:
+        """Fail the fork's untried paths for this level instance, each logged."""
         for index in self._tree.untried(fork.id):
             self._tree.fail_branch(fork.id, index)
             self._log.event(
                 "branch_failed", step=self._action_no, fork=fork.id, index=index, reason=reason
             )
-        self._replan_root(reason)
 
     def _replan_root(self, reason: str) -> None:
         self._pending_fork = None
@@ -737,7 +778,7 @@ class PlannerAgent(FluidAgent):
                 fresh = [g for gid, g in candidates.items() if gid not in searched][:TOP_GOALS]
                 hyps += self._code_hypotheses(scene, fresh, typical, horizon, searched)
         ranked = rank(self._dedupe([*proposals, *hyps]))
-        ranked = [h for h in ranked if not self._failed_here(obs, h)]
+        ranked = [h for h in ranked if not self._failed_here(obs, h) and not self._dies(h)]
         self._hyps = ranked
         if not ranked:
             self._quiet_until = self._action_no + CALL_GAP_MOVES
@@ -834,6 +875,12 @@ class PlannerAgent(FluidAgent):
             seen.setdefault((h.goal_id, h.plan), h)
         return list(seen.values())
 
+    def _dies(self, hyp: Hypothesis) -> bool:
+        """Whether ``hyp``'s rollout ended in a predicted game over (spec 3.9: an adverse
+        path, never played)."""
+        ro = self._rollouts.get(hyp.id)
+        return hyp.stop == "death" or (ro is not None and ro.deaths_at is not None)
+
     def _failed_here(self, obs: Observation, hyp: Hypothesis) -> bool:
         """Whether ``hyp``'s plan is a failed path of this state's fork for its goal
         (4.7c rule 7: not retried in the same level instance)."""
@@ -858,7 +905,9 @@ class PlannerAgent(FluidAgent):
         if fork is None:
             return
         if winner.plan in fork.paths:
-            self._tree.start_path(fork_id, fork.paths.index(winner.plan))
+            index = fork.paths.index(winner.plan)
+            self._tree.start_path(fork_id, index)
+            self._segment_path = (fork_id, index)
         self._fork_id = fork_id
         self._log.event(
             "fork_open",
@@ -1103,10 +1152,7 @@ class PlannerAgent(FluidAgent):
             level_rules=tuple(level_rules),
             game_rules=tuple(game_rules),
             hypotheses=tuple(self._hypothesis_line(h, scene) for h in self._hyps),
-            sequence=tuple(
-                f"{i}. {_action_name(item.action, scene)} expect {item.expect}"
-                for i, item in enumerate(self._llm_plan, 1)
-            ),
+            sequence=tuple(self._sequence_lines(scene)),
             forks=tuple(self._tree.summary()),
             flags=tuple(self._flags.lines(FLAG_LINES)),
             self_focus=(self_rec.line(), focus.line()),
@@ -1118,6 +1164,16 @@ class PlannerAgent(FluidAgent):
             level=self._level,
             horizon=horizon,
         )
+
+    def _sequence_lines(self, scene: Scene) -> list[str]:
+        """Spec 4.9a item 8: the segment being followed or replaced, one line per step,
+        with whether the step was played (the wake line says why it is being replaced)."""
+        played = self._segment_played
+        return [
+            f"{i}. {_action_name(item.action, scene)} expect {item.expect}: "
+            f"{'played' if i <= played else 'not played'}"
+            for i, item in enumerate(self._segment_items, 1)
+        ]
 
     def _state_lines(self, scene: Scene) -> list[str]:
         """One line per thing: id, colour, size, place, kind, role, rules and their mean
@@ -1437,6 +1493,8 @@ class PlannerAgent(FluidAgent):
 
     def _transition(self, obs: Observation, move: int, before_s: Scene, action: Action) -> Scene:
         following = self._llm_step and bool(self._segment_id)
+        if following:
+            self._segment_played += 1
         after = super()._transition(obs, move, before_s, action)
         pred = self._pred
         self._prev_matched = (
@@ -1541,12 +1599,15 @@ class PlannerAgent(FluidAgent):
         self._fork_ids = {}
         self._flags.reset_level()
         self._bar_is_health = False
-        self._fallbacks = 0
-        self._no_progress = 0
         self._end_instance()
 
     def _end_instance(self) -> None:
-        """A level instance ended (level up or game over): the per-instance state restarts."""
+        """A level instance ended (level up or game over): the per-instance state restarts,
+        the handoff counters with it (module docstring step 7)."""
+        self._fallbacks = 0
+        self._no_progress = 0
+        self._segment_items = []
+        self._segment_played = 0
         self._level_moves = 0
         self._level_start_moves = []
         self._trials = {}
