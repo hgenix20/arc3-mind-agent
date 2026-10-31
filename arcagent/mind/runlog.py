@@ -31,6 +31,35 @@ the action record's ``wake`` holds the reason on the move that started a turn),
 ``exec_turn`` (``step, call, seconds, goals, plan_len, test, dropped``) and
 ``exec_failed`` (``step, call, reason``), and its ``game_end`` adds ``turns``.
 
+Planner agent (v2) fields
+-------------------------
+The planner agent (``arcagent.mind.planner_agent``, spec v2 section 4.13) adds
+these action-record fields: ``self_rec`` (dict of the ``SelfRecord`` fields;
+the name is ``self_rec`` because ``RunLog.action``'s first parameter is
+``self``, so a field named ``self`` raises ``TypeError``), ``focus`` (dict of
+the ``FocusRecord`` fields), ``hypothesis_id``, ``segment_id``, ``fork_id`` and
+``planner_call`` (ids, null when none), ``p_step`` (the probability of this
+move's prediction, 4 decimals, null when none), ``p_path`` (the segment's path
+probability, null when none), ``prev_matched`` (whether the previous move's
+prediction matched, null on the first move of a level instance) and ``gate``
+(``{"seconds": float, "tokens": int, "trip": str | null}``: the wall clock and
+LLM tokens spent on this move and the name of the gate that tripped, if any).
+
+Its events: ``segment`` (``step, id, source, length, p_path, ev, goal``),
+``handoff`` (``step, rule, method, reason``), ``harm`` (``step, kind, label,
+p``), ``consolidate`` (``level, promoted, sequences, typical``), ``longterm``
+(``game_id, rules, sequences``; ``game_id`` because ``game`` is an envelope key
+and raises ``ValueError``), ``fork_open`` (``step, id, goal, paths``),
+``branch_failed`` (``step, fork, index, reason``), ``return_route`` (``step,
+fork, length``), ``replan_root`` (``step, reason``), ``gate_trip`` (``step,
+gate, seconds, tokens``), ``planner_call`` (``step, call, seconds, tokens,
+segment_len, skill, question, dropped``) and ``flag`` (``step, kind, state,
+source, value, cost``). ``scripts/mind_metrics.py`` reads ``p_step``,
+``prev_matched`` and ``gate`` from the action records and the ``consolidate``,
+``gate_trip``, ``handoff``, ``planner_call``, ``segment``, fork and ``harm``
+events. Nested dicts and lists of plain values (and of the numpy values below)
+are written as JSON objects and arrays.
+
 Conversion: numpy integer, floating and bool scalars and arrays become plain
 Python values and tuples become lists. Anything else unserializable raises
 ``TypeError`` (the line is not written); values are never stringified.

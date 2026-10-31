@@ -90,6 +90,51 @@ except ``score_estimate``, the mean over games that have one, and
 ``levels_completed``, the sum. Pooled ``actions_vs_human`` concatenates the
 per-game lists; pooled ``goals`` sums the per-game counts.
 
+Planner agent (v2) metrics
+--------------------------
+Reported under ``v2`` per game and pooled, from the fields and events the
+planner agent writes (``arcagent/mind/runlog.py``, "Planner agent (v2)
+fields"). Every key is present whatever the log holds, so a report never
+KeyErrors: with no v2 records the counts are 0, the dicts empty and the rates
+``None``.
+  * ``calibration``: ten bins ``{"bin": "0.0-0.1", "n", "matched", "rate"}``.
+    A pair is an action record's ``p_step`` with the next action record's
+    ``prev_matched`` when both records carry the same ``level`` and no
+    ``level_up`` or ``game_over`` event lies between them; a pair is skipped
+    when ``p_step`` is not a number in [0, 1] or ``prev_matched`` is not a
+    bool. Bin ``i`` holds ``i/10 <= p < (i+1)/10`` and ``p == 1`` joins the
+    last bin. ``rate`` is ``matched / n``, ``None`` when ``n`` is 0.
+  * ``moves_vs_typical``: one ``{"level", "moves", "typical", "ratio"}`` per
+    ``consolidate`` event, in event order. ``moves`` counts the action records
+    of the level instance the event closes: the records since the previous
+    ``level_up``, ``game_over`` or ``consolidate`` event, or, when a
+    ``level_up`` precedes the ``consolidate`` with no action record between
+    them, the records of the instance that ``level_up`` closed. ``typical`` is
+    the event's value when numeric, else ``None``; ``ratio`` is ``moves /
+    typical`` when ``typical`` is positive, else ``None``.
+  * ``gates``: ``trips`` and ``by_gate`` count distinct ``(step, gate name)``
+    pairs over ``gate_trip`` events and action records whose ``gate.trip`` is
+    not null, so a trip logged both ways counts once. ``seconds_total`` and
+    ``tokens_total`` sum the numeric ``gate.seconds`` and ``gate.tokens`` of
+    the action records.
+  * ``handoffs``: ``handoff`` events counted by ``rule``.
+  * ``planner``: ``calls`` counts ``planner_call`` events and ``tokens`` sums
+    their numeric ``tokens``; ``skills`` counts their ``skill`` (a name, or the
+    ``name`` of a skill dict) and ``questions`` their ``question`` when
+    present. ``segments`` counts ``segment`` events of every source and
+    ``mean_segment_len`` is the mean of their numeric ``length`` (``None``
+    with none).
+  * ``forks``: ``opened``, ``failed``, ``returns`` and ``root_replans`` count
+    the ``fork_open``, ``branch_failed``, ``return_route`` and ``replan_root``
+    events.
+  * ``harm``: ``events`` counts ``harm`` events and ``by_kind`` groups them by
+    ``kind``.
+
+Pooled ``v2`` sums the counts, recomputes ``rate`` and ``mean_segment_len``
+from the pooled totals, and concatenates ``moves_vs_typical`` in the order the
+games first appear in the records. ``v2_metrics(records)`` computes the same
+block for one game's records on its own.
+
 Failure modes: ``load`` skips lines that are not JSON objects and returns their
 count; ``compute`` ignores records that are not dicts or lack a string ``type``.
 """
@@ -100,9 +145,9 @@ import argparse
 import json
 import sys
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 ROOT = Path(__file__).resolve().parent.parent
 HUMAN_FILE = ROOT / "data" / "public_human_actions.json"
@@ -111,6 +156,14 @@ LATENCY_REASONS = frozenset({"low_fit", "misses_in_row"})
 UNKNOWN_GAME = "?"
 BAD_OUTCOMES = ("noop", "game_over", "disconfirmed")
 IMPASSE_REASON = "no plan and no test"
+CAL_BINS = 10
+LEVEL_BOUNDARIES = frozenset({"level_up", "game_over"})
+FORK_EVENTS = {
+    "fork_open": "opened",
+    "branch_failed": "failed",
+    "return_route": "returns",
+    "replan_root": "root_replans",
+}
 
 Rec = dict[str, Any]
 
@@ -160,7 +213,7 @@ def load(paths: Iterable[Path | str]) -> tuple[list[Rec], int]:
     return records, malformed
 
 
-def _is_num(x: object) -> bool:
+def _is_num(x: object) -> TypeGuard[int | float]:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
 
 
@@ -205,10 +258,172 @@ def _disconfirmed(rec: Rec, nxt: Rec) -> bool:
     )
 
 
+def _bin_index(p: float) -> int:
+    """Calibration bin of a probability in [0, 1]; ``p == 1`` joins the last bin."""
+    return min(int(p * CAL_BINS), CAL_BINS - 1)
+
+
+def _bin_label(i: int) -> str:
+    return f"{i / CAL_BINS:.1f}-{(i + 1) / CAL_BINS:.1f}"
+
+
+def _skill_name(value: object) -> str | None:
+    """The skill a ``planner_call`` names: a string, or the ``name`` of a skill dict."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        name = value.get("name")
+        return name if isinstance(name, str) else None
+    return None
+
+
+class _V2Tally:
+    """Planner-agent tallies over one game's records, taken in file order.
+
+    ``add`` takes every record of the game; ``raw`` returns additive tallies
+    (``v2_`` keys) that ``compute`` pools across games and ``_v2_summary``
+    reduces. Definitions: the module docstring, "Planner agent (v2) metrics".
+    """
+
+    def __init__(self) -> None:
+        self.cal_n: Counter[int] = Counter()
+        self.cal_hit: Counter[int] = Counter()
+        self.typical: list[dict[str, Any]] = []
+        self.trips: set[tuple[object, str]] = set()
+        self.gate_seconds = 0.0
+        self.gate_tokens = 0
+        self.handoffs: Counter[str] = Counter()
+        self.calls = 0
+        self.call_tokens = 0
+        self.segments = 0
+        self.segment_lens: list[float] = []
+        self.skills: Counter[str] = Counter()
+        self.questions: Counter[str] = Counter()
+        self.forks: Counter[str] = Counter()
+        self.harm: Counter[str] = Counter()
+        self.harm_events = 0
+        self._prev: Mapping[str, Any] | None = None  # the last action record seen
+        self._boundary = False  # a level_up or game_over event since ``_prev``
+        self._open_moves = 0  # action records of the level instance still open
+        self._closed_moves = 0  # action records of the instance a boundary last closed
+
+    def add(self, rec: Mapping[str, Any]) -> None:
+        kind = rec.get("type")
+        if not isinstance(kind, str):
+            return
+        if kind == "action":
+            self._action(rec)
+        elif kind in LEVEL_BOUNDARIES:
+            self._boundary = True
+            self._close()
+        elif kind == "consolidate":
+            self._consolidate(rec)
+        elif kind == "gate_trip":
+            self.trips.add((rec.get("step"), str(rec.get("gate"))))
+        elif kind == "handoff":
+            self.handoffs[str(rec.get("rule"))] += 1
+        elif kind == "planner_call":
+            self._planner_call(rec)
+        elif kind == "segment":
+            self.segments += 1
+            if _is_num(rec.get("length")):
+                self.segment_lens.append(float(rec["length"]))
+        elif kind in FORK_EVENTS:
+            self.forks[FORK_EVENTS[kind]] += 1
+        elif kind == "harm":
+            self.harm_events += 1
+            self.harm[str(rec.get("kind"))] += 1
+
+    def _action(self, rec: Mapping[str, Any]) -> None:
+        prev = self._prev
+        if prev is not None and not self._boundary and prev.get("level") == rec.get("level"):
+            self._pair(prev.get("p_step"), rec.get("prev_matched"))
+        self._prev = rec
+        self._boundary = False
+        self._open_moves += 1
+        gate = rec.get("gate")
+        if isinstance(gate, dict):
+            self._gate(rec.get("step"), gate)
+
+    def _pair(self, p: Any, matched: object) -> None:
+        """One calibration pair, skipped unless ``p`` is in [0, 1] and ``matched`` a bool."""
+        if not isinstance(matched, bool) or not _is_num(p) or not 0.0 <= p <= 1.0:
+            return
+        b = _bin_index(float(p))
+        self.cal_n[b] += 1
+        self.cal_hit[b] += int(matched)
+
+    def _gate(self, step: object, gate: Mapping[str, Any]) -> None:
+        if _is_num(gate.get("seconds")):
+            self.gate_seconds += float(gate["seconds"])
+        if _is_num(gate.get("tokens")):
+            self.gate_tokens += int(gate["tokens"])
+        trip = gate.get("trip")
+        if trip is not None:
+            self.trips.add((step, str(trip)))
+
+    def _close(self) -> None:
+        """Close the open level instance, when it has any action records."""
+        if self._open_moves:
+            self._closed_moves = self._open_moves
+            self._open_moves = 0
+
+    def _consolidate(self, rec: Mapping[str, Any]) -> None:
+        # A level_up logged just before the consolidate has already closed the
+        # instance, so an empty open instance falls back to the one it closed.
+        moves = self._open_moves or self._closed_moves
+        self._close()
+        self._closed_moves = 0
+        typical = rec.get("typical")
+        if not _is_num(typical):
+            typical = None
+        self.typical.append(
+            {
+                "level": rec.get("level"),
+                "moves": moves,
+                "typical": typical,
+                "ratio": moves / typical if typical is not None and typical > 0 else None,
+            }
+        )
+
+    def _planner_call(self, rec: Mapping[str, Any]) -> None:
+        self.calls += 1
+        if _is_num(rec.get("tokens")):
+            self.call_tokens += int(rec["tokens"])
+        skill = _skill_name(rec.get("skill"))
+        if skill is not None:
+            self.skills[skill] += 1
+        question = rec.get("question")
+        if isinstance(question, str):
+            self.questions[question] += 1
+
+    def raw(self) -> dict[str, Any]:
+        """Additive tallies under ``v2_`` keys, so they pool beside the other raw keys."""
+        return {
+            "v2_cal_n": self.cal_n,
+            "v2_cal_hit": self.cal_hit,
+            "v2_typical": self.typical,
+            "v2_trips": Counter(name for _, name in self.trips),
+            "v2_gate_seconds": self.gate_seconds,
+            "v2_gate_tokens": self.gate_tokens,
+            "v2_handoffs": self.handoffs,
+            "v2_calls": self.calls,
+            "v2_call_tokens": self.call_tokens,
+            "v2_segments": self.segments,
+            "v2_segment_lens": self.segment_lens,
+            "v2_skills": self.skills,
+            "v2_questions": self.questions,
+            "v2_forks": self.forks,
+            "v2_harm": self.harm,
+            "v2_harm_events": self.harm_events,
+        }
+
+
 class _Game:
     """Raw per-game tallies; ``raw`` reduces them to numbers ``_summary`` reports."""
 
     def __init__(self) -> None:
+        self.v2 = _V2Tally()
         self.actions: list[Rec] = []
         self.by_step: dict[int, int] = {}
         self.game_over_idx: set[int] = set()
@@ -221,6 +436,7 @@ class _Game:
         self.modes: Counter[str] = Counter()  # DriveAgent's moves per mode (``drive_end``)
 
     def add(self, rec: Rec) -> None:
+        self.v2.add(rec)  # the v2 tally keeps its own order-dependent state over every record
         kind = rec["type"]
         if kind == "action":
             self.actions.append(rec)
@@ -356,6 +572,7 @@ class _Game:
             "entropy_deltas": deltas,
             "outcomes": Counter({k: counted[k] for k in BAD_OUTCOMES}),
             **self.fluid(),
+            **self.v2.raw(),
         }
 
 
@@ -391,6 +608,7 @@ def _summary(raw: dict[str, Any], score: float | None) -> dict[str, Any]:
         "outcomes": dict(raw["outcomes"]),
         "actions": total,
         **_fluid_summary(raw),
+        "v2": _v2_summary(raw),
     }
 
 
@@ -410,6 +628,52 @@ def _fluid_summary(raw: dict[str, Any]) -> dict[str, Any]:
         "actions_vs_human": raw["vs_human"] or None,
         "modes": dict(sorted(raw["modes"].items())) or None,
     }
+
+
+def _sorted(counts: Counter[str]) -> dict[str, int]:
+    return dict(sorted(counts.items()))
+
+
+def _v2_summary(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """The ``v2`` block of a summary, from per-game or pooled raw tallies."""
+    n, hit, forks = raw["v2_cal_n"], raw["v2_cal_hit"], raw["v2_forks"]
+    return {
+        "calibration": [
+            {"bin": _bin_label(i), "n": n[i], "matched": hit[i], "rate": _rate(hit[i], n[i])}
+            for i in range(CAL_BINS)
+        ],
+        "moves_vs_typical": list(raw["v2_typical"]),
+        "gates": {
+            "trips": sum(raw["v2_trips"].values()),
+            "by_gate": _sorted(raw["v2_trips"]),
+            "seconds_total": raw["v2_gate_seconds"],
+            "tokens_total": raw["v2_gate_tokens"],
+        },
+        "handoffs": _sorted(raw["v2_handoffs"]),
+        "planner": {
+            "calls": raw["v2_calls"],
+            "tokens": raw["v2_call_tokens"],
+            "segments": raw["v2_segments"],
+            "mean_segment_len": _mean(raw["v2_segment_lens"]),
+            "skills": _sorted(raw["v2_skills"]),
+            "questions": _sorted(raw["v2_questions"]),
+        },
+        "forks": {name: forks[name] for name in FORK_EVENTS.values()},
+        "harm": {"events": raw["v2_harm_events"], "by_kind": _sorted(raw["v2_harm"])},
+    }
+
+
+def v2_metrics(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Planner-agent metrics of one game's records, in file order.
+
+    Every key of the ``v2`` block is present whatever the records hold (module
+    docstring, "Planner agent (v2) metrics"). ``compute`` reports the same block
+    per game under ``"v2"`` and pools it under ``overall``.
+    """
+    tally = _V2Tally()
+    for rec in records:
+        tally.add(rec)
+    return _v2_summary(tally.raw())
 
 
 def compute(records: Iterable[Rec], human: dict[str, list[int]] | None = None) -> dict[str, Any]:
@@ -452,6 +716,7 @@ def compute(records: Iterable[Rec], human: dict[str, list[int]] | None = None) -
         "goal_transitions": Counter(),
         "modes": Counter(),
         "vs_human": [],
+        **_V2Tally().raw(),  # a fresh tally is the zero state of every v2 key
     }
     for raw in raws.values():
         for key, value in raw.items():
