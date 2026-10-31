@@ -17,7 +17,10 @@ the object, so a search builds it once from its root scene. Every walk visits at
 get an empty field, and goal distances fall back to cell gaps): a search may score up to
 200 goals, and the first ones (confirmed forms, the executive's) matter most. ``mover``
 names the one controlled thing when the agent knows it; ``Goal.distance`` then routes it
-through what a ``clear`` goal has left (``route.route``). Pure.
+through what a ``clear`` goal has left (``route.route``). ``reachable_avoiding`` is the
+forward walk the strategy skills use (spec 4.9d): the same fit test with a set of cells
+the body must stay off, and the previous top-left and action kept per entry so a path
+can be read back. Pure.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from arcagent.core.types import GRID_SIZE
+from arcagent.core.types import GRID_SIZE, Action
 from arcagent.mind.facts import FactMemory, cell_owner
 from arcagent.mind.objects import Cell, Scene, Thing, answers, color_at
 
@@ -34,6 +37,7 @@ KIN_LIMIT = 4096  # top-lefts visited per walk
 KIN_FIELDS = 8  # distance fields one Kinematics builds (one per move in the agent)
 _NOT_GAITS = ("any", "event")
 _TOUCH = ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1))
+_SIMPLE_IDS = frozenset({1, 2, 3, 4, 5, 7})  # action ids a gait label can name
 
 
 def _sign(v: int) -> int:
@@ -120,6 +124,53 @@ class Kinematics:
                 queue.append(there)
         return dist
 
+    def reachable_avoiding(
+        self, scene: Scene, name: str, avoid: frozenset[Cell], *, limit: int = KIN_LIMIT
+    ) -> dict[Cell, tuple[int, Cell | None, Action | None]]:
+        """Top-left to (moves, previous top-left, action taken), walking forward from the
+        subject's thing while every cell of its body stays out of ``avoid``.
+
+        The breadth-first search of ``reachable`` (spec 4.6a) over the same gaits and
+        fit test, so with an empty ``avoid`` the move counts equal ``reachable``'s. The
+        start maps to ``(0, None, None)`` and is never tested. A fixed step lands only
+        where the body fits and clears ``avoid``. A slide runs to where ``reachable``
+        would end it and is refused when any position on the way puts a body cell in
+        ``avoid``: a slide does not stop for a thing that is not a blocker, so stopping
+        it short would plan a move the game will not make. A gait whose label is not a
+        simple action (``A1`` to ``A5`` or ``A7``) is skipped. At most ``limit``
+        top-lefts; empty when the subject is not on screen. Used by the strategy skills
+        (spec 4.9d) to walk around harm-role things.
+        """
+        body = self.body(scene, name)
+        if body is None:
+            return {}
+        start = (body.x, body.y)
+        offs = [(x - body.x, y - body.y) for x, y in body.cells]
+        fits = self._fits(scene, body, name)
+        memo: dict[Cell, bool] = {}
+
+        def clear(tl: Cell) -> bool:
+            hit = memo.get(tl)
+            if hit is None:
+                hit = all((tl[0] + ox, tl[1] + oy) not in avoid for ox, oy in offs)
+                memo[tl] = hit
+            return hit
+
+        moves = [(g, a) for g in self.gaits(name) if (a := _action_of(g.action)) is not None]
+        out: dict[Cell, tuple[int, Cell | None, Action | None]] = {start: (0, None, None)}
+        queue = deque([start])
+        while queue and len(out) < limit:
+            here = queue.popleft()
+            for g, action in moves:
+                there = _step_avoiding(here, g, fits, clear)
+                if there is None or there in out:
+                    continue
+                out[there] = (out[here][0] + 1, here, action)
+                if len(out) >= limit:
+                    break
+                queue.append(there)
+        return out
+
     def steps_to(self, scene: Scene, name: str, target: frozenset[Cell]) -> int | None:
         """Fewest moves until the subject's thing touches ``target``; None when unreachable."""
         body = self.body(scene, name)
@@ -196,3 +247,34 @@ def _step(here: Cell, g: Gait, fits: Callable[[Cell], bool]) -> Cell | None:
             break
         pos = nxt
     return pos if pos != here else None
+
+
+def _step_avoiding(
+    here: Cell, g: Gait, fits: Callable[[Cell], bool], clear: Callable[[Cell], bool]
+) -> Cell | None:
+    """``_step`` with a second test: every position the body occupies must be ``clear``.
+
+    A fixed step lands where it fits and is clear. A slide ends where ``_step`` ends it
+    and is refused (None) when any position on the way is not clear.
+    """
+    if not g.slides:
+        there = (here[0] + g.dx, here[1] + g.dy)
+        return there if fits(there) and clear(there) else None
+    pos = here
+    for _ in range(GRID_SIZE):
+        nxt = (pos[0] + g.dx, pos[1] + g.dy)
+        if not fits(nxt):
+            break
+        pos = nxt
+        if not clear(pos):
+            return None
+    return pos if pos != here else None
+
+
+def _action_of(label: str) -> Action | None:
+    """The simple action a gait label names (``A1`` to ``A5``, ``A7``); None otherwise."""
+    digits = label[1:]
+    if not (label.startswith("A") and digits.isascii() and digits.isdigit()):
+        return None
+    n = int(digits)
+    return Action(n) if n in _SIMPLE_IDS else None
