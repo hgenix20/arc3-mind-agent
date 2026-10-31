@@ -11,7 +11,9 @@ from tests.test_guided import ReachEnv
 class StuckMind:
     """Always presses action 2 (away from the post); counts resumes."""
 
-    def __init__(self) -> None:
+    def __init__(self, branch: str = "plan") -> None:
+        self.last_branch = ""
+        self.branch = branch
         self.moves = 0
         self.resumes = 0
         self.closed = False
@@ -19,6 +21,7 @@ class StuckMind:
     def choose(self, obs: Observation) -> Action:
         del obs
         self.moves += 1
+        self.last_branch = self.branch
         return Action(2)
 
     def resume(self) -> None:
@@ -52,3 +55,14 @@ def test_the_explorer_learns_from_the_minds_moves() -> None:
     p.explorer.observe(o)
     assert len(p.explorer.graph.edges) == 2  # x 2 to 1, 1 to 0; the third hits the wall
     assert p.explorer.graph.noop
+
+
+def test_a_mind_stuck_in_its_fallback_hands_the_level_over_early() -> None:
+    from arcagent.agent.hybrid import STALL_MOVES  # noqa: PLC0415
+
+    env, mind = ReachEnv(), StuckMind(branch="fallback")
+    p = HybridPolicy(mind, ExplorerPolicy(0), mind_moves=400)
+    o = env.observe()
+    for _ in range(STALL_MOVES + 1):
+        o = env.step(p.choose(o))
+    assert mind.moves == STALL_MOVES and p.exploring

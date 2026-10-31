@@ -519,7 +519,7 @@ class MindRun:
                 log.close()
                 raise
             if self._hybrid_moves > 0:
-                hybrid = HybridPolicy(fluid, ExplorerPolicy(seed), self._hybrid_moves)
+                hybrid = HybridPolicy(fluid, fluid.explorer, self._hybrid_moves, shared=True)
                 return MindGame(hybrid, log, ProgramSandbox.dead())
             return MindGame(fluid, log, ProgramSandbox.dead())
         sandbox: ProgramSandbox | None = None

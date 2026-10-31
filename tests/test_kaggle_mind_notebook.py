@@ -276,4 +276,4 @@ def test_an_explorer_policy_runs_submit_with_it_and_falls_back_without_the_model
 
 def test_run_cell_passes_the_hybrid_move_budget(tmp_path: Path) -> None:
     nb, _ = build(tmp_path, "--config", "FLUID", "--hybrid-moves", "150")
-    assert '"--hybrid-moves", \'150\']' in run_cell(nb)
+    assert "\"--hybrid-moves\", '150']" in run_cell(nb)

@@ -22,6 +22,11 @@ class Baseline:
         self.seed = seed
         self._policy = ExplorerPolicy(seed)
 
+    @property
+    def policy(self) -> ExplorerPolicy:
+        """The wrapped explorer (the hybrid hands a stalled level to it)."""
+        return self._policy
+
     def observe(self, obs: Observation) -> None:
         """Learn the previous action's outcome without choosing."""
         self._policy.observe(obs)

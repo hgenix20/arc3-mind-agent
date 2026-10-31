@@ -194,6 +194,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from arcagent.agent.explore import ExplorerPolicy
 from arcagent.core.types import (
     COORD_ACTION_ID,
     GRID_SIZE,
@@ -512,6 +513,7 @@ class FluidAgent:
         self._tracker = Tracker()
         self._noise = NoiseMask()
         self._baseline = Baseline(seed)
+        self.last_branch: str = ""  # the branch that chose the last action
         self._clicks = _Clicks()
         self._search_fn: Callable[..., SearchResult] = (
             search  # DriveAgent routes it via the toolbox
@@ -630,10 +632,16 @@ class FluidAgent:
             budget=self._budget.remaining(),
         )
         self._last_action = a
+        self.last_branch = choice.branch
         if a.id == RESET_ID:
             self._fresh = True
         self._action_no += 1
         return a
+
+    @property
+    def explorer(self) -> ExplorerPolicy:
+        """B0's explorer, which watches every move this agent makes."""
+        return self._baseline.policy
 
     def resume(self) -> None:
         """Take the next frame as a fresh start: another policy played since the last
