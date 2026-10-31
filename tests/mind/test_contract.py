@@ -8,10 +8,15 @@ import numpy as np
 
 from arcagent.core.types import Action
 from arcagent.mind.contract import (
+    MAX_LABEL_CHARS,
     MAX_MODEL_CHARS,
     MAX_PLAN_STEPS,
     MAX_RULE_CHARS,
+    QUESTION_IDS,
+    SKILL_NAMES,
     FactClaim,
+    Reply,
+    SkillCall,
     parse_reply,
 )
 from arcagent.mind.facts import Effect, action_label
@@ -263,3 +268,136 @@ def test_disappears_and_blocked_effects_parse() -> None:
         FactClaim("A2", sig, (Effect("none"),)),
     )
     assert r.dropped == ()
+
+
+# The v2 planner contract (plan section 3): segment, skill, question, labels.
+
+
+def test_new_reply_fields_default_empty_and_constants_are_fixed() -> None:
+    r = Reply()
+    assert r.skill is None and r.question == "" and r.labels == ()
+    assert SKILL_NAMES == ("S-AROUND", "S-COLLECT", "S-EXPLORE", "S-ATTACK", "S-WAIT")
+    assert QUESTION_IDS == (
+        "Q-BLOCK",
+        "Q-REWARD",
+        "Q-HARM",
+        "Q-FORK",
+        "Q-CHECK",
+        "Q-SAFE",
+        "Q-UNKNOWN",
+    )
+
+
+def test_segment_is_read_as_the_plan() -> None:
+    text = json.dumps({"segment": [{"action": "A3", "expect": "left"}, {"action": "click #4"}]})
+    r = parse_reply(text, SCENE, AVAIL)
+    x, y = click_cell(SCENE.things[1])
+    assert [p.action for p in r.plan] == [Action(3), Action(6, x, y)]
+    assert r.plan[0].expect == "left" and r.dropped == ()
+
+
+def test_segment_wins_over_plan_when_both_are_given() -> None:
+    text = json.dumps({"segment": [{"action": "A3"}], "plan": [{"action": "A1"}, {"action": "A2"}]})
+    r = parse_reply(text, SCENE, AVAIL)
+    assert [p.action for p in r.plan] == [Action(3)]
+    assert r.dropped == ("plan ignored: segment given",)
+
+
+def test_segment_steps_beyond_max_steps_drop_with_one_reason() -> None:
+    text = json.dumps({"segment": [{"action": "A1"}] * 6})
+    r = parse_reply(text, SCENE, AVAIL, max_steps=4)
+    assert len(r.plan) == 4
+    assert r.dropped == ("segment capped at 4 steps",)
+    full = parse_reply(text, SCENE, AVAIL, max_steps=6)
+    assert len(full.plan) == 6 and full.dropped == ()
+    assert len(parse_reply(json.dumps({"plan": [{"action": "A1"}] * 12}), SCENE, AVAIL).plan) == 8
+    assert len(parse_reply(text, SCENE, AVAIL, max_steps=0).plan) == 1  # below 1 reads as 1
+
+
+def test_skill_parses_with_args_and_missing_args_become_empty() -> None:
+    text = json.dumps({"skill": {"name": "S-AROUND", "args": {"goal": "g1", "avoid": [7]}}})
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.skill == SkillCall("S-AROUND", {"goal": "g1", "avoid": [7]})
+    assert r.plan == () and r.dropped == ()
+    bare = parse_reply(json.dumps({"skill": {"name": "s_collect"}}), SCENE, AVAIL)
+    assert bare.skill == SkillCall("S-COLLECT", {}) and bare.dropped == ()
+
+
+def test_unknown_skill_and_bad_skill_shapes_drop_with_a_reason() -> None:
+    for raw, reason in (
+        ({"name": "S-FLY", "args": {}}, "unknown skill: S-FLY"),
+        ({"args": {}}, "unknown skill: None"),
+        ("S-AROUND", "skill is not an object"),
+        ({"name": "S-WAIT", "args": [1, 2]}, "skill args is not an object"),
+    ):
+        r = parse_reply(json.dumps({"skill": raw}), SCENE, AVAIL)
+        assert r.skill is None and r.dropped == (reason,), raw
+
+
+def test_skill_is_dropped_when_a_segment_is_given() -> None:
+    text = json.dumps({"segment": [{"action": "A1"}], "skill": {"name": "S-EXPLORE"}})
+    r = parse_reply(text, SCENE, AVAIL)
+    assert [p.action for p in r.plan] == [Action(1)]
+    assert r.skill is None and r.dropped == ("skill dropped: segment given",)
+    # An empty segment leaves the skill standing: there is no plan to prefer.
+    none_valid = json.dumps({"segment": [{"action": "A0"}], "skill": {"name": "S-EXPLORE"}})
+    r2 = parse_reply(none_valid, SCENE, AVAIL)
+    assert r2.plan == () and r2.skill == SkillCall("S-EXPLORE", {}) and len(r2.dropped) == 1
+
+
+def test_question_parses_and_unknown_question_drops() -> None:
+    r = parse_reply(json.dumps({"question": "Q-HARM"}), SCENE, AVAIL)
+    assert r.question == "Q-HARM" and r.dropped == ()
+    lower = parse_reply(json.dumps({"question": " q_fork "}), SCENE, AVAIL)
+    assert lower.question == "Q-FORK" and lower.dropped == ()
+    bad = parse_reply(json.dumps({"question": "Q-WHY"}), SCENE, AVAIL)
+    assert bad.question == "" and bad.dropped == ("unknown question: Q-WHY",)
+    not_text = parse_reply(json.dumps({"question": 7}), SCENE, AVAIL)
+    assert not_text.question == "" and not_text.dropped == ("question is not a string",)
+    assert parse_reply(json.dumps({"question": ""}), SCENE, AVAIL).dropped == ()
+
+
+def test_labels_parse_truncate_and_drop_off_screen_or_empty() -> None:
+    text = json.dumps(
+        {
+            "labels": [
+                {"object": 1, "label": "player"},
+                {"object": "#4", "label": "  door   frame " + "x" * 40},
+                {"object": 99, "label": "ghost"},
+                {"object": 7, "label": ""},
+                {"object": "seven", "label": "wall"},
+                "player",
+                {"object": 1, "label": "player"},
+            ]
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL)
+    assert r.labels == ((1, "player"), (4, ("door frame " + "x" * 40)[:MAX_LABEL_CHARS]))
+    assert len(r.labels[1][1]) == MAX_LABEL_CHARS
+    assert r.dropped == (
+        "label object not on screen: #99",
+        "label for #7 needs text",
+        "label needs an integer object id",
+        "label is not an object",
+    )
+    lone = parse_reply(json.dumps({"labels": {"object": 7, "label": "corner"}}), SCENE, AVAIL)
+    assert lone.labels == ((7, "corner"),) and lone.dropped == ()
+
+
+def test_full_planner_reply_parses_every_part() -> None:
+    text = json.dumps(
+        {
+            "model": "A1 moves #1 up.",
+            "facts": [{"action": "A1", "object": 1, "effect": "move", "dx": 0, "dy": -1}],
+            "goals": [{"kind": "reach", "a": 1, "b": 4}],
+            "segment": [{"action": "A1", "expect": "#1 up"}, {"action": "A1", "expect": "#1 up"}],
+            "question": "Q-SAFE",
+            "labels": [{"object": 4, "label": "door"}],
+            "notes": "two up then check",
+        }
+    )
+    r = parse_reply(text, SCENE, AVAIL, max_steps=5)
+    assert r.model == "A1 moves #1 up." and len(r.claims) == 1 and len(r.goals) == 1
+    assert [p.action for p in r.plan] == [Action(1), Action(1)]
+    assert r.skill is None and r.question == "Q-SAFE" and r.labels == ((4, "door"),)
+    assert r.notes == "two up then check" and r.dropped == ()
