@@ -54,8 +54,10 @@ and raises ``ValueError``), ``fork_open`` (``step, id, goal, paths``),
 ``branch_failed`` (``step, fork, index, reason``), ``return_route`` (``step,
 fork, length``), ``replan_root`` (``step, reason``), ``gate_trip`` (``step,
 gate, seconds, tokens``), ``planner_call`` (``step, call, seconds, tokens,
-segment_len, skill, question, dropped``) and ``flag`` (``step, kind, state,
-source, value, cost``). ``scripts/mind_metrics.py`` reads ``p_step``,
+segment_len, skill, question, dropped``), ``flag`` (``step, kind, state,
+source, value, cost``) and ``perseverance`` (``step, action, p, reason``: a
+medium-band harm move that perseverance allowed, with its reason; spec 4.10c).
+``scripts/mind_metrics.py`` reads ``p_step``,
 ``prev_matched`` and ``gate`` from the action records and the ``consolidate``,
 ``gate_trip``, ``handoff``, ``planner_call``, ``segment``, fork and ``harm``
 events. Nested dicts and lists of plain values (and of the numpy values below)

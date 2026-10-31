@@ -277,3 +277,13 @@ def test_an_explorer_policy_runs_submit_with_it_and_falls_back_without_the_model
 def test_run_cell_passes_the_hybrid_move_budget(tmp_path: Path) -> None:
     nb, _ = build(tmp_path, "--config", "FLUID", "--hybrid-moves", "150")
     assert "\"--hybrid-moves\", '150']" in run_cell(nb)
+
+
+def test_planner_config_builds_with_the_fluid_fallback_and_the_hybrid_budget(
+    tmp_path: Path,
+) -> None:
+    nb, _ = build(tmp_path, "--config", "PLANNER", "--hybrid-moves", "150")
+    run = run_cell(nb)
+    assert "config = 'PLANNER' if MODEL_OK else 'FLUID'" in run
+    assert "\"--hybrid-moves\", '150']" in run
+    assert "arcagent/mind/planner_agent.py" in written_files(nb)

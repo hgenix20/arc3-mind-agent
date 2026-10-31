@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from arcagent.mind import fluid, planner_agent
+from arcagent.mind import briefing, fluid, planner_agent
 from arcagent.mind.budget import Counter
 from arcagent.mind.config import CONFIGS
 from arcagent.mind.longterm import LongTermStore
@@ -306,3 +306,73 @@ def test_bar_cells_reads_the_counter_band() -> None:
     col = Counter(color=7, axis="col", lines=frozenset({0}), shrinks=True)
     assert planner_agent.bar_cells(grid, row) == 20
     assert planner_agent.bar_cells(grid, col) == 2
+
+
+def test_a_level_win_consolidates_into_the_store(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        # Five confirmations take the player's move fact past PROMOTE_HITS, so the level
+        # win has at least one fact to promote.
+        return {"facts": claims(p, t), "goals": [reach(p, t)], "segment": steps(*["A4"] * 5)}
+
+    path = tmp_path / "longterm.json"
+    store = LongTermStore(path)
+    store.load()
+    game = FakeGame(player=(2, 2), target=(8, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, seen), store=store)
+    play(game, agent, max_steps=10, until=lambda: game.levels >= 1)
+    agent.choose(game.observe())  # the agent sees the level-up frame and consolidates
+    agent.close()
+    assert game.levels == 1
+    assert path.exists()
+    fresh = LongTermStore(path)
+    fresh.load()
+    assert fresh.load_error is None
+    assert list(fresh.completions) == ["fake"]
+    (level, runs), *rest = fresh.completions["fake"].items()
+    assert not rest and level == 0 and runs == [game.level_up_steps[0]]
+    assert len(fresh.rules) >= 1
+    assert all(r.scope == "long" and "fake" in r.games_seen for r in fresh.rules.values())
+    recs = records(tmp_path)
+    cons = of_type(recs, "consolidate")
+    assert len(cons) == 1
+    assert cons[0]["level"] == 0 and cons[0]["promoted"] >= 1 and cons[0]["sequences"] == 1
+    assert cons[0]["typical"] == float(game.level_up_steps[0])
+    assert of_type(recs, "longterm")[0]["rules"] == len(fresh.rules)
+
+
+def test_a_second_agent_on_the_same_store_reads_lessons(tmp_path: Path) -> None:
+    first: list[str] = []
+    second: list[str] = []
+
+    def reply(prompt: str) -> dict[str, Any]:
+        p, t = ids(prompt)
+        return {"facts": claims(p, t), "goals": [reach(p, t)], "segment": steps(*["A4"] * 5)}
+
+    path = tmp_path / "longterm.json"
+    store = LongTermStore(path)
+    store.load()
+    game = FakeGame(player=(2, 2), target=(8, 2), walls=[], lava=[])
+    agent = make(tmp_path, chat_of(reply, first), store=store)
+    play(game, agent, max_steps=10, until=lambda: game.levels >= 1)
+    agent.choose(game.observe())
+    agent.close()
+    assert game.levels == 1 and store.lessons()
+    assert "Lessons:\n(none)" in first[0]  # the store was empty on the first briefing
+
+    reloaded = LongTermStore(path)
+    reloaded.load()
+    again = FakeGame(player=(2, 2), target=(8, 2), walls=[], lava=[])
+    other = make(tmp_path, chat_of(reply, second), name="q", store=reloaded)
+    play(again, other, max_steps=1)
+    other.close()
+    assert second, "the second agent never called the planner"
+    title = briefing.SECTION_TITLES["lessons"]
+    after = briefing.SECTION_TITLES["questions"]  # sections are one newline apart
+    block = second[0].split(f"{title}:\n", 1)[1].split(f"\n{after}:\n", 1)[0]
+    lines = block.splitlines()
+    assert lines and lines[0] != "(none)"
+    assert all("(p=" in line and "game" in line for line in lines if not line.startswith("(+"))
+    assert lines[0] == reloaded.lessons()[0]

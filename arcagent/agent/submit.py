@@ -81,6 +81,8 @@ from arcagent.mind.chat_store import recording_chat, replay_chat
 from arcagent.mind.config import CONFIGS, MindConfig
 from arcagent.mind.fluid import TURN_DEADLINE_S, TURN_MAX_TOKENS, FluidAgent
 from arcagent.mind.llm_drive import DRIVE_MAX_TOKENS, DRIVE_TURN_S, DriveAgent
+from arcagent.mind.longterm import LongTermStore
+from arcagent.mind.planner_agent import PlannerAgent
 from arcagent.mind.runlog import RunLog
 from arcagent.mind.sandbox import ProgramSandbox
 from arcagent.mind.synthesizer import Synthesizer
@@ -451,8 +453,11 @@ class MindRun:
     Shared: one ``Synthesizer`` (none for a config without the LLM or a fluid one) and
     one thread pool of ``2 * workers`` threads, so each running game can have a call in
     flight even while calls from ended games finish. A fluid config with the LLM shares
-    ``vchat`` and runs its executive turns on the same pool. Per game: a fresh
-    ``ProgramSandbox`` and a ``RunLog`` at ``<log_dir>/<game>.jsonl``. A game's
+    ``vchat`` and runs its executive turns on the same pool. A planner config
+    (``cfg.planner``) also shares one ``LongTermStore`` at ``longterm`` (default
+    ``<log_dir>/longterm.json``), loaded once here, read and written by every game's
+    ``PlannerAgent`` under the store's lock, and saved again by ``close``. Per game: a
+    fresh ``ProgramSandbox`` and a ``RunLog`` at ``<log_dir>/<game>.jsonl``. A game's
     seed is ``seed`` plus its index in ``games``. Call ``close`` once every
     game is done.
     """
@@ -470,6 +475,7 @@ class MindRun:
         vchat: VisionChat | None = None,
         fix_chat: VisionChat | None = None,
         hybrid_moves: int = 0,
+        longterm: Path | None = None,
     ) -> None:
         if cfg.llm and cfg.fluid and vchat is None:
             raise ValueError(f"config {cfg.name} uses the LLM but no vision chat was given")
@@ -480,6 +486,14 @@ class MindRun:
         self.synth = Synthesizer(chat, k=cfg.k) if uses_synth and chat is not None else None
         self.vchat = vchat if cfg.llm and cfg.fluid else None
         self.fix_chat = fix_chat if cfg.drive else None  # drive fix turns (plain text)
+        self.store: LongTermStore | None = None
+        if cfg.planner:
+            self.store = LongTermStore(longterm or log_dir / "longterm.json")
+            self.store.load()  # a missing file is an empty store; a corrupt one is set aside
+            if self.store.load_error is not None:
+                _LOG.warning(
+                    "long-term store %s set aside: %s", self.store.path, self.store.load_error
+                )
         # Two threads per game slot: a call still running for a game that has ended
         # (its result is never read) must not hold the thread the next game needs.
         self.pool = ThreadPoolExecutor(max_workers=2 * workers, thread_name_prefix="synth")
@@ -496,14 +510,21 @@ class MindRun:
         ``agent_error`` with the spawn error and plays the ``EXPLORER`` config
         (no model, B0 only) on a ``ProgramSandbox.dead()`` stand-in.
         A ``fluid`` config builds a ``FluidAgent`` on ``ProgramSandbox.dead()`` and
-        spawns no worker; with the LLM it gets ``vchat`` and the shared pool.
+        spawns no worker; with the LLM it gets ``vchat`` and the shared pool. A
+        ``planner`` config builds a ``PlannerAgent`` on the run's store, a ``drive``
+        config a ``DriveAgent`` with its fix chat. ``hybrid_moves`` wraps any of the
+        three in a ``HybridPolicy`` over the agent's own explorer.
         """
         seed = self._seed + self._index.get(game, 0)
         log = RunLog(self._log_dir / f"{game}.jsonl", game, self.cfg.name, seed)
         if self.cfg.fluid:
             try:
-                extra: dict[str, Any] = {"fix_chat": self.fix_chat} if self.cfg.drive else {}
-                cls = DriveAgent if self.cfg.drive else FluidAgent
+                extra: dict[str, Any] = {}
+                cls: type[FluidAgent] = FluidAgent
+                if self.cfg.planner:
+                    cls, extra = PlannerAgent, {"store": self.store}
+                elif self.cfg.drive:
+                    cls, extra = DriveAgent, {"fix_chat": self.fix_chat}
                 fluid = cls(
                     game,
                     self.cfg,
@@ -551,8 +572,13 @@ class MindRun:
         return MindGame(agent, log, sandbox)
 
     def close(self) -> None:
-        """Cancel queued synthesis calls; a call already running finishes on its own thread."""
+        """Cancel queued synthesis calls (a call already running finishes on its own
+        thread), then save the long-term store when the run has one. Each agent saved
+        it at its own close; this save covers a run where no game reached that point."""
         self.pool.shutdown(wait=False, cancel_futures=True)
+        if self.store is not None:
+            with self.store.lock:
+                self.store.save()
 
 
 def mind_chat(args: argparse.Namespace) -> Chat:
@@ -615,6 +641,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="fluid configs: moves the mind gets per level before the explorer takes over; "
         "0 plays the mind alone",
     )
+    p.add_argument(
+        "--longterm",
+        default=None,
+        help="planner configs: the long-term store file, read at start and written at every "
+        "level win and at the end; default <log-dir>/longterm.json",
+    )
     args = p.parse_args(argv)
     if args.max_actions is None:
         args.max_actions = MIND_MAX_ACTIONS if args.policy == "mind" else DEFAULT_MAX_ACTIONS
@@ -666,6 +698,7 @@ def play_mind(
         vchat=fluid_chat(args) if cfg.llm and cfg.fluid else None,
         fix_chat=fluid_chat(args, fix=True) if cfg.llm and cfg.drive else None,
         hybrid_moves=args.hybrid_moves if cfg.fluid else 0,
+        longterm=Path(args.longterm) if args.longterm else None,
     )
     try:
         results, errors, scorecard = play_concurrent(
@@ -690,6 +723,7 @@ def play_mind(
         "replay": bool(args.replay),
         "model_wait_seconds": round(waited, 1),
         "hybrid_moves": args.hybrid_moves if cfg.fluid else 0,
+        "longterm": None if run.store is None else str(run.store.path),
     }
     return results, errors, scorecard, record
 

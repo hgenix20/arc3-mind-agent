@@ -13,7 +13,9 @@ Contract:
   or a test, and slice 1 logic checks and executes them. ``FLUID-LLM-<module>``
   is ``FLUID-LLM`` with that one module null, the fluid ablations. ``DRIVE`` is
   ``FLUID-LLM`` played by ``llm_drive.DriveAgent`` (``drive=True``): the LLM drives and
-  the deterministic code is its toolkit.
+  the deterministic code is its toolkit. ``PLANNER`` is ``FLUID-LLM`` played by
+  ``planner_agent.PlannerAgent`` (``planner=True``): the spec v2 planning loop
+  with a long-term store that lives across games.
 - ``build_modules`` is the only code that maps a flag to a MindAgent module class
   (Transfer selects ``CarryTransfer`` or its null); ``fluid_modules.build_fluid_modules``
   does the same for the fluid agent.
@@ -55,6 +57,8 @@ class MindConfig:
     (agent start to deadline), so a game shorter than this value can still call
     the model during the first 75% of its time.
     ``fluid``: play with ``FluidAgent`` instead of ``MindAgent``.
+    ``drive``: play a fluid config with ``DriveAgent``; ``planner``: with
+    ``PlannerAgent``. No config sets both; ``submit.MindRun`` reads ``planner`` first.
     """
 
     name: str
@@ -70,6 +74,7 @@ class MindConfig:
     synth_cutoff_s: float = 300.0
     fluid: bool = False
     drive: bool = False
+    planner: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +120,7 @@ def _all_configs() -> dict[str, MindConfig]:
         name = f"FLUID-LLM-{m}"
         out[name] = replace(out["FLUID-LLM"], name=name, **{m: False})
     out["DRIVE"] = replace(out["FLUID-LLM"], name="DRIVE", drive=True)
+    out["PLANNER"] = replace(out["FLUID-LLM"], name="PLANNER", planner=True)
     return out
 
 

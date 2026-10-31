@@ -9,6 +9,27 @@ on 2026-10-20: 110 private games (55 public leaderboard, 55 private), 9 hours
 of runtime, no internet, per-level score `min(human_actions / agent_actions,
 1)^2`, per-game score the level-index-weighted mean, total the mean over games.
 
+## The planner agent (v2, 2026-10-31)
+
+The `PLANNER` config (`arcagent/mind/planner_agent.py`, spec
+`docs/superpowers/specs/2026-10-31-agent-spec-v2.md`) is the spec v2 planner on
+top of the fluid agent: the model reads a briefing of the known rules, goals
+and hypotheses and writes short segments of moves, each segment is rolled out
+against the learned facts before any move is taken, and the explorer is the
+fallback whenever a segment breaks or the move gate trips. Rules confirmed at
+a level win go to a long-term store at `logs/longterm.json` (one file per run;
+`--longterm` names another), which the next game's briefing reads back as
+lessons. If the model server fails, the notebook plays `FLUID`.
+
+```
+python scripts/kaggle_mind_notebook.py --games all --config PLANNER --hybrid-moves 150
+kaggle kernels push -p build/kaggle-mind
+kaggle kernels status hgenix20/arc3-mind-agent
+kaggle kernels output hgenix20/arc3-mind-agent -p bench/evals/<date>-PLANNER
+python scripts/mind_metrics.py bench/evals/<date>-PLANNER/logs
+kaggle competitions submit -c arc-prize-2026-arc-agi-3 -k hgenix20/arc3-mind-agent -v <version> -f submission.parquet -m "<message>"
+```
+
 ## The fluid agent (the entry from 2026-10-24)
 
 The submitted config is `FLUID-LLM` (`arcagent/mind/fluid.py`, spec
