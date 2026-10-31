@@ -978,11 +978,11 @@ def test_test_moves_stop_after_the_attempt_cap(tmp_path: Path, monkeypatch: Any)
 
 def test_search_actions_skip_things_predicted_off_the_board(tmp_path: Path) -> None:
     agent = make_agent(tmp_path)
-    agent._can_click = True
+    agent._can_click = True  # pyright: ignore[reportPrivateUsage]
     on = Thing(1, 2, DOT, f"c2:{DOT}", 5, 5, frozenset({(5, 5)}))
     off = Thing(2, 3, DOT, f"c3:{DOT}", 0, 64, frozenset({(0, 64)}))  # pushed past the edge
     scene = Scene((on, off), 0, frozenset(), np.zeros((64, 64), dtype=np.int8))
-    clicks = [a for a in agent._actions(scene) if a.id == 6]
+    clicks = [a for a in agent._actions(scene) if a.id == 6]  # pyright: ignore[reportPrivateUsage]
     assert [(a.x, a.y) for a in clicks] == [(5, 5)]
 
 
