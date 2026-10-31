@@ -630,6 +630,7 @@ class FluidAgent:
             active=None,
             progress=self._verdict,
             budget=self._budget.remaining(),
+            **self._action_fields(),
         )
         self._last_action = a
         self.last_branch = choice.branch
@@ -637,6 +638,14 @@ class FluidAgent:
             self._fresh = True
         self._action_no += 1
         return a
+
+    def _action_fields(self) -> dict[str, object]:
+        """Extra fields a subclass adds to every action record (none here).
+
+        Merged into the record after the fixed fields, so a subclass must not use a fixed
+        field's name or an envelope key (``RunLog`` raises on those).
+        """
+        return {}
 
     @property
     def explorer(self) -> ExplorerPolicy:
