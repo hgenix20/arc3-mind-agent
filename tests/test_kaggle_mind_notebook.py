@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import re
@@ -38,13 +39,14 @@ def written_files(nb: dict[str, Any]) -> dict[str, str]:
     """The FILES dict of the cell that writes the sources into /kaggle/working."""
     for src in cell_sources(nb):
         for line in src.splitlines():
-            if line.startswith("FILES = "):
-                return json.loads(line.removeprefix("FILES = "))
+            if line.startswith("FILES_Z = "):
+                packed = ast.literal_eval(line.removeprefix("FILES_Z = "))
+                return load_script().unpack_sources(packed)
     raise AssertionError("no FILES cell")
 
 
 def run_cell(nb: dict[str, Any]) -> str:
-    hits = [s for s in cell_sources(nb) if "arcagent.agent.submit" in s and "FILES = " not in s]
+    hits = [s for s in cell_sources(nb) if "arcagent.agent.submit" in s and "FILES_Z = " not in s]
     assert len(hits) == 1
     return hits[0]
 

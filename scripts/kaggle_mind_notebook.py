@@ -54,9 +54,11 @@ Usage: python scripts/kaggle_mind_notebook.py [--slug arc3-mind-agent]
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 import textwrap
+import zlib
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -280,6 +282,17 @@ else:
 """
 
 
+def packed_sources(sources: dict[str, str]) -> str:
+    """The source dict as base64 of zlib-compressed JSON (about a quarter of the plain size)."""
+    raw = json.dumps(sources).encode("utf-8")
+    return base64.b64encode(zlib.compress(raw, 9)).decode("ascii")
+
+
+def unpack_sources(packed: str) -> dict[str, str]:
+    """Inverse of ``packed_sources``; the notebook cell does the same at run time."""
+    return json.loads(zlib.decompress(base64.b64decode(packed)).decode("utf-8"))
+
+
 def code_cell(src: str) -> dict[str, object]:
     return {
         "cell_type": "code",
@@ -349,8 +362,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         code_cell(INSTALL_CELL % {"wheels": f"{COMP_DIR}/arc_agi_3_wheels"}),
         code_cell(serve_cell()),
         code_cell(
+            "import base64, json, zlib\n"
             "from pathlib import Path\n"
-            f"FILES = {json.dumps(sources)}\n"
+            # One compressed blob: the plain JSON dict passed 1 MB with the planner agent,
+            # and Kaggle's SaveKernel refused the notebook (HTTP 400, 2026-10-31).
+            f"FILES_Z = {packed_sources(sources)!r}\n"
+            "FILES = json.loads(zlib.decompress(base64.b64decode(FILES_Z)).decode('utf-8'))\n"
             "for rel, body in FILES.items():\n"
             "    p = Path('/kaggle/working') / rel\n"
             "    p.parent.mkdir(parents=True, exist_ok=True)\n"
