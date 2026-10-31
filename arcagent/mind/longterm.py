@@ -13,16 +13,19 @@ evidence merges in ``LongTermStore.promote``. ``canonical_key`` builds the key f
 
 Contract. The file is one JSON object ``{"version", "rules", "sequences", "completions",
 "net_state"}``; tuples become lists on save and tuples again on load. ``load`` treats a
-missing file as an empty store and moves a file it cannot read to ``<name>.bad``, then
-starts empty (``load_error`` says why). ``save`` writes a temp file beside the target and
-``os.replace``s it, so a reader never sees a half-written store. Every public method holds
-``lock`` (a re-entrant lock), and a caller holds it across ``load``, changes and ``save``
-to make the three one step. The public dicts are the live content; writing to them
-directly bypasses the lock and the bounds.
+missing file as an empty store and moves a file it cannot decode or parse to
+``<name>.bad`` (replacing an earlier one), then starts empty (``load_error`` says why).
+``save`` writes a temp file beside the target and ``os.replace``s it, so a reader never
+sees a half-written store. Every public method holds ``lock`` (a re-entrant lock), and a
+caller holds it across ``load``, changes and ``save`` to make the three one step. The lock
+is in-process: games in one run share it as threads, and a second process writing the
+same file would need a file lock this module does not provide. The public dicts are the
+live content; writing to them directly bypasses the lock and the bounds.
 
 Bounds: ``MAX_RULES`` (the lowest probability is dropped when full), ``MAX_SEQUENCES``
 (fewest successes dropped), ``MAX_COMPLETIONS_PER_LEVEL`` (oldest dropped) and
-``MAX_GAMES_SEEN`` per rule. Statements are cut at ``STATEMENT_MAX_CHARS``.
+``MAX_GAMES_SEEN`` per rule (oldest dropped, ``created_game`` kept). Statements are cut at
+``STATEMENT_MAX_CHARS``.
 
 Failure modes: ``ValueError`` for negative counts or malformed moves; ``OSError`` from the
 file system is raised as is (a missing file is the one case handled). Nothing here logs;
@@ -55,6 +58,7 @@ from arcagent.mind.facts import (
     Effect,
     FactKey,
     State,
+    clicked_sig,
 )
 from arcagent.mind.kinds import base_sig
 
@@ -68,7 +72,7 @@ STORE_VERSION = 1
 MAX_RULES = 5000  # rules kept; the lowest probability goes when a new key arrives
 MAX_SEQUENCES = 2000  # sequence records kept; the fewest successes goes
 MAX_COMPLETIONS_PER_LEVEL = 50  # move counts kept per game and level; the oldest goes
-MAX_GAMES_SEEN = 500  # game ids kept per rule; the oldest goes
+MAX_GAMES_SEEN = 500  # game ids kept per rule; the oldest after created_game goes
 STATEMENT_MAX_CHARS = 120
 CLICK_ROLE = "click"  # the action role of every click label, whatever was clicked
 NO_HARM = "none"
@@ -91,7 +95,8 @@ class RuleRecord:
     the briefing; ``effect`` the effect in the words of ``effect_text``. ``probability``
     and ``state`` are derived from ``confirmations`` and ``contradictions`` by
     ``rule_probability`` and ``rule_state``; ``promote`` recomputes both, so a stored
-    record never carries a caller's guess. ``games_seen`` always holds ``created_game``.
+    record never carries a caller's guess, and keeps ``created_game`` first in
+    ``games_seen`` whatever the ``MAX_GAMES_SEEN`` bound drops.
     ``harm`` is ``"none"`` or the harm kind the adverse book names (spec 4.10). ``source``
     says where the rule came from: observed in play, loaded from this store, or an
     agent-made label (spec 4.11a).
@@ -190,13 +195,25 @@ def tag_of(context: str) -> str:
     return _COLOUR_PREFIX.sub("", context, count=1)
 
 
+def _subject_sig(label: str, subject: str) -> str:
+    """``subject``, or the clicked sig when ``subject`` is ``self`` and ``label`` names one
+    (``A6:<sig>@<ring>``); ``self`` stays when the label carries no sig."""
+    if subject != "self":
+        return subject
+    clicked = clicked_sig(label)
+    return subject if clicked is None else clicked
+
+
 def canonical_key(fact_key: FactKey, effects: Sequence[Effect]) -> CanonicalKey:
     """``(action_role, shape_class, context_tag, effect_kind)`` for a fact key and its
-    effects; ``effect_kind`` is the first effect's kind, ``none`` with no effects. Never
-    contains a colour index (spec 4.2, D1)."""
+    effects; ``effect_kind`` is the first effect's kind, ``none`` with no effects. When
+    the clicked thing acted on itself (subject ``self`` under an ``A6:<sig>@<ring>`` label)
+    the shape class is the clicked sig's: spec 4.2 keys a rule by the kind of its subject,
+    and for a click on itself that kind lives only in the label. Never contains a colour
+    index (spec 4.2, D1)."""
     label, subject, context = fact_key
     kind = effects[0].kind if effects else "none"
-    return (role_of(label), shape_of(subject), tag_of(context), kind)
+    return (role_of(label), shape_of(_subject_sig(label, subject)), tag_of(context), kind)
 
 
 def rule_id(key: CanonicalKey) -> str:
@@ -223,7 +240,7 @@ _CONTEXT_WORDS: dict[str, str] = {
 
 def _object_words(shape: str) -> str:
     if shape == "self":
-        return "it"
+        return "a thing"  # the clicked thing, whose kind the label did not name
     if shape == "any":
         return "any thing"
     if shape == SPAWN:
@@ -271,13 +288,15 @@ def _effect_words(effect: Effect, obj: str) -> str:
 
 def statement_for(fact_key: FactKey, effects: Sequence[Effect]) -> str:
     """One plain sentence for the canonical key of ``fact_key`` and its first effect, for
-    example ``A3 moves a <shape> thing by (1, 0)`` or ``clicking a thing recolours it``.
-    No colour index; at most ``STATEMENT_MAX_CHARS`` characters."""
+    example ``A3 moves a <shape> thing by (1, 0)`` or ``clicking a <shape> thing recolours
+    it``. No colour index; at most ``STATEMENT_MAX_CHARS`` characters."""
     role, shape, tag, _ = canonical_key(fact_key, effects)
     actor = _ROLE_WORDS.get(role, role)
     obj = _object_words(shape)
-    effect = _effect_words(effects[0], obj) if effects else f"has no recorded effect on {obj}"
-    core = f"a thing {effect}" if shape == "self" else effect
+    on_self = fact_key[1] == "self"  # the clicked thing acted on itself: "... a thing ... it"
+    target = "it" if on_self else obj
+    effect = _effect_words(effects[0], target) if effects else f"has no recorded effect on {target}"
+    core = f"{obj} {effect}" if on_self else effect
     text = f"{actor} {core}{_context_words(tag)}"
     if len(text) <= STATEMENT_MAX_CHARS:
         return text
@@ -306,13 +325,18 @@ def effect_text(effects: Sequence[Effect]) -> str:
 # --- merging ----------------------------------------------------------------------------
 
 
-def _union(*groups: Iterable[str]) -> list[str]:
-    seen: dict[str, None] = {}
+def _union(created: str, *groups: Iterable[str]) -> list[str]:
+    """``created`` first, then every other game id once in first-seen order; past
+    ``MAX_GAMES_SEEN`` the oldest of the others go, so ``created`` is always kept."""
+    seen: dict[str, None] = {created: None}
     for group in groups:
         for game in group:
             seen.setdefault(game, None)
-    games = list(seen)
-    return games[-MAX_GAMES_SEEN:] if len(games) > MAX_GAMES_SEEN else games
+    others = list(seen)[1:]
+    room = max(0, MAX_GAMES_SEEN - 1)
+    if len(others) > room:
+        others = others[len(others) - room :]
+    return [created, *others]
 
 
 def _derived(confirmations: int, contradictions: int) -> tuple[float, RuleState]:
@@ -335,7 +359,7 @@ def _fresh(record: RuleRecord, now: float) -> RuleRecord:
         probability=p,
         state=state,
         scope="long",
-        games_seen=_union([record.created_game], record.games_seen),
+        games_seen=_union(record.created_game, record.games_seen),
         last_revised=now,
     )
 
@@ -353,7 +377,12 @@ def _merge(current: RuleRecord, incoming: RuleRecord, now: float) -> RuleRecord:
         probability=p,
         state=state,
         scope="long",
-        games_seen=_union(current.games_seen, incoming.games_seen, [incoming.created_game]),
+        games_seen=_union(
+            current.created_game,
+            current.games_seen,
+            incoming.games_seen,
+            [incoming.created_game],
+        ),
         last_revised=now,
         harm=harm,
     )
@@ -401,17 +430,19 @@ class LongTermStore:
 
     def load(self) -> None:
         """Replace the content with the file's. A missing file gives an empty store. A
-        file that is not a store this module wrote is moved to ``<name>.bad`` and the
-        store starts empty, with the reason in ``load_error``."""
+        file that is not UTF-8 JSON in the shape this module writes is moved to
+        ``<name>.bad`` (replacing an earlier one) and the store starts empty, with the
+        reason in ``load_error``. Any other ``OSError`` is raised as is."""
         with self.lock:
             self.load_error = None
             try:
-                text = self.path.read_text(encoding="utf-8")
+                raw = self.path.read_bytes()
             except FileNotFoundError:
                 self._reset()
                 return
             try:
-                rules, sequences, completions, net_state = _decode(text)
+                # UnicodeDecodeError and JSONDecodeError are both ValueErrors.
+                rules, sequences, completions, net_state = _decode(raw.decode("utf-8"))
             except ValueError as exc:
                 os.replace(self.path, self.path.with_name(self.path.name + ".bad"))
                 self.load_error = f"{type(exc).__name__}: {exc}"[:300]

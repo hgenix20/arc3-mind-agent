@@ -144,6 +144,7 @@ def test_save_creates_parent_and_leaves_no_temp_file(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "content",
     [
+        b"\xff\xfe\x00\x01",  # not UTF-8 at all
         b"\x00garbage{",
         b"[]",
         json.dumps({"version": 99, "rules": [], "sequences": [], "completions": {}}).encode(),
@@ -292,6 +293,24 @@ def test_promote_rejects_a_key_that_names_a_colour(tmp_path: Path) -> None:
     assert store.rules == {}
 
 
+def test_games_seen_is_bounded_and_keeps_created_game(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(longterm, "MAX_GAMES_SEEN", 3)
+    store = store_at(tmp_path)
+    key: CanonicalKey = ("A3", SHAPE, "any", "move")
+    for i in range(1, 6):
+        store.promote(rule(key, games_seen=[f"g{i}"], created_game=f"g{i}"))
+    stored = store.rules[key]
+    assert stored.created_game == "g1"
+    assert stored.games_seen == ["g1", "g4", "g5"]
+    # The same bound on a fresh insert that already lists more games than fit.
+    fresh = store.promote(
+        rule(("A2", SHAPE, "any", "move"), games_seen=["g2", "g3", "g4", "g5"], created_game="g1")
+    )
+    assert fresh.games_seen == ["g1", "g4", "g5"]
+
+
 def test_rules_are_bounded_by_lowest_probability(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -315,12 +334,18 @@ def test_rules_are_bounded_by_lowest_probability(
     [
         (("A3", f"c1:{SHAPE}", "any"), MOVE, ("A3", SHAPE, "any", "move")),
         (
+            # The clicked thing acted on itself: its kind comes from the label, ring dropped.
             (f"A6:c3:{SHAPE}@2", "self", "any"),
             (Effect("recolor", color=5),),
-            ("click", "self", "any", "recolor"),
+            ("click", SHAPE, "any", "recolor"),
+        ),
+        (
+            (f"A6:c9:{OTHER}@0", "self", "touch:4"),
+            (Effect("game_over"),),
+            ("click", OTHER, "touch", "game_over"),
         ),
         (("A6:none", f"c2:{SHAPE}", "any"), (Effect("none"),), ("click", SHAPE, "any", "none")),
-        (("A6", "self", "any"), (), ("click", "self", "any", "none")),
+        (("A6", "self", "any"), (), ("click", "self", "any", "none")),  # no sig in the label
         (
             ("any", f"kc1:{SHAPE}", "touch:9"),
             (Effect("game_over"),),
@@ -384,8 +409,14 @@ def test_key_parts() -> None:
         (
             (f"A6:c3:{SHAPE}@2", "self", "any"),
             (Effect("recolor", color=5),),
-            "clicking a thing recolours it",
+            f"clicking a {SHAPE} thing recolours it",
         ),
+        (
+            (f"A6:c9:{OTHER}@0", "self", "touch:4"),
+            (Effect("game_over"),),
+            f"clicking a {OTHER} thing ends the game while touching something",
+        ),
+        (("A6", "self", "any"), (Effect("recolor", color=5),), "clicking a thing recolours it"),
         (
             (f"A6:c3:{SHAPE}@2", f"c4:{OTHER}", "any"),
             (Effect("recolor", color=5),),
