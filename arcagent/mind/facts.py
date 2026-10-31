@@ -15,6 +15,11 @@ in ``learn``. Things that move together as one rigid sprite (same shift, 4-adjac
 before the move) are a co-moving group: none of them is pushed by, blocked by, or a
 blocker of another. Pure and deterministic; callers strip noise things before ``learn``.
 
+Next to its status, every fact carries the evidence view of spec 4.4: a probability (the
+Beta mean of its hits and misses, four decimals), the band that probability falls in, and
+a hypothesis, fact or retired state. ``FactMemory.probability`` and ``FactMemory.ranked``
+read them for the planner, and a same-shape sibling is borrowed by highest probability.
+
 Blocking reads cell colors, terrain included (``objects.color_at``): a wall can be the
 background or a terrain region, not only a thing. ``FactMemory.walkable`` holds, per sig,
 the colors its things have moved onto; a walkable color is never a blocker for that sig.
@@ -57,6 +62,8 @@ EffectKind = Literal[
 FactKey = tuple[str, str, str]  # (action label, subject, context)
 SPAWN = "spawn"  # subject of the per-action spawn fact (label, SPAWN, "any")
 Status = Literal["thin", "solid", "broken"]
+Band = Literal["certain", "medium", "low"]  # where a fact's probability sits (spec 4.4)
+State = Literal["hypothesis", "fact", "retired"]  # spec 4.2 status rules, read off the band
 RecordResult = Literal["new", "hit", "miss"]
 Owner = Mapping[Cell, tuple[int, int]]  # cell -> (thing id, color)
 
@@ -65,6 +72,12 @@ BROKEN_MISSES = 2  # a fact is broken after this many misses in a row
 CLAIM_MOVE = -1  # evidence id of a claimed (not observed) fact
 EVIDENCE_KEEP = 20  # a fact keeps the move ids of its last this-many observations
 KIN_KEEP = 8  # sigs kept per tracked thing (FactMemory.kin)
+PRIOR_A = 1  # Beta prior pseudo-hits: with PRIOR_B it is the flat prior of spec 4.4
+PRIOR_B = 1  # Beta prior pseudo-misses; a fact with no observations sits at 0.5
+BAND_CERTAIN = 0.8  # probability at or above this is the certain band (spec 4.4, Kameron set 0.8)
+BAND_LOW = 0.3  # probability below this is the low band (spec 4.4, Kameron set 0.3)
+PROMOTE_HITS = 5  # hits in a row a certain hypothesis needs to become a fact (spec 4.4b)
+_PRIOR_MEAN = round(PRIOR_A / (PRIOR_A + PRIOR_B), 4)  # the probability of nothing observed
 
 _DIRS: dict[tuple[int, int], str] = {
     (-1, 0): "left",
@@ -143,11 +156,30 @@ class Fact:
     """A short fact.
 
     ``hits`` counts agreeing observations since the fact was seeded (the seed included).
-    ``misses`` is the lifetime miss total, shown in ``line``; ``streak`` is the misses in a
+    ``misses`` is the lifetime miss total, shown in ``line`` and kept across a re-seed, so
+    a fact that was wrong before climbs back more slowly; ``streak`` is the misses in a
     row, which a hit resets and which decides ``broken``. ``level`` is the level the fact
     was created on (``FactMemory.level`` at its first ``record``), so rule reuse across
     levels can be measured. ``broken_after`` is the misses-in-a-row threshold, copied from
     ``FactMemory.broken_after`` when the fact is made and kept in step by its setter.
+
+    Two readings of the counts live side by side. ``status`` (thin, solid, broken) is the
+    threshold view the predictor and the sleep use; it is unchanged. ``probability``,
+    ``band`` and ``state`` are the evidence view of spec 4.4: the Beta mean
+    ``(hits + PRIOR_A) / (hits + misses + PRIOR_A + PRIOR_B)`` to four decimals (a fact with
+    no observations is 0.5), the band it falls in (certain at or above ``BAND_CERTAIN``,
+    low below ``BAND_LOW``, medium between; Kameron set 0.8 and 0.3), and the state the
+    band gives it: ``retired`` in the low band, ``fact`` when certain and promoted, else
+    ``hypothesis``. A retired fact is kept; ``status`` keeps deciding what the predictor
+    may use.
+
+    Promotion (spec 4.4b) asks for ``PROMOTE_HITS`` hits in a row since the last miss. The
+    class has no count of hits since the last miss; it counts hits since the seed and
+    misses in a row. So the test reads: the last observation was a hit (``streak`` is 0)
+    and ``hits`` is at least ``PROMOTE_HITS``. The certain band bounds what this lets
+    through, since before rounding ``probability >= 0.8`` needs ``hits >= 4 * misses + 3``:
+    a fact with exactly ``PROMOTE_HITS`` hits has no miss at all, and every further miss
+    costs four more hits before the fact is promoted again.
     """
 
     key: FactKey
@@ -166,11 +198,42 @@ class Fact:
             return "broken"
         return "solid" if self.hits >= THIN_BELOW else "thin"
 
+    @property
+    def probability(self) -> float:
+        """Beta mean of the record, ``(hits + 1) / (hits + misses + 2)``, to four decimals."""
+        total = self.hits + self.misses + PRIOR_A + PRIOR_B
+        return round((self.hits + PRIOR_A) / total, 4)
+
+    @property
+    def band(self) -> Band:
+        """``certain`` at or above ``BAND_CERTAIN``, ``low`` below ``BAND_LOW``, else ``medium``."""
+        p = self.probability
+        if p >= BAND_CERTAIN:
+            return "certain"
+        return "low" if p < BAND_LOW else "medium"
+
+    @property
+    def state(self) -> State:
+        """``retired`` in the low band; ``fact`` when certain, last observation a hit and
+        ``hits >= PROMOTE_HITS`` (the class docstring says why this stands in for hits in
+        a row); else ``hypothesis``.
+        """
+        band = self.band
+        if band == "low":
+            return "retired"
+        if band == "certain" and self.streak == 0 and self.hits >= PROMOTE_HITS:
+            return "fact"
+        return "hypothesis"
+
     def line(self) -> str:
-        """One line, e.g. ``A3 c1:ab12.. any: moves 1 cell left [solid 6/0]``."""
+        """One line, e.g. ``A3 c1:ab12.. any: moves 1 cell left [solid 6/0 p=0.8750 fact]``.
+
+        The bracket holds the status with hits/misses, then the probability and the state,
+        so a briefing can show how far the fact is trusted.
+        """
         label, subject, context = self.key
         what = "; ".join(e.text() for e in self.effects)
-        score = f"[{self.status} {self.hits}/{self.misses}]"
+        score = f"[{self.status} {self.hits}/{self.misses} p={self.probability:.4f} {self.state}]"
         return f"{label} {_abbrev(subject)} {context}: {what} {score}"
 
     def note(self, move: int) -> None:
@@ -230,7 +293,8 @@ class FactMemory:
     ``missed`` holds the keys that took a miss since the last ``new_level`` (the fluid
     sleep's winning-facts check reads it before the agent calls ``new_level``).
     ``broken_after`` is the misses-in-a-row threshold for ``Fact.status``; setting it
-    updates every stored fact.
+    updates every stored fact. ``probability`` and ``ranked`` read facts' probabilities
+    (spec 4.4); a key with no fact counts as the prior, 0.5.
     """
 
     def __init__(self) -> None:
@@ -318,6 +382,22 @@ class FactMemory:
     def get(self, key: FactKey) -> Fact | None:
         return self.facts.get(key)
 
+    def probability(self, key: FactKey) -> float:
+        """The fact's probability (spec 4.4), or the prior 0.5 when ``key`` has no fact.
+
+        An unknown key counts as a fact nobody has observed yet, so a rollout can price a
+        step it has no fact for without special cases.
+        """
+        fact = self.facts.get(key)
+        return _PRIOR_MEAN if fact is None else fact.probability
+
+    def ranked(self, keys: Iterable[FactKey]) -> list[FactKey]:
+        """``keys`` best first: probability descending (four decimals), ties by key ascending.
+
+        Unknown keys rank at the prior, 0.5. Duplicates in ``keys`` stay.
+        """
+        return sorted(keys, key=lambda k: (-self.probability(k), k))
+
     def note_kin(self, things: Iterable[Thing]) -> None:
         """Append each thing's sig to its track's history when it differs from the last.
 
@@ -368,8 +448,8 @@ class FactMemory:
         Order: exact key, the subject's ``any`` fact (with a ``kind`` other than the
         subject, either only when not broken), the kind's exact then ``any`` fact when not
         broken, a broken fact of the subject, a non-broken fact of a same-shape subject
-        (same context before ``any``; most hits, then lowest key), then the action-wide
-        ``(label, "any", "any")`` fact unless it is a spawn fact.
+        (same context before ``any``; highest probability, then lowest key), then the
+        action-wide ``(label, "any", "any")`` fact unless it is a spawn fact.
         """
         own = [
             f
@@ -395,6 +475,11 @@ class FactMemory:
         return wide, False
 
     def _borrow(self, label: str, subject: str, context: str) -> Fact | None:
+        """The non-broken same-shape sibling with the highest probability, ties by lowest key.
+
+        Ranking by probability puts a sibling with many hits and many misses below one with
+        a shorter, cleaner record; the hit count alone would rank them the other way.
+        """
         shape = _shape_of_subject(subject)
         if shape is None:
             return None
@@ -405,7 +490,7 @@ class FactMemory:
                 if k[1] != subject and self.facts[k].status != "broken"
             ]
             if cands:
-                return min(cands, key=lambda f: (-f.hits, f.key))
+                return min(cands, key=lambda f: (-f.probability, f.key))
         return None
 
     def record(

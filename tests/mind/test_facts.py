@@ -5,9 +5,15 @@ from __future__ import annotations
 import time
 
 import numpy as np
+import pytest
 
 from arcagent.core.types import Action, Grid
 from arcagent.mind.facts import (
+    BAND_CERTAIN,
+    BAND_LOW,
+    PRIOR_A,
+    PRIOR_B,
+    PROMOTE_HITS,
     SPAWN,
     Effect,
     Fact,
@@ -89,7 +95,130 @@ def test_effect_text_and_fact_line() -> None:
     key = ("A3", "c1:ab12cdef01", "any")
     for i in range(6):
         mem.record(key, (Effect("move", dx=-1),), i)
-    assert fact(mem, key).line() == "A3 c1:ab12.. any: moves 1 cell left [solid 6/0]"
+    line = fact(mem, key).line()
+    assert line == "A3 c1:ab12.. any: moves 1 cell left [solid 6/0 p=0.8750 fact]"
+
+
+# --- probability, bands and state (spec 4.4) ------------------------------------------
+
+
+def test_probability_constants_match_spec_4_4() -> None:
+    assert (PRIOR_A, PRIOR_B) == (1, 1)
+    assert (BAND_CERTAIN, BAND_LOW, PROMOTE_HITS) == (0.8, 0.3, 5)
+
+
+def test_new_fact_is_half_and_a_hypothesis() -> None:
+    f = Fact(("A1", "c1:a", "any"), (Effect("none"),), [])
+    assert (f.probability, f.band, f.state) == (0.5, "medium", "hypothesis")
+    mem = FactMemory()
+    mem.record(f.key, f.effects, 0)
+    seeded = fact(mem, f.key)
+    assert seeded.probability == 0.6667 and seeded.state == "hypothesis"
+
+
+def test_probability_moves_toward_the_observed_rate() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    good, bad = (Effect("move", dx=-1),), (Effect("none"),)
+    seen: list[float] = []
+    for i, effects in enumerate([good] * 4 + [bad] + [good] * 15):
+        mem.record(key, effects, i)
+        seen.append(fact(mem, key).probability)
+    assert seen[:4] == [0.6667, 0.75, 0.8, 0.8333]  # (hits + 1) / (hits + 2)
+    assert seen[4] == 0.7143  # the miss: 5 / 7
+    assert all(seen[i] < seen[i + 1] for i in range(4, len(seen) - 1))  # every hit raises it
+    f = fact(mem, key)
+    rate = f.hits / (f.hits + f.misses)
+    assert f.probability == 0.9091  # 20 / 22
+    assert abs(rate - f.probability) < abs(rate - seen[4])
+
+
+@pytest.mark.parametrize(
+    ("hits", "misses", "probability", "band"),
+    [
+        (78, 20, 0.79, "medium"),
+        (7, 1, 0.8, "certain"),
+        (28, 70, 0.29, "low"),
+        (2, 6, 0.3, "medium"),
+    ],
+)
+def test_band_edges_at_point_eight_and_point_three(
+    hits: int, misses: int, probability: float, band: str
+) -> None:
+    f = Fact(("A1", "c1:a", "any"), (Effect("none"),), [], hits=hits, misses=misses)
+    assert (f.probability, f.band) == (probability, band)
+
+
+def test_state_is_fact_after_promote_hits_agreeing_observations() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    good, bad = (Effect("move", dx=-1),), (Effect("none"),)
+    for i in range(PROMOTE_HITS - 1):
+        mem.record(key, good, i)
+    f = fact(mem, key)
+    assert f.band == "certain" and f.state == "hypothesis"  # 4 hits: 0.8333, one short
+    mem.record(key, good, PROMOTE_HITS - 1)
+    assert f.state == "fact" and f.status == "solid"
+    mem.record(key, bad, PROMOTE_HITS)  # one miss: 6 / 8 = 0.75, back to hypothesis
+    assert (f.probability, f.state, f.status) == (0.75, "hypothesis", "solid")
+    for i in range(PROMOTE_HITS):
+        mem.record(key, good, PROMOTE_HITS + 1 + i)
+    assert f.hits == 10 and f.probability == 0.8462 and f.state == "fact"
+
+
+def test_state_is_retired_when_probability_falls_below_point_three() -> None:
+    f = Fact(("A1", "c1:a", "any"), (Effect("none"),), [], hits=0, misses=3)
+    assert (f.probability, f.band, f.state, f.status) == (0.2, "low", "retired", "thin")
+    mem = FactMemory()
+    key = ("A2", "c1:a", "any")
+    good, bad = (Effect("none"),), (Effect("move", dx=1),)
+    for i, effects in enumerate([good, bad, bad, good, bad, bad]):
+        mem.record(key, effects, i)
+    f = fact(mem, key)
+    assert (f.hits, f.misses) == (1, 4) and f.probability == 0.2857
+    assert f.state == "retired" and f.status == "broken"
+
+
+def test_memory_probability_of_an_unknown_key_is_the_prior() -> None:
+    mem = FactMemory()
+    key = ("A9", "c1:z", "any")
+    assert mem.probability(key) == 0.5
+    mem.record(key, (Effect("none"),), 0)
+    assert mem.probability(key) == fact(mem, key).probability == 0.6667
+
+
+def test_ranked_sorts_by_probability_then_key_with_unknown_keys_at_half() -> None:
+    mem = FactMemory()
+    strong, tie_b, tie_c = ("A1", "c1:a", "any"), ("A1", "c2:a", "any"), ("A1", "c3:a", "any")
+    even, unknown = ("A1", "c4:a", "any"), ("A1", "c0:z", "any")
+    for i in range(5):
+        mem.record(strong, (Effect("none"),), i)
+    mem.record(tie_b, (Effect("none"),), 0)
+    mem.record(tie_c, (Effect("none"),), 0)
+    mem.record(even, (Effect("none"),), 0)
+    mem.record(even, (Effect("move", dx=1),), 1)  # 1 hit, 1 miss: exactly 0.5
+    assert [mem.probability(k) for k in (strong, tie_b, even)] == [0.8571, 0.6667, 0.5]
+    ranked = mem.ranked([even, tie_c, unknown, tie_b, strong])
+    assert ranked == [strong, tie_b, tie_c, unknown, even]
+
+
+def test_borrow_picks_the_sibling_with_the_highest_probability() -> None:
+    mem = FactMemory()
+    many, few = ("A1", "c2:sq", "any"), ("A1", "c5:sq", "any")
+    good, bad = (Effect("none"),), (Effect("recolor", color=3),)
+    for i, effects in enumerate(([good] * 3 + [bad]) * 3):  # 9 hits, 3 misses, never broken
+        mem.record(many, effects, i)
+    for i in range(4):
+        mem.record(few, good, i)
+    assert fact(mem, many).hits > fact(mem, few).hits
+    assert (fact(mem, many).probability, fact(mem, few).probability) == (0.7143, 0.8333)
+    found = mem.lookup("A1", "c7:sq", "any")
+    assert found is not None and found[0].key == few and found[1]
+    # equal probabilities: the lowest key lends
+    mem.record(("A2", "c3:sq", "any"), good, 0)
+    mem.record(("A2", "c1:sq", "any"), good, 0)
+    found = mem.lookup("A2", "c9:sq", "any")
+    assert found is not None and found[0].key == ("A2", "c1:sq", "any")
 
 
 # --- table of contents and lookup -----------------------------------------------------
