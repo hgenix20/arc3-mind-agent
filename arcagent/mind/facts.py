@@ -158,10 +158,12 @@ class Fact:
     ``hits`` counts agreeing observations since the fact was seeded (the seed included).
     ``misses`` is the lifetime miss total, shown in ``line`` and kept across a re-seed, so
     a fact that was wrong before climbs back more slowly; ``streak`` is the misses in a
-    row, which a hit resets and which decides ``broken``. ``level`` is the level the fact
-    was created on (``FactMemory.level`` at its first ``record``), so rule reuse across
-    levels can be measured. ``broken_after`` is the misses-in-a-row threshold, copied from
-    ``FactMemory.broken_after`` when the fact is made and kept in step by its setter.
+    row, which a hit resets and which decides ``broken``; ``run`` is the hits in a row
+    since the last miss (1 on a seed or re-seed, 0 after a miss), which decides promotion.
+    ``level`` is the level the fact was created on (``FactMemory.level`` at its first
+    ``record``), so rule reuse across levels can be measured. ``broken_after`` is the
+    misses-in-a-row threshold, copied from ``FactMemory.broken_after`` when the fact is
+    made and kept in step by its setter.
 
     Two readings of the counts live side by side. ``status`` (thin, solid, broken) is the
     threshold view the predictor and the sleep use; it is unchanged. ``probability``,
@@ -173,13 +175,15 @@ class Fact:
     ``hypothesis``. A retired fact is kept; ``status`` keeps deciding what the predictor
     may use.
 
-    Promotion (spec 4.4b) asks for ``PROMOTE_HITS`` hits in a row since the last miss. The
-    class has no count of hits since the last miss; it counts hits since the seed and
-    misses in a row. So the test reads: the last observation was a hit (``streak`` is 0)
-    and ``hits`` is at least ``PROMOTE_HITS``. The certain band bounds what this lets
-    through, since before rounding ``probability >= 0.8`` needs ``hits >= 4 * misses + 3``:
-    a fact with exactly ``PROMOTE_HITS`` hits has no miss at all, and every further miss
-    costs four more hits before the fact is promoted again.
+    Promotion (spec 4.4b) reads ``run``: a fact in the certain band whose ``run`` is at
+    least ``PROMOTE_HITS`` is a ``fact``. A seed or re-seed starts the run at 1, each hit
+    adds one and a miss sets it back to 0, so a certain fact that just took a miss stays a
+    hypothesis until ``PROMOTE_HITS`` hits in a row agree with it again, however many hits
+    came before the miss. ``misses`` is the lifetime count, so at the default
+    ``BROKEN_MISSES`` a re-seeded fact starts below 0.5 (1 hit, 2 misses, p 0.4) and a
+    twice re-seeded one starts retired (1 hit, 4 misses, p 0.2857). The plan's decision
+    D-F keeps that on purpose: the rollout's probabilities then price plans that lean on
+    such a key low, which steers the planner away from it without a hard rule.
     """
 
     key: FactKey
@@ -191,6 +195,7 @@ class Fact:
     streak: int = 0
     level: int = 0
     broken_after: int = BROKEN_MISSES
+    run: int = 0  # hits in a row since the last miss; new fields go last for positional callers
 
     @property
     def status(self) -> Status:
@@ -200,7 +205,9 @@ class Fact:
 
     @property
     def probability(self) -> float:
-        """Beta mean of the record, ``(hits + 1) / (hits + misses + 2)``, to four decimals."""
+        """Beta mean of the record to four decimals:
+        ``(hits + PRIOR_A) / (hits + misses + PRIOR_A + PRIOR_B)``.
+        """
         total = self.hits + self.misses + PRIOR_A + PRIOR_B
         return round((self.hits + PRIOR_A) / total, 4)
 
@@ -214,14 +221,13 @@ class Fact:
 
     @property
     def state(self) -> State:
-        """``retired`` in the low band; ``fact`` when certain, last observation a hit and
-        ``hits >= PROMOTE_HITS`` (the class docstring says why this stands in for hits in
-        a row); else ``hypothesis``.
+        """``retired`` in the low band; ``fact`` when certain and ``run >= PROMOTE_HITS``
+        (that many hits in a row since the last miss); else ``hypothesis``.
         """
         band = self.band
         if band == "low":
             return "retired"
-        if band == "certain" and self.streak == 0 and self.hits >= PROMOTE_HITS:
+        if band == "certain" and self.run >= PROMOTE_HITS:
             return "fact"
         return "hypothesis"
 
@@ -505,15 +511,21 @@ class FactMemory:
 
         Callers apply context rules first; a miss here is never absorbed and never
         replaces the fact's effects. The first observation after a fact went broken
-        re-seeds it (effects replaced, hits 1, streak 0) and returns ``"new"``, and so does
-        the first observation of a claimed fact (evidence only ``CLAIM_MOVE``) that
+        re-seeds it (effects replaced, hits 1, streak 0, run 1) and returns ``"new"``, and
+        so does the first observation of a claimed fact (evidence only ``CLAIM_MOVE``) that
         disagrees with the claim: the game wins over the LLM's guess. ``tags``
         adds behavior tags the effects alone can't show (``rotate`` needs cell counts).
         """
         fact = self.facts.get(key)
         if fact is None:
             fact = Fact(
-                key, effects, [move], hits=1, level=self.level, broken_after=self._broken_after
+                key,
+                effects,
+                [move],
+                hits=1,
+                level=self.level,
+                broken_after=self._broken_after,
+                run=1,
             )
             self.facts[key] = fact
             self._index(fact, _tags(key, effects) | tags)
@@ -526,17 +538,19 @@ class FactMemory:
             fact.evidence = []  # the claim is no evidence once the game has shown one
         fact.note(move)
         if fact.status == "broken" or (claimed and fact.effects != effects):
-            fact.effects, fact.hits, fact.streak = effects, 1, 0
+            fact.effects, fact.hits, fact.streak, fact.run = effects, 1, 0, 1
             self._index(fact, _tags(key, effects) | tags)
             return "new"
         if fact.effects == effects:
             fact.hits += 1
             fact.streak = 0
+            fact.run += 1
             if not tags <= fact.tags:
                 self._index(fact, set(fact.tags | tags))
             return "hit"
         fact.misses += 1
         fact.streak += 1
+        fact.run = 0
         self.missed.add(key)
         return "miss"
 
@@ -546,6 +560,7 @@ class FactMemory:
         fact.effects = effects
         fact.hits += 1
         fact.streak = 0
+        fact.run += 1
         fact.note(move)
         self._index(fact, _tags(key, effects))
         return "hit"

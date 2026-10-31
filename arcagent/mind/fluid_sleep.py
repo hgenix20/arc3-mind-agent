@@ -13,10 +13,10 @@ each pass changed. Callers run it before ``FactMemory.new_level`` (which clears
    effects, and whose subjects are sibling sigs (same shape, any color) are merge
    candidates: every one but the fact with the most hits (ties to the lowest key) is
    reported as ``merged``, and no fact changes. Deleting them changed predictions:
-   ``FactMemory._borrow`` lends the sibling with the most hits in the whole
-   ``(label, context, shape)`` group, which can have different effects (slice 3 review
-   A1). Eligible facts: a simple action's label, context ``any``, not broken, and no
-   move, slide or teleport effect.
+   ``FactMemory._borrow`` lends the sibling with the highest probability (ties by lowest
+   key) in the whole ``(label, context, shape)`` group, which can have different effects
+   (slice 3 review A1). Eligible facts: a simple action's label, context ``any``, not
+   broken, and no move, slide or teleport effect.
 3. Drop. A thin fact with zero hits, created on ``level`` and not in ``used``, is
    deleted and reported as ``dropped``. ``record`` seeds facts with one hit, so this
    only removes facts whose hits were cleared by other code.

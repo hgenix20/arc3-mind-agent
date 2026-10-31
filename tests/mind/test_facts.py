@@ -166,6 +166,52 @@ def test_state_is_fact_after_promote_hits_agreeing_observations() -> None:
     assert f.hits == 10 and f.probability == 0.8462 and f.state == "fact"
 
 
+@pytest.mark.parametrize(
+    ("before", "after", "probability", "state"),
+    [
+        (20, 1, 0.9167, "hypothesis"),  # one hit since the miss, however many came before
+        (5, 2, 0.8, "hypothesis"),  # certain again, but only two hits since the miss
+        (5, 5, 0.8462, "fact"),  # PROMOTE_HITS hits since the miss
+    ],
+)
+def test_promotion_counts_hits_since_the_last_miss(
+    before: int, after: int, probability: float, state: str
+) -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    good, bad = (Effect("move", dx=-1),), (Effect("none"),)
+    for i, effects in enumerate([good] * before + [bad] + [good] * after):
+        mem.record(key, effects, i)
+    f = fact(mem, key)
+    assert (f.band, f.probability) == ("certain", probability)
+    assert f.state == state
+    assert f.run == after
+
+
+def test_run_counts_hits_since_the_last_miss_and_restarts_on_a_reseed() -> None:
+    mem = FactMemory()
+    key = ("A3", "c1:a", "any")
+    good, bad = (Effect("move", dx=-1),), (Effect("none"),)
+    mem.record(key, good, 0)
+    assert fact(mem, key).run == 1  # the seed counts
+    mem.record(key, good, 1)
+    mem.record(key, good, 2)
+    assert fact(mem, key).run == 3
+    mem.record(key, bad, 3)
+    assert fact(mem, key).run == 0
+    mem.record(key, good, 4)
+    assert fact(mem, key).run == 1
+    mem.revise(key, (Effect("slide", dx=-1),), 5)
+    assert fact(mem, key).run == 2  # a revise counts as a hit
+    mem.record(key, bad, 6)
+    mem.record(key, bad, 7)
+    assert fact(mem, key).status == "broken" and fact(mem, key).run == 0
+    assert mem.record(key, bad, 8) == "new"  # the re-seed
+    f = fact(mem, key)
+    assert (f.hits, f.misses, f.streak, f.run) == (1, 3, 0, 1)
+    assert Fact(key, good, []).run == 0  # a fact with no observations has no run
+
+
 def test_state_is_retired_when_probability_falls_below_point_three() -> None:
     f = Fact(("A1", "c1:a", "any"), (Effect("none"),), [], hits=0, misses=3)
     assert (f.probability, f.band, f.state, f.status) == (0.2, "low", "retired", "thin")
