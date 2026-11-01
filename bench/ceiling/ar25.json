@@ -1,0 +1,14 @@
+{
+ "game": "ar25",
+ "levels": 0,
+ "per_level": [],
+ "searches": [
+  {
+   "level": 1,
+   "result": "no plan; stopped=time_limit; expanded=121; 60.5s"
+  }
+ ],
+ "seconds": 60.5,
+ "score": 0.0,
+ "total_levels": 8
+}

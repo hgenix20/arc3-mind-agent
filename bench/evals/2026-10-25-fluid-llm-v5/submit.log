@@ -1,0 +1,31 @@
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+mode=offline policy=mind games=25 max_actions=20000
+2026-10-25 15:34:38,024 INFO model server http://127.0.0.1:1234/v1 answered after 0s
+ar25-0c556536: 2/8 levels, 1130 actions, 1998.7s, stop=deadline
+bp35-0a0ad940: 0/9 levels, 752 actions, 2082.0s, stop=deadline
+cd82-fb555c5d: 1/6 levels, 1712 actions, 2172.5s, stop=deadline
+cn04-2fe56bfb: 0/6 levels, 4124 actions, 2270.4s, stop=deadline
+dc22-fdcac232: 1/6 levels, 1467 actions, 2378.5s, stop=deadline
+ft09-0d8bbf25: 0/6 levels, 1824 actions, 2497.4s, stop=deadline
+g50t-5849a774: 0/7 levels, 1952 actions, 2629.6s, stop=deadline
+ka59-38d34dbb: 0/7 levels, 2567 actions, 2775.3s, stop=deadline
+lf52-271a04aa: 1/10 levels, 2348 actions, 1995.7s, stop=deadline
+lp85-305b61c3: 2/8 levels, 3555 actions, 2080.8s, stop=deadline
+ls20-9607627b: 1/7 levels, 4498 actions, 2171.6s, stop=deadline
+m0r0-492f87ba: 1/6 levels, 879 actions, 2271.5s, stop=deadline
+r11l-495a7899: 1/6 levels, 1307 actions, 2379.2s, stop=deadline
+re86-8af5384d: 0/8 levels, 1983 actions, 2497.6s, stop=deadline
+s5i5-18d95033: 0/8 levels, 7317 actions, 2628.2s, stop=deadline
+sb26-7fbdac44: 0/8 levels, 2392 actions, 2773.8s, stop=deadline
+sc25-635fd71a: 0/6 levels, 1736 actions, 1998.7s, stop=deadline
+wa30-ee6fef47: 0/9 levels, 149 actions, 247.8s, stop=deadline
+tu93-0768757b: 0/9 levels, 369 actions, 984.7s, stop=deadline
+vc33-5430563c: 1/7 levels, 1494 actions, 692.8s, stop=deadline
+tr87-cd924810: 0/6 levels, 2274 actions, 1248.0s, stop=deadline
+sp80-589a99af: 1/6 levels, 1660 actions, 1898.4s, stop=deadline
+tn36-ef4dde99: 1/7 levels, 942 actions, 1485.3s, stop=deadline
+sk48-d8078629: 0/8 levels, 1484 actions, 2080.7s, stop=deadline
+su15-1944f8ab: 1/9 levels, 1108 actions, 1700.6s, stop=deadline
+2026-10-25 17:18:42,765 INFO Note: NumExpr detected 48 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 16.
+2026-10-25 17:18:42,765 INFO NumExpr defaulting to 16 threads.
+played 25 games, 14 levels completed, scorecard score 0.4464, 0 errors, 6245.8s; wrote /kaggle/working/submission.parquet

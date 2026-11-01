@@ -1,0 +1,25 @@
+{
+ "game": "cd82",
+ "levels": 2,
+ "per_level": [
+  5,
+  6
+ ],
+ "searches": [
+  {
+   "level": 1,
+   "result": "5 actions; stopped=goal; expanded=53; 7.8s"
+  },
+  {
+   "level": 2,
+   "result": "6 actions; stopped=goal; expanded=297; 45.7s"
+  },
+  {
+   "level": 3,
+   "result": "no plan; stopped=time_limit; expanded=228; 60.2s"
+  }
+ ],
+ "seconds": 114.0,
+ "score": 14.29,
+ "total_levels": 6
+}

@@ -1,0 +1,462 @@
+{
+ "4": [
+  {
+   "label": "Notebook LLM loop",
+   "fam": "llm",
+   "hw": "GPU",
+   "sec": 3.4829931972789114,
+   "secNote": "2,048 tokens \u00f7 588 tok/s = 3.5 s per turn, before prefill",
+   "plies": 0,
+   "pliesNote": "no simulator, no clone: 0 plies",
+   "mult": null,
+   "multNote": "per-level multiple not recoverable from the 34.3 average",
+   "bold": true
+  },
+  {
+   "label": "The stack",
+   "fam": "stack",
+   "hw": "CPU",
+   "sec": 0.12302558879999999,
+   "secNote": "15% of actions at probe cost (10 ms + minimax hybrid 640 ms) and 85% at amortized A* cost (30 ms) = 123 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A* for 85% of actions; minimax depth 10 during the probing 15%",
+   "mult": [
+    1.05,
+    1.3
+   ],
+   "multNote": "modeled: info-gain probes then an optimal path; the library removes the probing share on games whose mechanics were seen before, which moves the range toward 1\u00d7",
+   "bold": true
+  },
+  {
+   "label": "Stack + mind",
+   "fam": "mind",
+   "hw": "CPU",
+   "sec": 0.07591194143999999,
+   "secNote": "7% of actions at probe cost (10 ms + minimax hybrid 640 ms), 93% at amortized A* cost (30 ms), plus 2 s of sleep per game amortized = 76 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A* for 93% of actions; minimax depth 10 during the probing 7%",
+   "mult": [
+    1,
+    1.2
+   ],
+   "multNote": "modeled: calibrated doubt ends probing earlier (15% to 10%) and consolidation lets about 30% of levels skip probing through a library hit",
+   "bold": true
+  },
+  {
+   "label": "Stack + mind + offline LLM",
+   "fam": "mind",
+   "hw": "GPU+CPU",
+   "sec": 0.21227557780363634,
+   "secNote": "stack + mind 76 ms on the CPU, plus 3 rule-synthesis calls per level \u00d7 5 s on the GPU amortized over 110 actions (136 ms) = 212 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A*; the LLM writes the rule model the planner searches in",
+   "mult": [
+    1,
+    1.15
+   ],
+   "multNote": "modeled: rule synthesis covers games the enumerator cannot express, so fewer levels stall and fewer probes are wasted",
+   "bold": true
+  },
+  {
+   "label": "Mind only",
+   "fam": "mind",
+   "hw": "CPU",
+   "sec": 0.0048000000000000004,
+   "secNote": "4 legal actions \u00d7 5 hypotheses \u00d7 2.0k ops per prediction at 50 M ops/s, plus about 4 ms of amortized consolidation = 4.8 ms",
+   "plies": 1,
+   "pliesNote": "one predicted ply per legal action; no tree, no plan",
+   "mult": [
+    1.4,
+    2.5
+   ],
+   "multNote": "modeled: calibrated predictions make learning cheap, but step-by-step progress without a horizon costs actions on levels that need a plan"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 heuristic d8",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.50274224,
+   "secNote": "511 nodes \u00d7 49.2k ops at 50 M ops/s",
+   "plies": 8,
+   "pliesNote": "depth 8 inside 1 s at b=4",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: depth-limited search in an uncertain model, 1.5\u00d7 to 3\u00d7 while the model is still being learned"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 NNUE d11",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.84606832,
+   "secNote": "5119 nodes \u00d7 8.2k ops at 50 M ops/s",
+   "plies": 11,
+   "pliesNote": "depth 11 inside 1 s at b=4",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: same regime as the heuristic; the evaluator changes depth, not this range"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 hybrid d10",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.6401705919999999,
+   "secNote": "2047 nodes \u00d7 15.6k ops at 50 M ops/s",
+   "plies": 10,
+   "pliesNote": "depth 10 inside 1 s at b=4",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: same regime as the heuristic"
+  },
+  {
+   "label": "Rule model + A*",
+   "fam": "exact",
+   "hw": "CPU",
+   "sec": 0.03,
+   "secNote": "assumed: one A* plan per level, about 3 s, amortized over about 100 actions",
+   "plies": 110,
+   "pliesNote": "plans the full level horizon (ls20 mean baseline \u2248 110 actions per level)",
+   "mult": [
+    1.1,
+    1.6
+   ],
+   "multNote": "modeled: optimal path in a correct model (\u22641\u00d7) plus the actions spent learning the rules"
+  },
+  {
+   "label": "Rule model + ASP solver",
+   "fam": "exact",
+   "hw": "CPU",
+   "sec": 0.4,
+   "secNote": "assumed: grounding and solving about 40 s per level, amortized over about 100 actions",
+   "plies": 110,
+   "pliesNote": "plans the full level horizon with a minimality proof",
+   "mult": [
+    1.1,
+    1.6
+   ],
+   "multNote": "modeled: provably minimal sequence in the model plus the learning actions"
+  },
+  {
+   "label": "MCTS, learned prior",
+   "fam": "sample",
+   "hw": "CPU",
+   "sec": 0.5,
+   "secNote": "assumed: anytime budget of 0.5 s per action, thousands of rollouts",
+   "plies": 20,
+   "pliesNote": "deep but sparse rollouts, about 20 plies",
+   "mult": [
+    1.3,
+    2.5
+   ],
+   "multNote": "modeled: sampling finds good, not optimal, paths"
+  },
+  {
+   "label": "Info-gain probing + A*",
+   "fam": "learn",
+   "hw": "CPU",
+   "sec": 0.04,
+   "secNote": "assumed: every candidate action simulated under every live hypothesis, about 10 ms, plus the amortized A* plan",
+   "plies": 110,
+   "pliesNote": "full horizon once a single hypothesis remains",
+   "mult": [
+    1.05,
+    1.3
+   ],
+   "multNote": "modeled: each probe chosen for information per action, then an optimal path"
+  },
+  {
+   "label": "Mechanics library + A*",
+   "fam": "learn",
+   "hw": "CPU",
+   "sec": 0.02,
+   "secNote": "assumed: library match in milliseconds, short searches otherwise",
+   "plies": 110,
+   "pliesNote": "full horizon in macro steps",
+   "mult": [
+    1.05,
+    1.5
+   ],
+   "multNote": "modeled: learning cost falls on later levels and games that share mechanics; first games pay full price"
+  },
+  {
+   "label": "CNN policy (Goose)",
+   "fam": "ref",
+   "hw": "GPU",
+   "sec": 0.005,
+   "secNote": "one forward pass on the GPU, about 5 ms",
+   "plies": 0,
+   "pliesNote": "no model, no search",
+   "mult": [
+    5,
+    6
+   ],
+   "multDisplay": "\u22655\u00d7 or uncleared",
+   "multNote": "measured score 0.25: most levels never cleared, so at or beyond 5\u00d7 where cleared"
+  },
+  {
+   "label": "Random agent",
+   "fam": "ref",
+   "hw": "CPU",
+   "sec": 0.0001,
+   "secNote": "microseconds",
+   "plies": 0,
+   "pliesNote": "nothing simulated",
+   "mult": [
+    5,
+    6
+   ],
+   "multDisplay": "\u22655\u00d7 or uncleared",
+   "multNote": "measured score 0.18"
+  },
+  {
+   "label": "Human (reference)",
+   "fam": "ref",
+   "hw": "brain",
+   "sec": 2,
+   "secNote": "estimate: about 2 s per considered move",
+   "plies": null,
+   "pliesNote": "not comparable",
+   "mult": [
+    1,
+    1
+   ],
+   "multDisplay": "1\u00d7 by definition",
+   "multNote": "the baseline is the upper median of first-time human players"
+  }
+ ],
+ "64": [
+  {
+   "label": "Notebook LLM loop",
+   "fam": "llm",
+   "hw": "GPU",
+   "sec": 3.4829931972789114,
+   "secNote": "2,048 tokens \u00f7 588 tok/s = 3.5 s per turn, before prefill",
+   "plies": 0,
+   "pliesNote": "no simulator, no clone: 0 plies",
+   "mult": null,
+   "multNote": "per-level multiple not recoverable from the 34.3 average",
+   "bold": true
+  },
+  {
+   "label": "The stack",
+   "fam": "stack",
+   "hw": "CPU",
+   "sec": 0.0329576208,
+   "secNote": "15% of actions at probe cost (10 ms + minimax hybrid 40 ms) and 85% at amortized A* cost (30 ms) = 33 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A* for 85% of actions; minimax depth 2 during the probing 15%",
+   "mult": [
+    1.05,
+    1.3
+   ],
+   "multNote": "modeled: info-gain probes then an optimal path; the library removes the probing share on games whose mechanics were seen before, which moves the range toward 1\u00d7",
+   "bold": true
+  },
+  {
+   "label": "Stack + mind",
+   "fam": "mind",
+   "hw": "CPU",
+   "sec": 0.033880223040000004,
+   "secNote": "7% of actions at probe cost (10 ms + minimax hybrid 40 ms), 93% at amortized A* cost (30 ms), plus 2 s of sleep per game amortized = 34 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A* for 93% of actions; minimax depth 2 during the probing 7%",
+   "mult": [
+    1,
+    1.2
+   ],
+   "multNote": "modeled: calibrated doubt ends probing earlier (15% to 10%) and consolidation lets about 30% of levels skip probing through a library hit",
+   "bold": true
+  },
+  {
+   "label": "Stack + mind + offline LLM",
+   "fam": "mind",
+   "hw": "GPU+CPU",
+   "sec": 0.17024385940363634,
+   "secNote": "stack + mind 34 ms on the CPU, plus 3 rule-synthesis calls per level \u00d7 5 s on the GPU amortized over 110 actions (136 ms) = 170 ms",
+   "plies": 110,
+   "pliesNote": "full horizon from A*; the LLM writes the rule model the planner searches in",
+   "mult": [
+    1,
+    1.15
+   ],
+   "multNote": "modeled: rule synthesis covers games the enumerator cannot express, so fewer levels stall and fewer probes are wasted",
+   "bold": true
+  },
+  {
+   "label": "Mind only",
+   "fam": "mind",
+   "hw": "CPU",
+   "sec": 0.016800000000000002,
+   "secNote": "64 legal actions \u00d7 5 hypotheses \u00d7 2.0k ops per prediction at 50 M ops/s, plus about 4 ms of amortized consolidation = 16.8 ms",
+   "plies": 1,
+   "pliesNote": "one predicted ply per legal action; no tree, no plan",
+   "mult": [
+    1.4,
+    2.5
+   ],
+   "multNote": "modeled: calibrated predictions make learning cheap, but step-by-step progress without a horizon costs actions on levels that need a plan"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 heuristic d2",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.12494768,
+   "secNote": "127 nodes \u00d7 49.2k ops at 50 M ops/s",
+   "plies": 2,
+   "pliesNote": "depth 2 inside 1 s at b=64",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: depth-limited search in an uncertain model, 1.5\u00d7 to 3\u00d7 while the model is still being learned"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 NNUE d3",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.68739952,
+   "secNote": "4159 nodes \u00d7 8.2k ops at 50 M ops/s",
+   "plies": 3,
+   "pliesNote": "depth 3 inside 1 s at b=64",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: same regime as the heuristic; the evaluator changes depth, not this range"
+  },
+  {
+   "label": "Minimax \u03b1\u03b2 hybrid d2",
+   "fam": "tree",
+   "hw": "CPU",
+   "sec": 0.039717472,
+   "secNote": "127 nodes \u00d7 15.6k ops at 50 M ops/s",
+   "plies": 2,
+   "pliesNote": "depth 2 inside 1 s at b=64",
+   "mult": [
+    1.5,
+    3
+   ],
+   "multNote": "modeled: same regime as the heuristic"
+  },
+  {
+   "label": "Rule model + A*",
+   "fam": "exact",
+   "hw": "CPU",
+   "sec": 0.03,
+   "secNote": "assumed: one A* plan per level, about 3 s, amortized over about 100 actions",
+   "plies": 110,
+   "pliesNote": "plans the full level horizon (ls20 mean baseline \u2248 110 actions per level)",
+   "mult": [
+    1.1,
+    1.6
+   ],
+   "multNote": "modeled: optimal path in a correct model (\u22641\u00d7) plus the actions spent learning the rules"
+  },
+  {
+   "label": "Rule model + ASP solver",
+   "fam": "exact",
+   "hw": "CPU",
+   "sec": 0.4,
+   "secNote": "assumed: grounding and solving about 40 s per level, amortized over about 100 actions",
+   "plies": 110,
+   "pliesNote": "plans the full level horizon with a minimality proof",
+   "mult": [
+    1.1,
+    1.6
+   ],
+   "multNote": "modeled: provably minimal sequence in the model plus the learning actions"
+  },
+  {
+   "label": "MCTS, learned prior",
+   "fam": "sample",
+   "hw": "CPU",
+   "sec": 0.5,
+   "secNote": "assumed: anytime budget of 0.5 s per action, thousands of rollouts",
+   "plies": 20,
+   "pliesNote": "deep but sparse rollouts, about 20 plies",
+   "mult": [
+    1.3,
+    2.5
+   ],
+   "multNote": "modeled: sampling finds good, not optimal, paths"
+  },
+  {
+   "label": "Info-gain probing + A*",
+   "fam": "learn",
+   "hw": "CPU",
+   "sec": 0.04,
+   "secNote": "assumed: every candidate action simulated under every live hypothesis, about 10 ms, plus the amortized A* plan",
+   "plies": 110,
+   "pliesNote": "full horizon once a single hypothesis remains",
+   "mult": [
+    1.05,
+    1.3
+   ],
+   "multNote": "modeled: each probe chosen for information per action, then an optimal path"
+  },
+  {
+   "label": "Mechanics library + A*",
+   "fam": "learn",
+   "hw": "CPU",
+   "sec": 0.02,
+   "secNote": "assumed: library match in milliseconds, short searches otherwise",
+   "plies": 110,
+   "pliesNote": "full horizon in macro steps",
+   "mult": [
+    1.05,
+    1.5
+   ],
+   "multNote": "modeled: learning cost falls on later levels and games that share mechanics; first games pay full price"
+  },
+  {
+   "label": "CNN policy (Goose)",
+   "fam": "ref",
+   "hw": "GPU",
+   "sec": 0.005,
+   "secNote": "one forward pass on the GPU, about 5 ms",
+   "plies": 0,
+   "pliesNote": "no model, no search",
+   "mult": [
+    5,
+    6
+   ],
+   "multDisplay": "\u22655\u00d7 or uncleared",
+   "multNote": "measured score 0.25: most levels never cleared, so at or beyond 5\u00d7 where cleared"
+  },
+  {
+   "label": "Random agent",
+   "fam": "ref",
+   "hw": "CPU",
+   "sec": 0.0001,
+   "secNote": "microseconds",
+   "plies": 0,
+   "pliesNote": "nothing simulated",
+   "mult": [
+    5,
+    6
+   ],
+   "multDisplay": "\u22655\u00d7 or uncleared",
+   "multNote": "measured score 0.18"
+  },
+  {
+   "label": "Human (reference)",
+   "fam": "ref",
+   "hw": "brain",
+   "sec": 2,
+   "secNote": "estimate: about 2 s per considered move",
+   "plies": null,
+   "pliesNote": "not comparable",
+   "mult": [
+    1,
+    1
+   ],
+   "multDisplay": "1\u00d7 by definition",
+   "multNote": "the baseline is the upper median of first-time human players"
+  }
+ ]
+}

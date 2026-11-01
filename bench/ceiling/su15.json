@@ -1,0 +1,20 @@
+{
+ "game": "su15",
+ "levels": 1,
+ "per_level": [
+  7
+ ],
+ "searches": [
+  {
+   "level": 1,
+   "result": "7 actions; stopped=goal; expanded=73; 39.0s"
+  },
+  {
+   "level": 2,
+   "result": "no plan; stopped=time_limit; expanded=252; 60.1s"
+  }
+ ],
+ "seconds": 99.1,
+ "score": 2.22,
+ "total_levels": 9
+}

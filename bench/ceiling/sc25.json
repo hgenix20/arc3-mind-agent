@@ -1,0 +1,14 @@
+{
+ "game": "sc25",
+ "levels": 0,
+ "per_level": [],
+ "searches": [
+  {
+   "level": 1,
+   "result": "no plan; stopped=exhausted; expanded=1; 0.7s"
+  }
+ ],
+ "seconds": 0.7,
+ "score": 0.0,
+ "total_levels": 6
+}

@@ -1,0 +1,14 @@
+{
+ "game": "lf52",
+ "levels": 0,
+ "per_level": [],
+ "searches": [
+  {
+   "level": 1,
+   "result": "no plan; stopped=time_limit; expanded=41; 60.3s"
+  }
+ ],
+ "seconds": 60.3,
+ "score": 0.0,
+ "total_levels": 10
+}

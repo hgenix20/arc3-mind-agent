@@ -1,0 +1,575 @@
+{
+  "games": {
+    "ar25-0c556536": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.7797434763379035,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.007828810020876827,
+      "entropy_change_per_action": -0.002066115702479339,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 527,
+        "game_over": 41,
+        "disconfirmed": 0
+      },
+      "actions": 3832
+    },
+    "bp35-0a0ad940": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.7797664825561071,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.00104675505931612,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 51,
+        "disconfirmed": 0
+      },
+      "actions": 2816
+    },
+    "cd82-fb555c5d": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9683842080141828,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.03825136612021858,
+      "entropy_change_per_action": -0.016444629475437136,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1431,
+        "game_over": 47,
+        "disconfirmed": 0
+      },
+      "actions": 4758
+    },
+    "cn04-2fe56bfb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.5850900208088302,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.004083147735708983,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 183,
+        "game_over": 71,
+        "disconfirmed": 0
+      },
+      "actions": 5388
+    },
+    "dc22-fdcac232": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9727704070839251,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.00390915860014892,
+      "entropy_change_per_action": -0.004246676514032497,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 2070,
+        "game_over": 45,
+        "disconfirmed": 0
+      },
+      "actions": 5372
+    },
+    "ft09-0d8bbf25": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        2215
+      ],
+      "score_estimate": 0.0017946102970740037,
+      "prediction_accuracy": 0.9755154837616841,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.019399538106235566,
+      "entropy_change_per_action": 0.007254590795737928,
+      "transfer_actions": {
+        "level_1": 2215.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1651,
+        "game_over": 83,
+        "disconfirmed": 0
+      },
+      "actions": 4330
+    },
+    "g50t-5849a774": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8488833553809042,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.01884570082449941,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 617,
+        "game_over": 19,
+        "disconfirmed": 0
+      },
+      "actions": 2547
+    },
+    "ka59-38d34dbb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8878418572819878,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.00612619971411068,
+      "entropy_change_per_action": -0.0020226537216828477,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1265,
+        "game_over": 48,
+        "disconfirmed": 0
+      },
+      "actions": 4897
+    },
+    "lf52-271a04aa": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        892
+      ],
+      "score_estimate": 0.002339955284916977,
+      "prediction_accuracy": 0.8793153635675612,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.059453032104637336,
+      "entropy_change_per_action": 0.04513064133016627,
+      "transfer_actions": {
+        "level_1": 892.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 301,
+        "game_over": 4,
+        "disconfirmed": 0
+      },
+      "actions": 1682
+    },
+    "lp85-305b61c3": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        26
+      ],
+      "score_estimate": 1.1875410913872453,
+      "prediction_accuracy": 0.7788907571041868,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.004275331338178709,
+      "entropy_change_per_action": 0.003594840346796363,
+      "transfer_actions": {
+        "level_1": 26.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1471,
+        "game_over": 53,
+        "disconfirmed": 0
+      },
+      "actions": 4678
+    },
+    "ls20-9607627b": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.937383525903839,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.01449525452976704,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 114,
+        "game_over": 43,
+        "disconfirmed": 0
+      },
+      "actions": 5795
+    },
+    "m0r0-492f87ba": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        3426
+      ],
+      "score_estimate": 0.00036513082418352,
+      "prediction_accuracy": 0.6171981004070556,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0023065094823167607,
+      "entropy_change_per_action": 0.0005095541401273885,
+      "transfer_actions": {
+        "level_1": 3426.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1088,
+        "game_over": 25,
+        "disconfirmed": 0
+      },
+      "actions": 3902
+    },
+    "r11l-495a7899": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        413
+      ],
+      "score_estimate": 0.013512196851490627,
+      "prediction_accuracy": 0.8677091580892056,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.030095759233926128,
+      "transfer_actions": {
+        "level_1": 413.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 66,
+        "disconfirmed": 0
+      },
+      "actions": 2860
+    },
+    "re86-8af5384d": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8336198835701143,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.00028885037550548814,
+      "entropy_change_per_action": -0.0002861230329041488,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 3,
+        "game_over": 34,
+        "disconfirmed": 0
+      },
+      "actions": 3462
+    },
+    "s5i5-18d95033": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9597092251072157,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.0003632401017072285,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 107,
+        "disconfirmed": 0
+      },
+      "actions": 5400
+    },
+    "sb26-7fbdac44": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9906053566548237,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.08584961515689757,
+      "entropy_change_per_action": -0.0020697811945594325,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 2112,
+        "game_over": 5,
+        "disconfirmed": 0
+      },
+      "actions": 3378
+    },
+    "sc25-635fd71a": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9108610016882386,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.024,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1026,
+        "game_over": 29,
+        "disconfirmed": 0
+      },
+      "actions": 2375
+    },
+    "sk48-d8078629": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8939669127808267,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.14277731209835148,
+      "entropy_change_per_action": -0.011446119486320492,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 2387,
+        "game_over": 4,
+        "disconfirmed": 0
+      },
+      "actions": 3579
+    },
+    "sp80-589a99af": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        1689
+      ],
+      "score_estimate": 0.002538929374045742,
+      "prediction_accuracy": 0.8843378722942549,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.000275178866263071,
+      "entropy_change_per_action": 0.0016047071409467772,
+      "transfer_actions": {
+        "level_1": 1689.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 107,
+        "disconfirmed": 0
+      },
+      "actions": 3634
+    },
+    "su15-1944f8ab": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9374470659407138,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0014684287812041115,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 143,
+        "game_over": 37,
+        "disconfirmed": 0
+      },
+      "actions": 1362
+    },
+    "tn36-ef4dde99": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        643
+      ],
+      "score_estimate": 0.008845450967695791,
+      "prediction_accuracy": 0.9907582298974635,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.023622047244094488,
+      "transfer_actions": {
+        "level_1": 643.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 22,
+        "disconfirmed": 0
+      },
+      "actions": 1377
+    },
+    "tr87-cd924810": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9566810261933151,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 19,
+        "disconfirmed": 0
+      },
+      "actions": 2543
+    },
+    "tu93-0768757b": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.6880933544303798,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.013641755634638196,
+      "entropy_change_per_action": -0.0005820721769499418,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 33,
+        "disconfirmed": 0
+      },
+      "actions": 1686
+    },
+    "vc33-5430563c": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        890
+      ],
+      "score_estimate": 0.00022093170054286078,
+      "prediction_accuracy": 0.9549195318215069,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.0012012012012012011,
+      "transfer_actions": {
+        "level_1": 890.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 32,
+        "disconfirmed": 0
+      },
+      "actions": 1635
+    },
+    "wa30-ee6fef47": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.7835227272727273,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.013175230566534914,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 50,
+        "game_over": 3,
+        "disconfirmed": 0
+      },
+      "actions": 759
+    }
+  },
+  "overall": {
+    "levels_completed": 8,
+    "actions_per_completed_level": [
+      2215,
+      892,
+      26,
+      3426,
+      413,
+      1689,
+      643,
+      890
+    ],
+    "score_estimate": 0.04868633186748779,
+    "prediction_accuracy": 0.9021790378437018,
+    "abandonment_latency": null,
+    "abandonment_latency_n": 0,
+    "drop_reasons": {},
+    "disconfirmed_repeat_rate": 0.0181446095636965,
+    "entropy_change_per_action": 0.0009054349615484114,
+    "transfer_actions": {
+      "level_1": 1274.25,
+      "levels_2_plus": null
+    },
+    "outcomes": {
+      "noop": 16439,
+      "game_over": 1028
+    },
+    "actions": 84047
+  },
+  "malformed_lines": 0
+}

@@ -1,0 +1,25 @@
+{
+ "game": "vc33",
+ "levels": 2,
+ "per_level": [
+  3,
+  7
+ ],
+ "searches": [
+  {
+   "level": 1,
+   "result": "3 actions; stopped=goal; expanded=9; 1.2s"
+  },
+  {
+   "level": 2,
+   "result": "7 actions; stopped=goal; expanded=137; 21.5s"
+  },
+  {
+   "level": 3,
+   "result": "no plan; stopped=time_limit; expanded=231; 60.1s"
+  }
+ ],
+ "seconds": 82.8,
+ "score": 10.71,
+ "total_levels": 7
+}

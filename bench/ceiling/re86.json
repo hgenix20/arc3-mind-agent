@@ -1,0 +1,14 @@
+{
+ "game": "re86",
+ "levels": 0,
+ "per_level": [],
+ "searches": [
+  {
+   "level": 1,
+   "result": "no plan; stopped=time_limit; expanded=1744; 60.0s"
+  }
+ ],
+ "seconds": 60.4,
+ "score": 0.0,
+ "total_levels": 8
+}

@@ -13,3 +13,4 @@ bench/synth/code/
 bench/synth/*.json
 bench/agent/
 bench/agent-*/
+.superpowers/

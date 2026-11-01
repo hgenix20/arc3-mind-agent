@@ -1,0 +1,3955 @@
+{
+  "games": {
+    "ar25-0c556536": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.6641711229946524,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.09787234042553192,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 49,
+        "game_over": 1,
+        "disconfirmed": 0
+      },
+      "actions": 236,
+      "hit_rate": 0.6641711229946524,
+      "hit_rate_halves": {
+        "first": 0.6321243523316062,
+        "second": 0.6867030965391621
+      },
+      "rule_reuse": 0.11594202898550725,
+      "tests_per_level": 26.0,
+      "impasses": null,
+      "search_depth_mean": 7.010514018691588,
+      "goals": {
+        "final": {
+          "excluded": 28,
+          "open": 180,
+          "ruled_out": 144,
+          "stalled": 13
+        },
+        "transitions": {
+          "open": 365,
+          "ruled_out": 144,
+          "excluded": 28,
+          "stalled": 13
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 38,
+            "matched": 1,
+            "rate": 0.02631578947368421
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 29,
+            "matched": 4,
+            "rate": 0.13793103448275862
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 27,
+            "matched": 3,
+            "rate": 0.1111111111111111
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 30,
+            "matched": 7,
+            "rate": 0.23333333333333334
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 21,
+            "matched": 9,
+            "rate": 0.42857142857142855
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 18,
+            "matched": 3,
+            "rate": 0.16666666666666666
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 11,
+            "matched": 6,
+            "rate": 0.5454545454545454
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 2,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 1,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1972.3779999999997,
+          "tokens_total": 49258
+        },
+        "handoffs": {
+          "H-b": 107,
+          "H-c": 1
+        },
+        "planner": {
+          "calls": 118,
+          "tokens": 49258,
+          "segments": 127,
+          "mean_segment_len": 5.456692913385827,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 56,
+            "Q-CHECK": 1,
+            "Q-REWARD": 6,
+            "Q-SAFE": 5,
+            "Q-UNKNOWN": 5
+          }
+        },
+        "forks": {
+          "opened": 14,
+          "failed": 28,
+          "returns": 2,
+          "root_replans": 106
+        },
+        "harm": {
+          "events": 1,
+          "by_kind": {
+            "c11:b0b40e81ca": 1
+          }
+        }
+      }
+    },
+    "bp35-0a0ad940": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8284409654272668,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.020833333333333332,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 9,
+        "disconfirmed": 0
+      },
+      "actions": 281,
+      "hit_rate": 0.8284409654272668,
+      "hit_rate_halves": {
+        "first": 0.8226256983240223,
+        "second": 0.8335373317013464
+      },
+      "rule_reuse": 0.39921259842519685,
+      "tests_per_level": 23.5,
+      "impasses": null,
+      "search_depth_mean": 4.263571428571429,
+      "goals": {
+        "final": {
+          "excluded": 1,
+          "ruled_out": 15,
+          "stalled": 6,
+          "open": 22
+        },
+        "transitions": {
+          "open": 44,
+          "excluded": 1,
+          "ruled_out": 15,
+          "stalled": 6
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 10,
+            "matched": 2,
+            "rate": 0.2
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 22,
+            "matched": 6,
+            "rate": 0.2727272727272727
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 25,
+            "matched": 6,
+            "rate": 0.24
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 25,
+            "matched": 10,
+            "rate": 0.4
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 28,
+            "matched": 9,
+            "rate": 0.32142857142857145
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 27,
+            "matched": 4,
+            "rate": 0.14814814814814814
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 61,
+            "matched": 3,
+            "rate": 0.04918032786885246
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 10,
+            "matched": 5,
+            "rate": 0.5
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 1,
+            "matched": 1,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1461.8059999999987,
+          "tokens_total": 11568
+        },
+        "handoffs": {
+          "H-b": 15,
+          "H-d": 1,
+          "H-e": 10
+        },
+        "planner": {
+          "calls": 26,
+          "tokens": 11568,
+          "segments": 19,
+          "mean_segment_len": 3.1052631578947367,
+          "skills": {
+            "S-AROUND": 8,
+            "S-EXPLORE": 4
+          },
+          "questions": {
+            "Q-REWARD": 2,
+            "Q-SAFE": 8,
+            "Q-UNKNOWN": 13
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 15
+        },
+        "harm": {
+          "events": 9,
+          "by_kind": {
+            "c3:37417c5729": 7,
+            "self": 2
+          }
+        }
+      }
+    },
+    "cd82-fb555c5d": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9635482511588707,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.008948545861297539,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 60,
+        "game_over": 3,
+        "disconfirmed": 0
+      },
+      "actions": 447,
+      "hit_rate": 0.9635482511588707,
+      "hit_rate_halves": {
+        "first": 0.9662522202486679,
+        "second": 0.9611066559743384
+      },
+      "rule_reuse": 0.21495735840804722,
+      "tests_per_level": 37.0,
+      "impasses": null,
+      "search_depth_mean": 3.9214323890967395,
+      "goals": {
+        "final": {
+          "excluded": 8,
+          "open": 201,
+          "ruled_out": 22,
+          "stalled": 18
+        },
+        "transitions": {
+          "open": 249,
+          "ruled_out": 22,
+          "stalled": 18,
+          "excluded": 8,
+          "probing": 2
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 84,
+            "matched": 23,
+            "rate": 0.27380952380952384
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 45,
+            "matched": 19,
+            "rate": 0.4222222222222222
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 34,
+            "matched": 8,
+            "rate": 0.23529411764705882
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 19,
+            "matched": 6,
+            "rate": 0.3157894736842105
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 13,
+            "matched": 9,
+            "rate": 0.6923076923076923
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 13,
+            "matched": 13,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 21,
+            "matched": 20,
+            "rate": 0.9523809523809523
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 13,
+            "matched": 13,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 637.6019999999999,
+          "tokens_total": 2627
+        },
+        "handoffs": {
+          "H-b": 2,
+          "H-c": 4
+        },
+        "planner": {
+          "calls": 13,
+          "tokens": 2627,
+          "segments": 42,
+          "mean_segment_len": 1.0952380952380953,
+          "skills": {},
+          "questions": {
+            "Q-REWARD": 3
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 2
+        },
+        "harm": {
+          "events": 3,
+          "by_kind": {
+            "c15:a6293dc04d": 1,
+            "c4:ad3b630c38": 2
+          }
+        }
+      }
+    },
+    "cn04-2fe56bfb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.4642857142857143,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 4,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 32,
+      "hit_rate": 0.4642857142857143,
+      "hit_rate_halves": {
+        "first": 0.5555555555555556,
+        "second": 0.42105263157894735
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 7.0,
+      "impasses": null,
+      "search_depth_mean": null,
+      "goals": {
+        "final": {
+          "ruled_out": 1
+        },
+        "transitions": {
+          "open": 1,
+          "ruled_out": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 1,
+            "matched": 1,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 6,
+            "matched": 1,
+            "rate": 0.16666666666666666
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 12,
+            "matched": 3,
+            "rate": 0.25
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 2,
+            "matched": 1,
+            "rate": 0.5
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 3,
+            "matched": 3,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 35.351000000000006,
+          "tokens_total": 0
+        },
+        "handoffs": {},
+        "planner": {
+          "calls": 0,
+          "tokens": 0,
+          "segments": 0,
+          "mean_segment_len": null,
+          "skills": {},
+          "questions": {}
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 0,
+          "by_kind": {}
+        }
+      }
+    },
+    "dc22-fdcac232": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9404327058162405,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.08389261744966443,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 42,
+        "game_over": 3,
+        "disconfirmed": 0
+      },
+      "actions": 297,
+      "hit_rate": 0.9404327058162405,
+      "hit_rate_halves": {
+        "first": 0.9756418696510862,
+        "second": 0.9142156862745098
+      },
+      "rule_reuse": 0.17089931281744847,
+      "tests_per_level": 28.0,
+      "impasses": null,
+      "search_depth_mean": 3.9235197368421053,
+      "goals": {
+        "final": {
+          "ruled_out": 45,
+          "open": 108,
+          "stalled": 14,
+          "excluded": 12
+        },
+        "transitions": {
+          "open": 180,
+          "ruled_out": 45,
+          "excluded": 12,
+          "stalled": 14
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 85,
+            "matched": 12,
+            "rate": 0.1411764705882353
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 39,
+            "matched": 2,
+            "rate": 0.05128205128205128
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 20,
+            "matched": 4,
+            "rate": 0.2
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 33,
+            "matched": 3,
+            "rate": 0.09090909090909091
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 17,
+            "matched": 4,
+            "rate": 0.23529411764705882
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 6,
+            "matched": 6,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 10,
+            "matched": 10,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 20,
+            "matched": 20,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 5,
+            "matched": 5,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 737.469,
+          "tokens_total": 9771
+        },
+        "handoffs": {
+          "H-b": 30,
+          "H-c": 2,
+          "H-d": 8
+        },
+        "planner": {
+          "calls": 24,
+          "tokens": 9771,
+          "segments": 39,
+          "mean_segment_len": 3.8974358974358974,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 5,
+            "Q-SAFE": 6
+          }
+        },
+        "forks": {
+          "opened": 7,
+          "failed": 14,
+          "returns": 5,
+          "root_replans": 25
+        },
+        "harm": {
+          "events": 3,
+          "by_kind": {
+            "c13:dd02940db2": 1,
+            "c6:dd02940db2": 1,
+            "kc2:2c15607993": 1
+          }
+        }
+      }
+    },
+    "ft09-0d8bbf25": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.985969387755102,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 61,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 86,
+      "hit_rate": 0.985969387755102,
+      "hit_rate_halves": {
+        "first": 0.9751243781094527,
+        "second": 0.9897084048027445
+      },
+      "rule_reuse": 0.111254851228978,
+      "tests_per_level": 12.5,
+      "impasses": null,
+      "search_depth_mean": 4.315270935960591,
+      "goals": {
+        "final": {
+          "excluded": 1,
+          "open": 4,
+          "ruled_out": 1
+        },
+        "transitions": {
+          "open": 6,
+          "ruled_out": 1,
+          "excluded": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 30,
+            "matched": 3,
+            "rate": 0.1
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 10,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 2,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 246.9060000000001,
+          "tokens_total": 0
+        },
+        "handoffs": {
+          "H-e": 25
+        },
+        "planner": {
+          "calls": 0,
+          "tokens": 0,
+          "segments": 0,
+          "mean_segment_len": null,
+          "skills": {},
+          "questions": {}
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 4,
+          "by_kind": {
+            "self": 4
+          }
+        }
+      }
+    },
+    "g50t-5849a774": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8943256578947368,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.013422818791946308,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 30,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 298,
+      "hit_rate": 0.8943256578947368,
+      "hit_rate_halves": {
+        "first": 0.8845829823083403,
+        "second": 0.9036144578313253
+      },
+      "rule_reuse": 0.4381609195402299,
+      "tests_per_level": 25.0,
+      "impasses": null,
+      "search_depth_mean": 7.000803212851405,
+      "goals": {
+        "final": {
+          "open": 56,
+          "stalled": 9,
+          "ruled_out": 13,
+          "excluded": 1
+        },
+        "transitions": {
+          "open": 79,
+          "ruled_out": 13,
+          "excluded": 1,
+          "stalled": 9
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 48,
+            "matched": 3,
+            "rate": 0.0625
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 57,
+            "matched": 16,
+            "rate": 0.2807017543859649
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 34,
+            "matched": 15,
+            "rate": 0.4411764705882353
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 43,
+            "matched": 11,
+            "rate": 0.2558139534883721
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 17,
+            "matched": 14,
+            "rate": 0.8235294117647058
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 15,
+            "matched": 10,
+            "rate": 0.6666666666666666
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 14,
+            "matched": 10,
+            "rate": 0.7142857142857143
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 10,
+            "matched": 8,
+            "rate": 0.8
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 6,
+            "matched": 4,
+            "rate": 0.6666666666666666
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 164.0790000000001,
+          "tokens_total": 1490
+        },
+        "handoffs": {
+          "H-b": 1,
+          "H-c": 3,
+          "H-d": 4
+        },
+        "planner": {
+          "calls": 4,
+          "tokens": 1490,
+          "segments": 2,
+          "mean_segment_len": 4.5,
+          "skills": {},
+          "questions": {
+            "Q-REWARD": 3,
+            "Q-UNKNOWN": 1
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 1
+        },
+        "harm": {
+          "events": 2,
+          "by_kind": {
+            "c8:5eea8594b4": 1,
+            "self": 1
+          }
+        }
+      }
+    },
+    "ka59-38d34dbb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9245875883739199,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.1040268456375839,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 21,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 298,
+      "hit_rate": 0.9245875883739199,
+      "hit_rate_halves": {
+        "first": 0.9285075960679178,
+        "second": 0.9215136650315346
+      },
+      "rule_reuse": 0.11894647408666101,
+      "tests_per_level": 32.5,
+      "impasses": null,
+      "search_depth_mean": 4.305485232067511,
+      "goals": {
+        "final": {
+          "ruled_out": 60,
+          "open": 196,
+          "excluded": 16,
+          "stalled": 5
+        },
+        "transitions": {
+          "open": 281,
+          "ruled_out": 60,
+          "excluded": 16,
+          "stalled": 5
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 70,
+            "matched": 18,
+            "rate": 0.2571428571428571
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 34,
+            "matched": 13,
+            "rate": 0.38235294117647056
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 36,
+            "matched": 20,
+            "rate": 0.5555555555555556
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 12,
+            "matched": 8,
+            "rate": 0.6666666666666666
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 9,
+            "matched": 9,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 11,
+            "matched": 11,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 16,
+            "matched": 16,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 32,
+            "matched": 32,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 10,
+            "matched": 9,
+            "rate": 0.9
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 709.0300000000003,
+          "tokens_total": 15520
+        },
+        "handoffs": {
+          "H-b": 51,
+          "H-c": 4,
+          "H-d": 2
+        },
+        "planner": {
+          "calls": 57,
+          "tokens": 15520,
+          "segments": 65,
+          "mean_segment_len": 2.292307692307692,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 7,
+            "Q-CHECK": 3,
+            "Q-REWARD": 8,
+            "Q-SAFE": 4,
+            "Q-UNKNOWN": 4
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 51
+        },
+        "harm": {
+          "events": 2,
+          "by_kind": {
+            "c14:4006be7414": 1,
+            "c4:747e37c45f": 1
+          }
+        }
+      }
+    },
+    "lf52-271a04aa": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        10
+      ],
+      "score_estimate": 1.8181818181818181,
+      "prediction_accuracy": 0.9041322314049587,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.48760330578512395,
+      "transfer_actions": {
+        "level_1": 10.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 124,
+      "hit_rate": 0.9041322314049587,
+      "hit_rate_halves": {
+        "first": 0.8927789934354485,
+        "second": 0.9110225763612217
+      },
+      "rule_reuse": 0.2586837294332724,
+      "tests_per_level": 7.666666666666667,
+      "impasses": null,
+      "search_depth_mean": 3.1829787234042555,
+      "goals": {
+        "final": {
+          "open": 199,
+          "ruled_out": 31,
+          "stalled": 2,
+          "confirmed": 2,
+          "excluded": 11
+        },
+        "transitions": {
+          "open": 245,
+          "ruled_out": 31,
+          "stalled": 3,
+          "confirmed": 2,
+          "excluded": 11
+        }
+      },
+      "actions_vs_human": [
+        0.3125
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 48,
+            "matched": 29,
+            "rate": 0.6041666666666666
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 15,
+            "matched": 7,
+            "rate": 0.4666666666666667
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 7,
+            "matched": 2,
+            "rate": 0.2857142857142857
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 3,
+            "matched": 3,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 4,
+            "matched": 4,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 2,
+            "matched": 1,
+            "rate": 0.5
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 0,
+            "moves": 10,
+            "typical": 10.0,
+            "ratio": 1.0
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 213.16,
+          "tokens_total": 1897
+        },
+        "handoffs": {
+          "H-b": 5,
+          "H-d": 26,
+          "H-e": 25
+        },
+        "planner": {
+          "calls": 3,
+          "tokens": 1897,
+          "segments": 5,
+          "mean_segment_len": 1.0,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 1,
+            "Q-REWARD": 1
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 5
+        },
+        "harm": {
+          "events": 0,
+          "by_kind": {}
+        }
+      }
+    },
+    "lp85-305b61c3": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8580508474576272,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.005714285714285714,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 120,
+        "game_over": 1,
+        "disconfirmed": 0
+      },
+      "actions": 180,
+      "hit_rate": 0.8580508474576272,
+      "hit_rate_halves": {
+        "first": 0.8241206030150754,
+        "second": 0.8827838827838828
+      },
+      "rule_reuse": 0.4246913580246914,
+      "tests_per_level": 2.0,
+      "impasses": null,
+      "search_depth_mean": 0.7731958762886598,
+      "goals": {
+        "final": {
+          "open": 94,
+          "stalled": 3,
+          "excluded": 19
+        },
+        "transitions": {
+          "open": 116,
+          "stalled": 3,
+          "excluded": 19
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 78,
+            "matched": 51,
+            "rate": 0.6538461538461539
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 12,
+            "matched": 12,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 2,
+            "matched": 2,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 223.88899999999992,
+          "tokens_total": 871
+        },
+        "handoffs": {
+          "H-d": 1,
+          "H-e": 125
+        },
+        "planner": {
+          "calls": 3,
+          "tokens": 871,
+          "segments": 0,
+          "mean_segment_len": null,
+          "skills": {},
+          "questions": {
+            "Q-UNKNOWN": 3
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 31,
+          "by_kind": {
+            "c14:5bdb1992f4": 1,
+            "c3:85e520a6ed": 2,
+            "c4:531c9770ef": 11,
+            "c4:dc1d760ba2": 2,
+            "self": 15
+          }
+        }
+      }
+    },
+    "ls20-9607627b": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        35
+      ],
+      "score_estimate": 1.411078717201166,
+      "prediction_accuracy": 0.9712134632418069,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.04918032786885246,
+      "transfer_actions": {
+        "level_1": 35.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 2,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 183,
+      "hit_rate": 0.9712134632418069,
+      "hit_rate_halves": {
+        "first": 0.9693140794223827,
+        "second": 0.9730434782608696
+      },
+      "rule_reuse": 0.5604195166438668,
+      "tests_per_level": 1.5,
+      "impasses": null,
+      "search_depth_mean": 8.37227414330218,
+      "goals": {
+        "final": {
+          "open": 121,
+          "ruled_out": 17,
+          "excluded": 8,
+          "stalled": 6,
+          "confirmed": 4
+        },
+        "transitions": {
+          "open": 156,
+          "ruled_out": 17,
+          "excluded": 8,
+          "confirmed": 7,
+          "stalled": 6
+        }
+      },
+      "actions_vs_human": [
+        1.5909090909090908
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 44,
+            "matched": 26,
+            "rate": 0.5909090909090909
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 34,
+            "matched": 20,
+            "rate": 0.5882352941176471
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 20,
+            "matched": 11,
+            "rate": 0.55
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 11,
+            "matched": 11,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 17,
+            "matched": 17,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 17,
+            "matched": 17,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 12,
+            "matched": 12,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 18,
+            "matched": 18,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 0,
+            "moves": 35,
+            "typical": 35.0,
+            "ratio": 1.0
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1243.2329999999993,
+          "tokens_total": 31820
+        },
+        "handoffs": {
+          "H-b": 10,
+          "H-d": 8
+        },
+        "planner": {
+          "calls": 89,
+          "tokens": 31820,
+          "segments": 94,
+          "mean_segment_len": 4.946808510638298,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 26,
+            "Q-REWARD": 3,
+            "Q-SAFE": 11,
+            "Q-UNKNOWN": 2
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 10
+        },
+        "harm": {
+          "events": 2,
+          "by_kind": {
+            "kc5:d21be36de0": 2
+          }
+        }
+      }
+    },
+    "m0r0-492f87ba": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8701030927835052,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.028688524590163935,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 53,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 247,
+      "hit_rate": 0.8701030927835052,
+      "hit_rate_halves": {
+        "first": 0.8564814814814815,
+        "second": 0.8810408921933085
+      },
+      "rule_reuse": 0.04028436018957346,
+      "tests_per_level": 12.0,
+      "impasses": null,
+      "search_depth_mean": 10.793726235741445,
+      "goals": {
+        "final": {
+          "stalled": 1,
+          "open": 10,
+          "ruled_out": 10,
+          "excluded": 1
+        },
+        "transitions": {
+          "open": 22,
+          "ruled_out": 10,
+          "stalled": 1,
+          "excluded": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 11,
+            "matched": 4,
+            "rate": 0.36363636363636365
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 8,
+            "matched": 4,
+            "rate": 0.5
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 7,
+            "matched": 6,
+            "rate": 0.8571428571428571
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 14,
+            "matched": 5,
+            "rate": 0.35714285714285715
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 16,
+            "matched": 12,
+            "rate": 0.75
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 21,
+            "matched": 16,
+            "rate": 0.7619047619047619
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 29,
+            "matched": 20,
+            "rate": 0.6896551724137931
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 37,
+            "matched": 26,
+            "rate": 0.7027027027027027
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 39,
+            "matched": 33,
+            "rate": 0.8461538461538461
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 13,
+            "matched": 13,
+            "rate": 1.0
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 550.7460000000001,
+          "tokens_total": 3066
+        },
+        "handoffs": {
+          "H-b": 3,
+          "H-c": 4,
+          "H-d": 1,
+          "H-e": 25
+        },
+        "planner": {
+          "calls": 9,
+          "tokens": 3066,
+          "segments": 6,
+          "mean_segment_len": 6.833333333333333,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 2,
+            "Q-REWARD": 1,
+            "Q-UNKNOWN": 1
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 3
+        },
+        "harm": {
+          "events": 0,
+          "by_kind": {}
+        }
+      }
+    },
+    "r11l-495a7899": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        24
+      ],
+      "score_estimate": 4.001322751322751,
+      "prediction_accuracy": 0.7088998763906057,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.7616279069767442,
+      "transfer_actions": {
+        "level_1": 24.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 3,
+        "disconfirmed": 0
+      },
+      "actions": 171,
+      "hit_rate": 0.7088998763906057,
+      "hit_rate_halves": {
+        "first": 0.751131221719457,
+        "second": 0.6795811518324607
+      },
+      "rule_reuse": 0.1028770706190061,
+      "tests_per_level": 51.5,
+      "impasses": null,
+      "search_depth_mean": 2.187912087912088,
+      "goals": {
+        "final": {
+          "excluded": 31,
+          "open": 200,
+          "stalled": 8,
+          "ruled_out": 67,
+          "confirmed": 1
+        },
+        "transitions": {
+          "open": 317,
+          "ruled_out": 67,
+          "excluded": 42,
+          "confirmed": 2,
+          "stalled": 8
+        }
+      },
+      "actions_vs_human": [
+        1.0909090909090908
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 66,
+            "matched": 2,
+            "rate": 0.030303030303030304
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 0,
+            "moves": 24,
+            "typical": 24.0,
+            "ratio": 1.0
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 951.415,
+          "tokens_total": 14818
+        },
+        "handoffs": {
+          "H-b": 35,
+          "H-d": 1
+        },
+        "planner": {
+          "calls": 40,
+          "tokens": 14818,
+          "segments": 37,
+          "mean_segment_len": 2.135135135135135,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 18,
+            "Q-CHECK": 5,
+            "Q-REWARD": 7,
+            "Q-SAFE": 3
+          }
+        },
+        "forks": {
+          "opened": 1,
+          "failed": 2,
+          "returns": 0,
+          "root_replans": 35
+        },
+        "harm": {
+          "events": 3,
+          "by_kind": {
+            "c0:41b1bff6d9": 1,
+            "c12:857638537d": 1,
+            "self": 1
+          }
+        }
+      }
+    },
+    "re86-8af5384d": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.7877729257641921,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.013422818791946308,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 4,
+        "game_over": 1,
+        "disconfirmed": 0
+      },
+      "actions": 149,
+      "hit_rate": 0.7877729257641921,
+      "hit_rate_halves": {
+        "first": 0.8018348623853211,
+        "second": 0.775
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 31.0,
+      "impasses": null,
+      "search_depth_mean": 9.508474576271187,
+      "goals": {
+        "final": {
+          "stalled": 21,
+          "ruled_out": 74,
+          "open": 199,
+          "excluded": 45,
+          "probing": 1
+        },
+        "transitions": {
+          "open": 340,
+          "ruled_out": 74,
+          "excluded": 45,
+          "stalled": 21,
+          "probing": 2
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 39,
+            "matched": 3,
+            "rate": 0.07692307692307693
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 25,
+            "matched": 1,
+            "rate": 0.04
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 20,
+            "matched": 3,
+            "rate": 0.15
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 11,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 3,
+            "matched": 1,
+            "rate": 0.3333333333333333
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 4,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 5,
+            "matched": 3,
+            "rate": 0.6
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 3,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 352.11599999999993,
+          "tokens_total": 4940
+        },
+        "handoffs": {
+          "H-b": 7
+        },
+        "planner": {
+          "calls": 13,
+          "tokens": 4940,
+          "segments": 9,
+          "mean_segment_len": 9.222222222222221,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 1,
+            "Q-REWARD": 1,
+            "Q-SAFE": 2,
+            "Q-UNKNOWN": 1
+          }
+        },
+        "forks": {
+          "opened": 1,
+          "failed": 2,
+          "returns": 0,
+          "root_replans": 7
+        },
+        "harm": {
+          "events": 1,
+          "by_kind": {
+            "self": 1
+          }
+        }
+      }
+    },
+    "s5i5-18d95033": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9552696078431373,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 7,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 150,
+      "hit_rate": 0.9552696078431373,
+      "hit_rate_halves": {
+        "first": 0.9564459930313589,
+        "second": 0.9546313799621928
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 16.0,
+      "impasses": null,
+      "search_depth_mean": 3.0596153846153844,
+      "goals": {
+        "final": {
+          "open": 64,
+          "excluded": 1,
+          "ruled_out": 11
+        },
+        "transitions": {
+          "open": 90,
+          "ruled_out": 11,
+          "excluded": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 11,
+            "matched": 2,
+            "rate": 0.18181818181818182
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 2,
+            "matched": 2,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 1,
+            "matched": 1,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 89.91000000000008,
+          "tokens_total": 1130
+        },
+        "handoffs": {
+          "H-d": 2,
+          "H-e": 25
+        },
+        "planner": {
+          "calls": 2,
+          "tokens": 1130,
+          "segments": 0,
+          "mean_segment_len": null,
+          "skills": {},
+          "questions": {
+            "Q-REWARD": 2
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 2,
+          "by_kind": {
+            "c13:37417c5729": 1,
+            "c3:1d2f864142": 1
+          }
+        }
+      }
+    },
+    "sb26-7fbdac44": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9982558139534884,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -6.100671140939597,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 45,
+        "game_over": 1,
+        "disconfirmed": 0
+      },
+      "actions": 149,
+      "hit_rate": 0.9982558139534884,
+      "hit_rate_halves": {
+        "first": 1.0,
+        "second": 0.9972627737226277
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 121.0,
+      "impasses": null,
+      "search_depth_mean": 7.66066066066066,
+      "goals": {
+        "final": {
+          "ruled_out": 28,
+          "open": 110
+        },
+        "transitions": {
+          "open": 138,
+          "ruled_out": 28
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 6,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 24,
+            "matched": 23,
+            "rate": 0.9583333333333334
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 136.53999999999994,
+          "tokens_total": 1929
+        },
+        "handoffs": {
+          "H-c": 2
+        },
+        "planner": {
+          "calls": 3,
+          "tokens": 1929,
+          "segments": 0,
+          "mean_segment_len": null,
+          "skills": {},
+          "questions": {
+            "Q-REWARD": 1
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 1,
+          "by_kind": {
+            "self": 1
+          }
+        }
+      }
+    },
+    "sc25-635fd71a": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9476616915422885,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0022471910112359553,
+      "entropy_change_per_action": 0.23937360178970918,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 196,
+        "game_over": 5,
+        "disconfirmed": 0
+      },
+      "actions": 445,
+      "hit_rate": 0.9476616915422885,
+      "hit_rate_halves": {
+        "first": 0.953103448275862,
+        "second": 0.9435087719298245
+      },
+      "rule_reuse": 0.29630407391852165,
+      "tests_per_level": 24.0,
+      "impasses": null,
+      "search_depth_mean": 3.058053251855085,
+      "goals": {
+        "final": {
+          "open": 83,
+          "excluded": 32,
+          "ruled_out": 48,
+          "stalled": 26
+        },
+        "transitions": {
+          "open": 189,
+          "ruled_out": 48,
+          "excluded": 32,
+          "probing": 1,
+          "stalled": 26
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 194,
+            "matched": 65,
+            "rate": 0.33505154639175255
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 70,
+            "matched": 27,
+            "rate": 0.38571428571428573
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 30,
+            "matched": 10,
+            "rate": 0.3333333333333333
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 17,
+            "matched": 7,
+            "rate": 0.4117647058823529
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 16,
+            "matched": 6,
+            "rate": 0.375
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 10,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 1,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1080.7759999999994,
+          "tokens_total": 7571
+        },
+        "handoffs": {
+          "H-b": 11,
+          "H-c": 1,
+          "H-d": 17
+        },
+        "planner": {
+          "calls": 27,
+          "tokens": 7571,
+          "segments": 29,
+          "mean_segment_len": 4.0344827586206895,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 5,
+            "Q-REWARD": 1,
+            "Q-SAFE": 1,
+            "Q-UNKNOWN": 2
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 11
+        },
+        "harm": {
+          "events": 153,
+          "by_kind": {
+            "c10:dd02940db2": 6,
+            "c13:f263ef8460": 4,
+            "c4:30c10cd562": 5,
+            "c4:557bc6dc15": 40,
+            "c4:9acaa28a6d": 11,
+            "self": 87
+          }
+        }
+      }
+    },
+    "sk48-d8078629": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.7370165745856354,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.5704697986577181,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 68,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 150,
+      "hit_rate": 0.7370165745856354,
+      "hit_rate_halves": {
+        "first": 0.7020057306590258,
+        "second": 0.7589928057553957
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 71.0,
+      "impasses": null,
+      "search_depth_mean": 3.5511596180081857,
+      "goals": {
+        "final": {
+          "open": 200,
+          "ruled_out": 35,
+          "excluded": 8,
+          "stalled": 6
+        },
+        "transitions": {
+          "open": 249,
+          "ruled_out": 35,
+          "excluded": 8,
+          "stalled": 6
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 55,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 5,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 1,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 1,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 644.1529999999998,
+          "tokens_total": 9766
+        },
+        "handoffs": {
+          "H-b": 39,
+          "H-c": 2
+        },
+        "planner": {
+          "calls": 30,
+          "tokens": 9766,
+          "segments": 40,
+          "mean_segment_len": 1.875,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 14,
+            "Q-CHECK": 8,
+            "Q-REWARD": 1,
+            "Q-SAFE": 5
+          }
+        },
+        "forks": {
+          "opened": 12,
+          "failed": 24,
+          "returns": 5,
+          "root_replans": 34
+        },
+        "harm": {
+          "events": 0,
+          "by_kind": {}
+        }
+      }
+    },
+    "sp80-589a99af": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9561787905346187,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.053691275167785234,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 7,
+        "disconfirmed": 0
+      },
+      "actions": 293,
+      "hit_rate": 0.9561787905346187,
+      "hit_rate_halves": {
+        "first": 0.9492481203007519,
+        "second": 0.9622331691297209
+      },
+      "rule_reuse": 0.26581118240146656,
+      "tests_per_level": 22.0,
+      "impasses": null,
+      "search_depth_mean": 8.649006622516556,
+      "goals": {
+        "final": {
+          "stalled": 1,
+          "open": 26,
+          "excluded": 5,
+          "ruled_out": 9
+        },
+        "transitions": {
+          "open": 41,
+          "ruled_out": 9,
+          "excluded": 5,
+          "stalled": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 2,
+            "matched": 1,
+            "rate": 0.5
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 20,
+            "matched": 13,
+            "rate": 0.65
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 27,
+            "matched": 18,
+            "rate": 0.6666666666666666
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 31,
+            "matched": 25,
+            "rate": 0.8064516129032258
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 42,
+            "matched": 29,
+            "rate": 0.6904761904761905
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 36,
+            "matched": 25,
+            "rate": 0.6944444444444444
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 27,
+            "matched": 20,
+            "rate": 0.7407407407407407
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 28,
+            "matched": 26,
+            "rate": 0.9285714285714286
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 24,
+            "matched": 22,
+            "rate": 0.9166666666666666
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1555.438000000001,
+          "tokens_total": 38690
+        },
+        "handoffs": {
+          "H-b": 41,
+          "H-d": 19
+        },
+        "planner": {
+          "calls": 112,
+          "tokens": 38690,
+          "segments": 101,
+          "mean_segment_len": 5.1683168316831685,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 20,
+            "Q-REWARD": 9,
+            "Q-SAFE": 4,
+            "Q-UNKNOWN": 2
+          }
+        },
+        "forks": {
+          "opened": 41,
+          "failed": 76,
+          "returns": 11,
+          "root_replans": 30
+        },
+        "harm": {
+          "events": 7,
+          "by_kind": {
+            "c6:dd02940db2": 2,
+            "self": 5
+          }
+        }
+      }
+    },
+    "su15-1944f8ab": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.911864406779661,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.003401360544217687,
+      "entropy_change_per_action": 0.11073825503355705,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 50,
+        "game_over": 6,
+        "disconfirmed": 0
+      },
+      "actions": 294,
+      "hit_rate": 0.911864406779661,
+      "hit_rate_halves": {
+        "first": 0.8978562421185372,
+        "second": 0.9232343909928352
+      },
+      "rule_reuse": 0.0012391573729863693,
+      "tests_per_level": 21.0,
+      "impasses": null,
+      "search_depth_mean": 4.1701694915254235,
+      "goals": {
+        "final": {
+          "stalled": 5,
+          "open": 21,
+          "excluded": 3,
+          "ruled_out": 12
+        },
+        "transitions": {
+          "open": 41,
+          "ruled_out": 12,
+          "excluded": 3,
+          "stalled": 5
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 59,
+            "matched": 1,
+            "rate": 0.01694915254237288
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 27,
+            "matched": 11,
+            "rate": 0.4074074074074074
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 22,
+            "matched": 7,
+            "rate": 0.3181818181818182
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 34,
+            "matched": 9,
+            "rate": 0.2647058823529412
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 10,
+            "matched": 8,
+            "rate": 0.8
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 8,
+            "matched": 5,
+            "rate": 0.625
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 5,
+            "matched": 3,
+            "rate": 0.6
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 11,
+            "matched": 11,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 51,
+            "matched": 51,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 1,
+            "matched": 1,
+            "rate": 1.0
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 972.7870000000004,
+          "tokens_total": 19100
+        },
+        "handoffs": {
+          "H-b": 48,
+          "H-c": 3,
+          "H-d": 15
+        },
+        "planner": {
+          "calls": 58,
+          "tokens": 19100,
+          "segments": 54,
+          "mean_segment_len": 1.5555555555555556,
+          "skills": {
+            "S-AROUND": 1
+          },
+          "questions": {
+            "Q-BLOCK": 18,
+            "Q-REWARD": 6,
+            "Q-SAFE": 6,
+            "Q-UNKNOWN": 8
+          }
+        },
+        "forks": {
+          "opened": 1,
+          "failed": 2,
+          "returns": 2,
+          "root_replans": 46
+        },
+        "harm": {
+          "events": 6,
+          "by_kind": {
+            "c9:0d9511e8f0": 1,
+            "c9:94a03be9e8": 2,
+            "self": 3
+          }
+        }
+      }
+    },
+    "tn36-ef4dde99": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        14
+      ],
+      "score_estimate": 3.5714285714285716,
+      "prediction_accuracy": 0.9897959183673469,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.345679012345679,
+      "transfer_actions": {
+        "level_1": 14.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 162,
+      "hit_rate": 0.9897959183673469,
+      "hit_rate_halves": {
+        "first": 0.9828431372549019,
+        "second": 0.9952198852772467
+      },
+      "rule_reuse": 0.272924579489962,
+      "tests_per_level": 12.5,
+      "impasses": null,
+      "search_depth_mean": 2.8200339558573853,
+      "goals": {
+        "final": {
+          "open": 105,
+          "confirmed": 2,
+          "ruled_out": 4,
+          "stalled": 3
+        },
+        "transitions": {
+          "open": 134,
+          "ruled_out": 5,
+          "excluded": 1,
+          "confirmed": 2,
+          "stalled": 3
+        }
+      },
+      "actions_vs_human": [
+        0.4375
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 38,
+            "matched": 26,
+            "rate": 0.6842105263157895
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 19,
+            "matched": 17,
+            "rate": 0.8947368421052632
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 15,
+            "matched": 15,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 15,
+            "matched": 15,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 16,
+            "matched": 16,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 20,
+            "matched": 20,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 11,
+            "matched": 11,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 0,
+            "moves": 14,
+            "typical": 14.0,
+            "ratio": 1.0
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 738.6720000000006,
+          "tokens_total": 12746
+        },
+        "handoffs": {
+          "H-d": 2
+        },
+        "planner": {
+          "calls": 27,
+          "tokens": 12746,
+          "segments": 21,
+          "mean_segment_len": 6.285714285714286,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 2,
+            "Q-HARM": 1,
+            "Q-REWARD": 16,
+            "Q-UNKNOWN": 3
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 0
+        },
+        "harm": {
+          "events": 2,
+          "by_kind": {
+            "c11:67c9477391": 1,
+            "c11:7372c50532": 1
+          }
+        }
+      }
+    },
+    "tr87-cd924810": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.964274423016124,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.10738255033557047,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 1,
+        "disconfirmed": 0
+      },
+      "actions": 149,
+      "hit_rate": 0.964274423016124,
+      "hit_rate_halves": {
+        "first": 0.9617486338797814,
+        "second": 0.9667185069984447
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 11.0,
+      "impasses": null,
+      "search_depth_mean": 20.714285714285715,
+      "goals": {
+        "final": {
+          "open": 202,
+          "ruled_out": 5,
+          "stalled": 1
+        },
+        "transitions": {
+          "open": 208,
+          "ruled_out": 5,
+          "stalled": 1
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 122,
+            "matched": 4,
+            "rate": 0.03278688524590164
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 14,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 1238.607,
+          "tokens_total": 29242
+        },
+        "handoffs": {
+          "H-b": 128
+        },
+        "planner": {
+          "calls": 132,
+          "tokens": 29242,
+          "segments": 130,
+          "mean_segment_len": 1.0307692307692307,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 19,
+            "Q-HARM": 1,
+            "Q-SAFE": 4
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 128
+        },
+        "harm": {
+          "events": 1,
+          "by_kind": {
+            "c5:0215e527f3": 1
+          }
+        }
+      }
+    },
+    "tu93-0768757b": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        29
+      ],
+      "score_estimate": 1.3528867750033027,
+      "prediction_accuracy": 0.6274984857662023,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.053445850914205346,
+      "entropy_change_per_action": 0.00258732212160414,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": 29.0
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 68,
+        "disconfirmed": 0
+      },
+      "actions": 711,
+      "hit_rate": 0.6274984857662023,
+      "hit_rate_halves": {
+        "first": 0.6579318117779657,
+        "second": 0.5921440261865794
+      },
+      "rule_reuse": 0.7046332046332047,
+      "tests_per_level": 10.166666666666666,
+      "impasses": null,
+      "search_depth_mean": 3.78397212543554,
+      "goals": {
+        "final": {
+          "ruled_out": 27,
+          "open": 167,
+          "excluded": 8,
+          "confirmed": 4,
+          "stalled": 11
+        },
+        "transitions": {
+          "open": 249,
+          "ruled_out": 27,
+          "excluded": 8,
+          "stalled": 12,
+          "confirmed": 4,
+          "probing": 1
+        }
+      },
+      "actions_vs_human": [
+        1.8125
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 347,
+            "matched": 3,
+            "rate": 0.008645533141210375
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 138,
+            "matched": 1,
+            "rate": 0.007246376811594203
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 35,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 4,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 2,
+            "matched": 0,
+            "rate": 0.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 1,
+            "moves": 15,
+            "typical": 14.0,
+            "ratio": 1.0714285714285714
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 3183.2179999999935,
+          "tokens_total": 79853
+        },
+        "handoffs": {
+          "H-b": 87,
+          "H-d": 3
+        },
+        "planner": {
+          "calls": 267,
+          "tokens": 79853,
+          "segments": 231,
+          "mean_segment_len": 2.4285714285714284,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 72,
+            "Q-REWARD": 29,
+            "Q-SAFE": 68,
+            "Q-UNKNOWN": 25
+          }
+        },
+        "forks": {
+          "opened": 2,
+          "failed": 4,
+          "returns": 0,
+          "root_replans": 87
+        },
+        "harm": {
+          "events": 68,
+          "by_kind": {
+            "c2:ec2b5e7faa": 68
+          }
+        }
+      }
+    },
+    "vc33-5430563c": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        40
+      ],
+      "score_estimate": 0.10937499999999999,
+      "prediction_accuracy": 0.9277134745577637,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.15982721382289417,
+      "transfer_actions": {
+        "level_1": 40.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 10,
+        "game_over": 5,
+        "disconfirmed": 0
+      },
+      "actions": 462,
+      "hit_rate": 0.9277134745577637,
+      "hit_rate_halves": {
+        "first": 0.9269035532994924,
+        "second": 0.9283250287466462
+      },
+      "rule_reuse": 0.04143126177024482,
+      "tests_per_level": 23.5,
+      "impasses": null,
+      "search_depth_mean": 4.113490364025696,
+      "goals": {
+        "final": {
+          "open": 202,
+          "ruled_out": 66,
+          "excluded": 23,
+          "confirmed": 1,
+          "stalled": 22
+        },
+        "transitions": {
+          "open": 315,
+          "ruled_out": 66,
+          "stalled": 23,
+          "confirmed": 1,
+          "excluded": 23
+        }
+      },
+      "actions_vs_human": [
+        5.714285714285714
+      ],
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 156,
+            "matched": 43,
+            "rate": 0.27564102564102566
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 33,
+            "matched": 25,
+            "rate": 0.7575757575757576
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 30,
+            "matched": 22,
+            "rate": 0.7333333333333333
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 15,
+            "matched": 15,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 4,
+            "matched": 4,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 6,
+            "matched": 6,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 10,
+            "matched": 10,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 12,
+            "matched": 12,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 3,
+            "matched": 3,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [
+          {
+            "level": 0,
+            "moves": 40,
+            "typical": 40.0,
+            "ratio": 1.0
+          }
+        ],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 573.9019999999994,
+          "tokens_total": 7501
+        },
+        "handoffs": {
+          "H-b": 13,
+          "H-c": 5,
+          "H-d": 5
+        },
+        "planner": {
+          "calls": 14,
+          "tokens": 7501,
+          "segments": 17,
+          "mean_segment_len": 1.588235294117647,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 13,
+            "Q-SAFE": 1
+          }
+        },
+        "forks": {
+          "opened": 0,
+          "failed": 0,
+          "returns": 0,
+          "root_replans": 13
+        },
+        "harm": {
+          "events": 5,
+          "by_kind": {
+            "c0:c5eb8befe6": 1,
+            "c14:e5d7e9dd3d": 1,
+            "c5:38bc0ecdb4": 1,
+            "self": 2
+          }
+        }
+      }
+    },
+    "wa30-ee6fef47": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8827726809378186,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.03355704697986577,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 9,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 150,
+      "hit_rate": 0.8827726809378186,
+      "hit_rate_halves": {
+        "first": 0.8775933609958506,
+        "second": 0.8877755511022044
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 12.0,
+      "impasses": null,
+      "search_depth_mean": 8.609903381642512,
+      "goals": {
+        "final": {
+          "stalled": 26,
+          "ruled_out": 20,
+          "open": 50
+        },
+        "transitions": {
+          "open": 96,
+          "ruled_out": 20,
+          "stalled": 26
+        }
+      },
+      "actions_vs_human": null,
+      "modes": null,
+      "v2": {
+        "calibration": [
+          {
+            "bin": "0.0-0.1",
+            "n": 10,
+            "matched": 3,
+            "rate": 0.3
+          },
+          {
+            "bin": "0.1-0.2",
+            "n": 14,
+            "matched": 4,
+            "rate": 0.2857142857142857
+          },
+          {
+            "bin": "0.2-0.3",
+            "n": 19,
+            "matched": 4,
+            "rate": 0.21052631578947367
+          },
+          {
+            "bin": "0.3-0.4",
+            "n": 15,
+            "matched": 2,
+            "rate": 0.13333333333333333
+          },
+          {
+            "bin": "0.4-0.5",
+            "n": 30,
+            "matched": 2,
+            "rate": 0.06666666666666667
+          },
+          {
+            "bin": "0.5-0.6",
+            "n": 23,
+            "matched": 4,
+            "rate": 0.17391304347826086
+          },
+          {
+            "bin": "0.6-0.7",
+            "n": 6,
+            "matched": 6,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.7-0.8",
+            "n": 9,
+            "matched": 9,
+            "rate": 1.0
+          },
+          {
+            "bin": "0.8-0.9",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          },
+          {
+            "bin": "0.9-1.0",
+            "n": 0,
+            "matched": 0,
+            "rate": null
+          }
+        ],
+        "moves_vs_typical": [],
+        "gates": {
+          "trips": 0,
+          "by_gate": {},
+          "seconds_total": 382.18299999999994,
+          "tokens_total": 3377
+        },
+        "handoffs": {
+          "H-b": 2,
+          "H-c": 2
+        },
+        "planner": {
+          "calls": 6,
+          "tokens": 3377,
+          "segments": 8,
+          "mean_segment_len": 2.625,
+          "skills": {},
+          "questions": {
+            "Q-BLOCK": 4,
+            "Q-REWARD": 1,
+            "Q-UNKNOWN": 1
+          }
+        },
+        "forks": {
+          "opened": 2,
+          "failed": 4,
+          "returns": 1,
+          "root_replans": 1
+        },
+        "harm": {
+          "events": 42,
+          "by_kind": {
+            "c14:cc2f9dab3d": 1,
+            "c4:4a0cf045a1": 31,
+            "c9:dc55524a93": 10
+          }
+        }
+      }
+    }
+  },
+  "overall": {
+    "levels_completed": 6,
+    "actions_per_completed_level": [
+      10,
+      35,
+      24,
+      14,
+      29,
+      40
+    ],
+    "score_estimate": 0.4905709453255044,
+    "prediction_accuracy": 0.8833956019584762,
+    "abandonment_latency": null,
+    "abandonment_latency_n": 0,
+    "drop_reasons": {},
+    "disconfirmed_repeat_rate": 0.006510416666666667,
+    "entropy_change_per_action": -0.06618357487922705,
+    "transfer_actions": {
+      "level_1": 24.6,
+      "levels_2_plus": 29.0
+    },
+    "outcomes": {
+      "noop": 831,
+      "game_over": 124
+    },
+    "actions": 6144,
+    "hit_rate": 0.8833956019584762,
+    "hit_rate_halves": {
+      "first": 0.8819533549701865,
+      "second": 0.8845854478657492
+    },
+    "rule_reuse": 0.21416708508748214,
+    "tests_per_level": 20.79310344827586,
+    "impasses": null,
+    "search_depth_mean": 5.298134694678971,
+    "goals": {
+      "final": {
+        "excluded": 262,
+        "open": 2820,
+        "ruled_out": 765,
+        "stalled": 207,
+        "confirmed": 14,
+        "probing": 1
+      },
+      "transitions": {
+        "open": 4151,
+        "ruled_out": 766,
+        "excluded": 274,
+        "stalled": 210,
+        "probing": 6,
+        "confirmed": 18
+      }
+    },
+    "actions_vs_human": [
+      0.3125,
+      1.5909090909090908,
+      1.0909090909090908,
+      0.4375,
+      1.8125,
+      5.714285714285714
+    ],
+    "modes": null,
+    "v2": {
+      "calibration": [
+        {
+          "bin": "0.0-0.1",
+          "n": 1651,
+          "matched": 325,
+          "rate": 0.1968503937007874
+        },
+        {
+          "bin": "0.1-0.2",
+          "n": 672,
+          "matched": 204,
+          "rate": 0.30357142857142855
+        },
+        {
+          "bin": "0.2-0.3",
+          "n": 414,
+          "matched": 157,
+          "rate": 0.37922705314009664
+        },
+        {
+          "bin": "0.3-0.4",
+          "n": 356,
+          "matched": 160,
+          "rate": 0.449438202247191
+        },
+        {
+          "bin": "0.4-0.5",
+          "n": 264,
+          "matched": 154,
+          "rate": 0.5833333333333334
+        },
+        {
+          "bin": "0.5-0.6",
+          "n": 243,
+          "matched": 142,
+          "rate": 0.5843621399176955
+        },
+        {
+          "bin": "0.6-0.7",
+          "n": 254,
+          "matched": 153,
+          "rate": 0.6023622047244095
+        },
+        {
+          "bin": "0.7-0.8",
+          "n": 207,
+          "matched": 181,
+          "rate": 0.8743961352657005
+        },
+        {
+          "bin": "0.8-0.9",
+          "n": 143,
+          "matched": 131,
+          "rate": 0.916083916083916
+        },
+        {
+          "bin": "0.9-1.0",
+          "n": 14,
+          "matched": 14,
+          "rate": 1.0
+        }
+      ],
+      "moves_vs_typical": [
+        {
+          "level": 0,
+          "moves": 10,
+          "typical": 10.0,
+          "ratio": 1.0
+        },
+        {
+          "level": 0,
+          "moves": 35,
+          "typical": 35.0,
+          "ratio": 1.0
+        },
+        {
+          "level": 0,
+          "moves": 24,
+          "typical": 24.0,
+          "ratio": 1.0
+        },
+        {
+          "level": 0,
+          "moves": 14,
+          "typical": 14.0,
+          "ratio": 1.0
+        },
+        {
+          "level": 1,
+          "moves": 15,
+          "typical": 14.0,
+          "ratio": 1.0714285714285714
+        },
+        {
+          "level": 0,
+          "moves": 40,
+          "typical": 40.0,
+          "ratio": 1.0
+        }
+      ],
+      "gates": {
+        "trips": 0,
+        "by_gate": {},
+        "seconds_total": 20095.365999999995,
+        "tokens_total": 358551
+      },
+      "handoffs": {
+        "H-b": 635,
+        "H-c": 33,
+        "H-d": 115,
+        "H-e": 235
+      },
+      "planner": {
+        "calls": 1077,
+        "tokens": 358551,
+        "segments": 1076,
+        "mean_segment_len": 3.2100371747211898,
+        "skills": {
+          "S-AROUND": 9,
+          "S-EXPLORE": 4
+        },
+        "questions": {
+          "Q-BLOCK": 283,
+          "Q-CHECK": 17,
+          "Q-HARM": 2,
+          "Q-REWARD": 101,
+          "Q-SAFE": 128,
+          "Q-UNKNOWN": 71
+        }
+      },
+      "forks": {
+        "opened": 81,
+        "failed": 156,
+        "returns": 26,
+        "root_replans": 610
+      },
+      "harm": {
+        "events": 348,
+        "by_kind": {
+          "c0:41b1bff6d9": 1,
+          "c0:c5eb8befe6": 1,
+          "c10:dd02940db2": 6,
+          "c11:67c9477391": 1,
+          "c11:7372c50532": 1,
+          "c11:b0b40e81ca": 1,
+          "c12:857638537d": 1,
+          "c13:37417c5729": 1,
+          "c13:dd02940db2": 1,
+          "c13:f263ef8460": 4,
+          "c14:4006be7414": 1,
+          "c14:5bdb1992f4": 1,
+          "c14:cc2f9dab3d": 1,
+          "c14:e5d7e9dd3d": 1,
+          "c15:a6293dc04d": 1,
+          "c2:ec2b5e7faa": 68,
+          "c3:1d2f864142": 1,
+          "c3:37417c5729": 7,
+          "c3:85e520a6ed": 2,
+          "c4:30c10cd562": 5,
+          "c4:4a0cf045a1": 31,
+          "c4:531c9770ef": 11,
+          "c4:557bc6dc15": 40,
+          "c4:747e37c45f": 1,
+          "c4:9acaa28a6d": 11,
+          "c4:ad3b630c38": 2,
+          "c4:dc1d760ba2": 2,
+          "c5:0215e527f3": 1,
+          "c5:38bc0ecdb4": 1,
+          "c6:dd02940db2": 3,
+          "c8:5eea8594b4": 1,
+          "c9:0d9511e8f0": 1,
+          "c9:94a03be9e8": 2,
+          "c9:dc55524a93": 10,
+          "kc2:2c15607993": 1,
+          "kc5:d21be36de0": 2,
+          "self": 122
+        }
+      }
+    }
+  },
+  "malformed_lines": 0
+}

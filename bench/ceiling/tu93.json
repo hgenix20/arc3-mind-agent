@@ -1,0 +1,40 @@
+{
+ "game": "tu93",
+ "levels": 5,
+ "per_level": [
+  18,
+  10,
+  19,
+  17,
+  29
+ ],
+ "searches": [
+  {
+   "level": 1,
+   "result": "18 actions; stopped=goal; expanded=529; 12.2s"
+  },
+  {
+   "level": 2,
+   "result": "10 actions; stopped=goal; expanded=96; 2.4s"
+  },
+  {
+   "level": 3,
+   "result": "19 actions; stopped=goal; expanded=690; 17.1s"
+  },
+  {
+   "level": 4,
+   "result": "17 actions; stopped=goal; expanded=515; 9.8s"
+  },
+  {
+   "level": 5,
+   "result": "29 actions; stopped=goal; expanded=2779; 54.9s"
+  },
+  {
+   "level": 6,
+   "result": "no plan; stopped=time_limit; expanded=4026; 60.0s"
+  }
+ ],
+ "seconds": 156.8,
+ "score": 33.33,
+ "total_levels": 9
+}

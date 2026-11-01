@@ -1,0 +1,140 @@
+[{"stream_name":"stderr","time":3.918903079,"data":"/usr/local/lib/python3.12/dist-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.\n"}
+,{"stream_name":"stderr","time":3.918927989,"data":"  validate(nb)\n"}
+,{"stream_name":"stderr","time":4.409313344,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.409330954,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.409332794,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.409334004,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":4.729697529,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.729717469,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.729719139,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.729720129,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":7.78033399,"data":"arc_agi /usr/local/lib/python3.12/dist-packages/arc_agi/__init__.py installed in 2s; pyarrow 24.0.0\n"}
+,{"stream_name":"stdout","time":7.78035053,"data":"competition rerun: \n"}
+,{"stream_name":"stdout","time":7.9807847899999995,"data":"gpu: NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB\n"}
+,{"stream_name":"stdout","time":88.248896423,"data":"vllm wheelhouse installed in 80s\n"}
+,{"stream_name":"stdout","time":523.07763252,"data":"server ready after 515s: vrfai/Qwen3.6-27B-FP8\n"}
+,{"stream_name":"stdout","time":523.133623486,"data":"wrote 86 source files\n"}
+,{"stream_name":"stdout","time":523.279144805,"data":"setup took 518s; rerun False; agent budget 6545s\n"}
+,{"stream_name":"stdout","time":523.279164785,"data":"/usr/bin/python3 -m arcagent.agent.submit --mode auto --policy mind --env-dir /kaggle/input/competitions/arc-prize-2026-arc-agi-3/environment_files --config PLANNER --workers 8 --endpoint http://127.0.0.1:1234/v1 --model vrfai/Qwen3.6-27B-FP8 --total-seconds 6545 --out /kaggle/working --log-dir /kaggle/working/logs --replies-dir /kaggle/working/replies --hybrid-moves 150\n"}
+,{"stream_name":"stdout","time":523.716537234,"data":"INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00\n"}
+,{"stream_name":"stdout","time":523.91203298,"data":"mode=offline policy=mind games=25 max_actions=20000\n"}
+,{"stream_name":"stdout","time":523.91367968,"data":"2026-10-31 15:00:23,283 INFO model server http://127.0.0.1:1234/v1 answered after 0s\n"}
+,{"stream_name":"stdout","time":937.800668343,"data":"cn04-2fe56bfb: 0/6 levels, 20000 actions, 413.4s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":1182.626163914,"data":"ft09-0d8bbf25: 1/6 levels, 20000 actions, 658.5s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":1531.234804387,"data":"lp85-305b61c3: 5/8 levels, 20000 actions, 348.3s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":1576.30345072,"data":"cd82-fb555c5d: 2/6 levels, 20000 actions, 1052.3s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":1580.598157639,"data":"dc22-fdcac232: 1/6 levels, 20000 actions, 1056.5s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2142.499537867,"data":"ka59-38d34dbb: 1/7 levels, 20000 actions, 1618.3s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2147.599095403,"data":"lf52-271a04aa: 2/10 levels, 20000 actions, 1208.4s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2200.542160378,"data":"g50t-5849a774: 1/7 levels, 20000 actions, 1676.4s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2245.800575353,"data":"m0r0-492f87ba: 2/6 levels, 20000 actions, 669.4s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2522.180630743,"data":"ar25-0c556536: 1/8 levels, 2103 actions, 1998.2s, stop=deadline\n"}
+,{"stream_name":"stdout","time":2602.854606769,"data":"s5i5-18d95033: 1/8 levels, 20000 actions, 455.2s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2605.478410497,"data":"bp35-0a0ad940: 1/9 levels, 14684 actions, 2081.4s, stop=deadline\n"}
+,{"stream_name":"stdout","time":2653.29318231,"data":"re86-8af5384d: 0/8 levels, 20000 actions, 510.7s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2653.816588361,"data":"r11l-495a7899: 1/6 levels, 20000 actions, 1073.2s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2705.450741904,"data":"sb26-7fbdac44: 0/8 levels, 20000 actions, 504.8s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":2929.733200844,"data":"ls20-9607627b: 1/7 levels, 20000 actions, 1398.4s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3550.551889426,"data":"sc25-635fd71a: 2/6 levels, 20000 actions, 1304.6s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3560.736185398,"data":"vc33-5430563c: 3/7 levels, 20000 actions, 631.0s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3560.838371728,"data":"sk48-d8078629: 0/8 levels, 20000 actions, 1038.6s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3643.694849901,"data":"tn36-ef4dde99: 1/7 levels, 20000 actions, 990.3s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3922.443424139,"data":"tr87-cd924810: 0/6 levels, 20000 actions, 1268.6s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3937.818031978,"data":"wa30-ee6fef47: 0/9 levels, 20000 actions, 387.2s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":3942.179288259,"data":"su15-1944f8ab: 1/9 levels, 20000 actions, 1336.6s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":4184.502062548,"data":"sp80-589a99af: 1/6 levels, 20000 actions, 1581.6s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":6033.767396881,"data":"tu93-0768757b: 5/9 levels, 20000 actions, 3328.3s, stop=max_actions\n"}
+,{"stream_name":"stdout","time":6033.911254628,"data":"2026-10-31 16:32:13,280 INFO Note: NumExpr detected 48 cores but \"NUMEXPR_MAX_THREADS\" not set, so enforcing safe limit of 16.\n"}
+,{"stream_name":"stdout","time":6033.911527848,"data":"2026-10-31 16:32:13,280 INFO NumExpr defaulting to 16 threads.\n"}
+,{"stream_name":"stdout","time":6034.059646465,"data":"played 25 games, 33 levels completed, scorecard score 0.5895, 0 errors, 5510.6s; wrote /kaggle/working/submission.parquet\n"}
+,{"stream_name":"stdout","time":6034.087568825,"data":"exit 0\n"}
+,{"stream_name":"stdout","time":6034.087576195,"data":"mode offline games 25 errors 0 scorecard score 0.5895412287910429\n"}
+,{"stream_name":"stdout","time":6034.087577785,"data":"ar25-0c556536 1 / 8 2103 actions deadline\n"}
+,{"stream_name":"stdout","time":6034.087578955,"data":"bp35-0a0ad940 1 / 9 14684 actions deadline\n"}
+,{"stream_name":"stdout","time":6034.087579965,"data":"cd82-fb555c5d 2 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087580905,"data":"cn04-2fe56bfb 0 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087581885,"data":"dc22-fdcac232 1 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087582805,"data":"ft09-0d8bbf25 1 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087590015,"data":"g50t-5849a774 1 / 7 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087591125,"data":"ka59-38d34dbb 1 / 7 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087591925,"data":"lf52-271a04aa 2 / 10 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087592645,"data":"lp85-305b61c3 5 / 8 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087593355,"data":"ls20-9607627b 1 / 7 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087594045,"data":"m0r0-492f87ba 2 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087594755,"data":"r11l-495a7899 1 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087595465,"data":"re86-8af5384d 0 / 8 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087596165,"data":"s5i5-18d95033 1 / 8 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087596865,"data":"sb26-7fbdac44 0 / 8 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087597575,"data":"sc25-635fd71a 2 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087598275,"data":"sk48-d8078629 0 / 8 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087598985,"data":"sp80-589a99af 1 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087599685,"data":"su15-1944f8ab 1 / 9 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087600385,"data":"tn36-ef4dde99 1 / 7 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087601085,"data":"tr87-cd924810 0 / 6 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087601775,"data":"tu93-0768757b 5 / 9 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087602485,"data":"vc33-5430563c 3 / 7 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.087603195,"data":"wa30-ee6fef47 0 / 9 20000 actions max_actions\n"}
+,{"stream_name":"stdout","time":6034.651522304,"data":"game           levels  score  pred_acc  latency  repeat  dH/act  hit    reuse  tests/lv  impasse  depth \n"}
+,{"stream_name":"stdout","time":6034.651545574,"data":"ar25-0c556536  0       0.000  0.664     -        0.000   0.098   0.664  0.116  26.000    -        7.011 \n"}
+,{"stream_name":"stdout","time":6034.651547244,"data":"bp35-0a0ad940  0       0.000  0.828     -        0.000   -0.021  0.828  0.399  23.500    -        4.264 \n"}
+,{"stream_name":"stdout","time":6034.651548224,"data":"cd82-fb555c5d  0       0.000  0.964     -        0.000   0.009   0.964  0.215  37.000    -        3.921 \n"}
+,{"stream_name":"stdout","time":6034.651549004,"data":"cn04-2fe56bfb  0       0.000  0.464     -        0.000   0.000   0.464  0.000  7.000     -        -     \n"}
+,{"stream_name":"stdout","time":6034.651549824,"data":"dc22-fdcac232  0       0.000  0.940     -        0.000   0.084   0.940  0.171  28.000    -        3.924 \n"}
+,{"stream_name":"stdout","time":6034.651550584,"data":"ft09-0d8bbf25  0       0.000  0.986     -        0.000   0.000   0.986  0.111  12.500    -        4.315 \n"}
+,{"stream_name":"stdout","time":6034.651551314,"data":"g50t-5849a774  0       0.000  0.894     -        0.000   0.013   0.894  0.438  25.000    -        7.001 \n"}
+,{"stream_name":"stdout","time":6034.651552084,"data":"ka59-38d34dbb  0       0.000  0.925     -        0.000   0.104   0.925  0.119  32.500    -        4.305 \n"}
+,{"stream_name":"stdout","time":6034.651552904,"data":"lf52-271a04aa  1       1.818  0.904     -        0.000   0.488   0.904  0.259  7.667     -        3.183 \n"}
+,{"stream_name":"stdout","time":6034.651553624,"data":"lp85-305b61c3  0       0.000  0.858     -        0.000   -0.006  0.858  0.425  2.000     -        0.773 \n"}
+,{"stream_name":"stdout","time":6034.651562834,"data":"ls20-9607627b  1       1.411  0.971     -        0.000   0.049   0.971  0.560  1.500     -        8.372 \n"}
+,{"stream_name":"stdout","time":6034.651563794,"data":"m0r0-492f87ba  0       0.000  0.870     -        0.000   0.029   0.870  0.040  12.000    -        10.794\n"}
+,{"stream_name":"stdout","time":6034.651564524,"data":"r11l-495a7899  1       4.001  0.709     -        0.000   0.762   0.709  0.103  51.500    -        2.188 \n"}
+,{"stream_name":"stdout","time":6034.651565254,"data":"re86-8af5384d  0       0.000  0.788     -        0.000   -0.013  0.788  0.000  31.000    -        9.508 \n"}
+,{"stream_name":"stdout","time":6034.651566054,"data":"s5i5-18d95033  0       0.000  0.955     -        0.000   0.000   0.955  0.000  16.000    -        3.060 \n"}
+,{"stream_name":"stdout","time":6034.651566784,"data":"sb26-7fbdac44  0       0.000  0.998     -        0.000   -6.101  0.998  0.000  121.000   -        7.661 \n"}
+,{"stream_name":"stdout","time":6034.651567504,"data":"sc25-635fd71a  0       0.000  0.948     -        0.002   0.239   0.948  0.296  24.000    -        3.058 \n"}
+,{"stream_name":"stdout","time":6034.651568234,"data":"sk48-d8078629  0       0.000  0.737     -        0.000   -0.570  0.737  0.000  71.000    -        3.551 \n"}
+,{"stream_name":"stdout","time":6034.651569774,"data":"sp80-589a99af  0       0.000  0.956     -        0.000   0.054   0.956  0.266  22.000    -        8.649 \n"}
+,{"stream_name":"stdout","time":6034.651570534,"data":"su15-1944f8ab  0       0.000  0.912     -        0.003   0.111   0.912  0.001  21.000    -        4.170 \n"}
+,{"stream_name":"stdout","time":6034.651571274,"data":"tn36-ef4dde99  1       3.571  0.990     -        0.000   0.346   0.990  0.273  12.500    -        2.820 \n"}
+,{"stream_name":"stdout","time":6034.651572004,"data":"tr87-cd924810  0       0.000  0.964     -        0.000   0.107   0.964  0.000  11.000    -        20.714\n"}
+,{"stream_name":"stdout","time":6034.651572814,"data":"tu93-0768757b  1       1.353  0.627     -        0.053   0.003   0.627  0.705  10.167    -        3.784 \n"}
+,{"stream_name":"stdout","time":6034.651573544,"data":"vc33-5430563c  1       0.109  0.928     -        0.000   0.160   0.928  0.041  23.500    -        4.113 \n"}
+,{"stream_name":"stdout","time":6034.651574354,"data":"wa30-ee6fef47  0       0.000  0.883     -        0.000   -0.034  0.883  0.000  12.000    -        8.610 \n"}
+,{"stream_name":"stdout","time":6034.651575104,"data":"OVERALL        6       0.491  0.883     -        0.007   -0.066  0.883  0.214  20.793    -        5.298 \n"}
+,{"stream_name":"stdout","time":6034.662118234,"data":"game           levels  score  pred_acc  latency  repeat  dH/act  hit    reuse  tests/lv  impasse  depth \n"}
+,{"stream_name":"stdout","time":6034.662131864,"data":"ar25-0c556536  0       0.000  0.664     -        0.000   0.098   0.664  0.116  26.000    -        7.011 \n"}
+,{"stream_name":"stdout","time":6034.662133604,"data":"bp35-0a0ad940  0       0.000  0.828     -        0.000   -0.021  0.828  0.399  23.500    -        4.264 \n"}
+,{"stream_name":"stdout","time":6034.662134564,"data":"cd82-fb555c5d  0       0.000  0.964     -        0.000   0.009   0.964  0.215  37.000    -        3.921 \n"}
+,{"stream_name":"stdout","time":6034.662135444,"data":"cn04-2fe56bfb  0       0.000  0.464     -        0.000   0.000   0.464  0.000  7.000     -        -     \n"}
+,{"stream_name":"stdout","time":6034.662136204,"data":"dc22-fdcac232  0       0.000  0.940     -        0.000   0.084   0.940  0.171  28.000    -        3.924 \n"}
+,{"stream_name":"stdout","time":6034.662137054,"data":"ft09-0d8bbf25  0       0.000  0.986     -        0.000   0.000   0.986  0.111  12.500    -        4.315 \n"}
+,{"stream_name":"stdout","time":6034.662144174,"data":"g50t-5849a774  0       0.000  0.894     -        0.000   0.013   0.894  0.438  25.000    -        7.001 \n"}
+,{"stream_name":"stdout","time":6034.662145204,"data":"ka59-38d34dbb  0       0.000  0.925     -        0.000   0.104   0.925  0.119  32.500    -        4.305 \n"}
+,{"stream_name":"stdout","time":6034.662145964,"data":"lf52-271a04aa  1       1.818  0.904     -        0.000   0.488   0.904  0.259  7.667     -        3.183 \n"}
+,{"stream_name":"stdout","time":6034.662146804,"data":"lp85-305b61c3  0       0.000  0.858     -        0.000   -0.006  0.858  0.425  2.000     -        0.773 \n"}
+,{"stream_name":"stdout","time":6034.662147544,"data":"ls20-9607627b  1       1.411  0.971     -        0.000   0.049   0.971  0.560  1.500     -        8.372 \n"}
+,{"stream_name":"stdout","time":6034.662148354,"data":"m0r0-492f87ba  0       0.000  0.870     -        0.000   0.029   0.870  0.040  12.000    -        10.794\n"}
+,{"stream_name":"stdout","time":6034.662149084,"data":"r11l-495a7899  1       4.001  0.709     -        0.000   0.762   0.709  0.103  51.500    -        2.188 \n"}
+,{"stream_name":"stdout","time":6034.662149804,"data":"re86-8af5384d  0       0.000  0.788     -        0.000   -0.013  0.788  0.000  31.000    -        9.508 \n"}
+,{"stream_name":"stdout","time":6034.662150524,"data":"s5i5-18d95033  0       0.000  0.955     -        0.000   0.000   0.955  0.000  16.000    -        3.060 \n"}
+,{"stream_name":"stdout","time":6034.662151254,"data":"sb26-7fbdac44  0       0.000  0.998     -        0.000   -6.101  0.998  0.000  121.000   -        7.661 \n"}
+,{"stream_name":"stdout","time":6034.662151994,"data":"sc25-635fd71a  0       0.000  0.948     -        0.002   0.239   0.948  0.296  24.000    -        3.058 \n"}
+,{"stream_name":"stdout","time":6034.662152724,"data":"sk48-d8078629  0       0.000  0.737     -        0.000   -0.570  0.737  0.000  71.000    -        3.551 \n"}
+,{"stream_name":"stdout","time":6034.662153874,"data":"sp80-589a99af  0       0.000  0.956     -        0.000   0.054   0.956  0.266  22.000    -        8.649 \n"}
+,{"stream_name":"stdout","time":6034.662154634,"data":"su15-1944f8ab  0       0.000  0.912     -        0.003   0.111   0.912  0.001  21.000    -        4.170 \n"}
+,{"stream_name":"stdout","time":6034.662155394,"data":"tn36-ef4dde99  1       3.571  0.990     -        0.000   0.346   0.990  0.273  12.500    -        2.820 \n"}
+,{"stream_name":"stdout","time":6034.662156114,"data":"tr87-cd924810  0       0.000  0.964     -        0.000   0.107   0.964  0.000  11.000    -        20.714\n"}
+,{"stream_name":"stdout","time":6034.662156844,"data":"tu93-0768757b  1       1.353  0.627     -        0.053   0.003   0.627  0.705  10.167    -        3.784 \n"}
+,{"stream_name":"stdout","time":6034.662157554,"data":"vc33-5430563c  1       0.109  0.928     -        0.000   0.160   0.928  0.041  23.500    -        4.113 \n"}
+,{"stream_name":"stdout","time":6034.662158284,"data":"wa30-ee6fef47  0       0.000  0.883     -        0.000   -0.034  0.883  0.000  12.000    -        8.610 \n"}
+,{"stream_name":"stdout","time":6034.662159024,"data":"OVERALL        6       0.491  0.883     -        0.007   -0.066  0.883  0.214  20.793    -        5.298 \n"}
+,{"stream_name":"stdout","time":6034.662159764,"data":"metrics exit 0\n"}
+,{"stream_name":"stderr","time":6038.436381752,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":6038.436398212,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":6038.53925769,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":6038.53927529,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":6038.871221613,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":6039.008216551,"data":"[NbConvertApp] Writing 406761 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":6040.130083819,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":6040.538670901,"data":"[NbConvertApp] Writing 719925 bytes to __results__.html\n"}
+]

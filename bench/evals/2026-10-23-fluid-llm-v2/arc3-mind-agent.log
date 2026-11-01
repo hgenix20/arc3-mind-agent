@@ -1,0 +1,140 @@
+[{"stream_name":"stderr","time":3.71532491,"data":"/usr/local/lib/python3.12/dist-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.\n"}
+,{"stream_name":"stderr","time":3.71535155,"data":"  validate(nb)\n"}
+,{"stream_name":"stderr","time":4.208336814,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.208347744,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.208348974,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.208349814,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":4.517111629,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":4.517143809,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":4.517145589,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":4.517146599,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":7.760625511,"data":"arc_agi /usr/local/lib/python3.12/dist-packages/arc_agi/__init__.py installed in 3s; pyarrow 24.0.0\n"}
+,{"stream_name":"stdout","time":7.7606417709999995,"data":"competition rerun: \n"}
+,{"stream_name":"stdout","time":7.961035509,"data":"gpu: NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB\n"}
+,{"stream_name":"stdout","time":292.009559015,"data":"vllm wheelhouse installed in 284s\n"}
+,{"stream_name":"stdout","time":2346.931647971,"data":"server ready after 2339s: vrfai/Qwen3.6-27B-FP8\n"}
+,{"stream_name":"stdout","time":2347.01066411,"data":"wrote 55 source files\n"}
+,{"stream_name":"stdout","time":2347.133093178,"data":"setup took 2342s; rerun False; agent budget 6545s\n"}
+,{"stream_name":"stdout","time":2347.133111478,"data":"/usr/bin/python3 -m arcagent.agent.submit --mode auto --policy mind --env-dir /kaggle/input/competitions/arc-prize-2026-arc-agi-3/environment_files --config FLUID-LLM --workers 8 --endpoint http://127.0.0.1:1234/v1 --model vrfai/Qwen3.6-27B-FP8 --total-seconds 6545 --out /kaggle/working --log-dir /kaggle/working/logs --replies-dir /kaggle/working/replies\n"}
+,{"stream_name":"stdout","time":2347.553710041,"data":"INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00\n"}
+,{"stream_name":"stdout","time":2349.019434718,"data":"mode=offline policy=mind games=25 max_actions=20000\n"}
+,{"stream_name":"stdout","time":2349.021095858,"data":"2026-10-23 23:05:33,811 INFO model server http://127.0.0.1:1234/v1 answered after 0s\n"}
+,{"stream_name":"stdout","time":4347.070472084,"data":"ar25-0c556536: 0/8 levels, 3873 actions, 1997.9s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4430.674996542,"data":"bp35-0a0ad940: 0/9 levels, 2867 actions, 2081.2s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4520.799642952,"data":"cd82-fb555c5d: 0/6 levels, 4805 actions, 2171.3s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4619.592595251,"data":"cn04-2fe56bfb: 0/6 levels, 5459 actions, 2269.9s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4728.263640964,"data":"dc22-fdcac232: 0/6 levels, 5417 actions, 2378.5s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4846.556968521,"data":"ft09-0d8bbf25: 1/6 levels, 4413 actions, 2496.7s, stop=deadline\n"}
+,{"stream_name":"stdout","time":4978.886072747,"data":"g50t-5849a774: 0/7 levels, 2566 actions, 2628.8s, stop=deadline\n"}
+,{"stream_name":"stdout","time":5124.214495394,"data":"ka59-38d34dbb: 0/7 levels, 4945 actions, 2773.8s, stop=deadline\n"}
+,{"stream_name":"stdout","time":6345.971287021,"data":"lf52-271a04aa: 1/10 levels, 1686 actions, 1996.7s, stop=deadline\n"}
+,{"stream_name":"stdout","time":6511.759685909,"data":"lp85-305b61c3: 1/8 levels, 4731 actions, 2080.3s, stop=deadline\n"}
+,{"stream_name":"stdout","time":6692.557351556,"data":"ls20-9607627b: 0/7 levels, 5838 actions, 2171.5s, stop=deadline\n"}
+,{"stream_name":"stdout","time":6890.059284157,"data":"m0r0-492f87ba: 1/6 levels, 3927 actions, 2269.9s, stop=deadline\n"}
+,{"stream_name":"stdout","time":7109.958402772,"data":"r11l-495a7899: 1/6 levels, 2926 actions, 2381.1s, stop=deadline\n"}
+,{"stream_name":"stdout","time":7344.431217327,"data":"re86-8af5384d: 0/8 levels, 3496 actions, 2497.3s, stop=deadline\n"}
+,{"stream_name":"stdout","time":7607.063623172,"data":"s5i5-18d95033: 0/8 levels, 5507 actions, 2627.8s, stop=deadline\n"}
+,{"stream_name":"stdout","time":7899.169884786,"data":"sb26-7fbdac44: 0/8 levels, 3383 actions, 2774.3s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8342.80571576,"data":"sc25-635fd71a: 0/6 levels, 2404 actions, 1995.7s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.376750165,"data":"sk48-d8078629: 0/8 levels, 3583 actions, 2080.3s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.438020774,"data":"vc33-5430563c: 1/7 levels, 1667 actions, 692.9s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.477127144,"data":"sp80-589a99af: 1/6 levels, 3741 actions, 1899.5s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.645728262,"data":"tr87-cd924810: 0/6 levels, 2562 actions, 1247.7s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.660060462,"data":"wa30-ee6fef47: 0/9 levels, 762 actions, 249.4s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.667187012,"data":"tu93-0768757b: 0/9 levels, 1719 actions, 985.0s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.723227191,"data":"tn36-ef4dde99: 1/7 levels, 1399 actions, 1482.2s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.734165941,"data":"su15-1944f8ab: 0/9 levels, 1399 actions, 1702.0s, stop=deadline\n"}
+,{"stream_name":"stdout","time":8592.83504134,"data":"2026-10-24 00:49:37,625 INFO Note: NumExpr detected 48 cores but \"NUMEXPR_MAX_THREADS\" not set, so enforcing safe limit of 16.\n"}
+,{"stream_name":"stdout","time":8592.83526741,"data":"2026-10-24 00:49:37,625 INFO NumExpr defaulting to 16 threads.\n"}
+,{"stream_name":"stdout","time":8592.950438929,"data":"played 25 games, 8 levels completed, scorecard score 0.0487, 0 errors, 6245.7s; wrote /kaggle/working/submission.parquet\n"}
+,{"stream_name":"stdout","time":8593.006381288,"data":"exit 0\n"}
+,{"stream_name":"stdout","time":8593.006387318,"data":"mode offline games 25 errors 0 scorecard score 0.04868633186748779\n"}
+,{"stream_name":"stdout","time":8593.006388778,"data":"ar25-0c556536 0 / 8 3873 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006389998,"data":"bp35-0a0ad940 0 / 9 2867 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006390928,"data":"cd82-fb555c5d 0 / 6 4805 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006391848,"data":"cn04-2fe56bfb 0 / 6 5459 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006392768,"data":"dc22-fdcac232 0 / 6 5417 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006393758,"data":"ft09-0d8bbf25 1 / 6 4413 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006394678,"data":"g50t-5849a774 0 / 7 2566 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006400668,"data":"ka59-38d34dbb 0 / 7 4945 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006401598,"data":"lf52-271a04aa 1 / 10 1686 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006402348,"data":"lp85-305b61c3 1 / 8 4731 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006403038,"data":"ls20-9607627b 0 / 7 5838 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006403708,"data":"m0r0-492f87ba 1 / 6 3927 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006404378,"data":"r11l-495a7899 1 / 6 2926 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006405168,"data":"re86-8af5384d 0 / 8 3496 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006405848,"data":"s5i5-18d95033 0 / 8 5507 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006406528,"data":"sb26-7fbdac44 0 / 8 3383 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006407208,"data":"sc25-635fd71a 0 / 6 2404 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006407998,"data":"sk48-d8078629 0 / 8 3583 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006408678,"data":"sp80-589a99af 1 / 6 3741 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006409368,"data":"su15-1944f8ab 0 / 9 1399 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006410048,"data":"tn36-ef4dde99 1 / 7 1399 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006410728,"data":"tr87-cd924810 0 / 6 2562 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006411418,"data":"tu93-0768757b 0 / 9 1719 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006412098,"data":"vc33-5430563c 1 / 7 1667 actions deadline\n"}
+,{"stream_name":"stdout","time":8593.006412798,"data":"wa30-ee6fef47 0 / 9 762 actions deadline\n"}
+,{"stream_name":"stdout","time":8596.331092534,"data":"game           levels  score  pred_acc  latency  repeat  dH/act\n"}
+,{"stream_name":"stdout","time":8596.331118264,"data":"ar25-0c556536  0       0.000  0.780     -        0.008   -0.002\n"}
+,{"stream_name":"stdout","time":8596.331119934,"data":"bp35-0a0ad940  0       0.000  0.780     -        0.000   -0.001\n"}
+,{"stream_name":"stdout","time":8596.331120974,"data":"cd82-fb555c5d  0       0.000  0.968     -        0.038   -0.016\n"}
+,{"stream_name":"stdout","time":8596.331121784,"data":"cn04-2fe56bfb  0       0.000  0.585     -        0.004   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331122474,"data":"dc22-fdcac232  0       0.000  0.973     -        0.004   -0.004\n"}
+,{"stream_name":"stdout","time":8596.331123274,"data":"ft09-0d8bbf25  1       0.002  0.976     -        0.019   0.007 \n"}
+,{"stream_name":"stdout","time":8596.331124004,"data":"g50t-5849a774  0       0.000  0.849     -        0.019   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331124724,"data":"ka59-38d34dbb  0       0.000  0.888     -        0.006   -0.002\n"}
+,{"stream_name":"stdout","time":8596.331125414,"data":"lf52-271a04aa  1       0.002  0.879     -        0.059   0.045 \n"}
+,{"stream_name":"stdout","time":8596.331126114,"data":"lp85-305b61c3  1       1.188  0.779     -        0.004   0.004 \n"}
+,{"stream_name":"stdout","time":8596.331126814,"data":"ls20-9607627b  0       0.000  0.937     -        0.014   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331127534,"data":"m0r0-492f87ba  1       0.000  0.617     -        0.002   0.001 \n"}
+,{"stream_name":"stdout","time":8596.331128244,"data":"r11l-495a7899  1       0.014  0.868     -        0.000   0.030 \n"}
+,{"stream_name":"stdout","time":8596.331128964,"data":"re86-8af5384d  0       0.000  0.834     -        0.000   -0.000\n"}
+,{"stream_name":"stdout","time":8596.331176354,"data":"s5i5-18d95033  0       0.000  0.960     -        0.000   -0.000\n"}
+,{"stream_name":"stdout","time":8596.331183124,"data":"sb26-7fbdac44  0       0.000  0.991     -        0.086   -0.002\n"}
+,{"stream_name":"stdout","time":8596.331184644,"data":"sc25-635fd71a  0       0.000  0.911     -        0.024   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331185614,"data":"sk48-d8078629  0       0.000  0.894     -        0.143   -0.011\n"}
+,{"stream_name":"stdout","time":8596.331186394,"data":"sp80-589a99af  1       0.003  0.884     -        0.000   0.002 \n"}
+,{"stream_name":"stdout","time":8596.331187134,"data":"su15-1944f8ab  0       0.000  0.937     -        0.001   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331187844,"data":"tn36-ef4dde99  1       0.009  0.991     -        0.000   0.024 \n"}
+,{"stream_name":"stdout","time":8596.331188554,"data":"tr87-cd924810  0       0.000  0.957     -        0.000   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331189274,"data":"tu93-0768757b  0       0.000  0.688     -        0.014   -0.001\n"}
+,{"stream_name":"stdout","time":8596.331189994,"data":"vc33-5430563c  1       0.000  0.955     -        0.000   -0.001\n"}
+,{"stream_name":"stdout","time":8596.331190934,"data":"wa30-ee6fef47  0       0.000  0.784     -        0.013   0.000 \n"}
+,{"stream_name":"stdout","time":8596.331191684,"data":"OVERALL        8       0.049  0.902     -        0.018   0.001 \n"}
+,{"stream_name":"stdout","time":8596.343647353,"data":"game           levels  score  pred_acc  latency  repeat  dH/act\n"}
+,{"stream_name":"stdout","time":8596.343663233,"data":"ar25-0c556536  0       0.000  0.780     -        0.008   -0.002\n"}
+,{"stream_name":"stdout","time":8596.343664883,"data":"bp35-0a0ad940  0       0.000  0.780     -        0.000   -0.001\n"}
+,{"stream_name":"stdout","time":8596.343666143,"data":"cd82-fb555c5d  0       0.000  0.968     -        0.038   -0.016\n"}
+,{"stream_name":"stdout","time":8596.343666953,"data":"cn04-2fe56bfb  0       0.000  0.585     -        0.004   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343667833,"data":"dc22-fdcac232  0       0.000  0.973     -        0.004   -0.004\n"}
+,{"stream_name":"stdout","time":8596.343668633,"data":"ft09-0d8bbf25  1       0.002  0.976     -        0.019   0.007 \n"}
+,{"stream_name":"stdout","time":8596.343669533,"data":"g50t-5849a774  0       0.000  0.849     -        0.019   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343670323,"data":"ka59-38d34dbb  0       0.000  0.888     -        0.006   -0.002\n"}
+,{"stream_name":"stdout","time":8596.343671223,"data":"lf52-271a04aa  1       0.002  0.879     -        0.059   0.045 \n"}
+,{"stream_name":"stdout","time":8596.343671923,"data":"lp85-305b61c3  1       1.188  0.779     -        0.004   0.004 \n"}
+,{"stream_name":"stdout","time":8596.343672603,"data":"ls20-9607627b  0       0.000  0.937     -        0.014   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343673313,"data":"m0r0-492f87ba  1       0.000  0.617     -        0.002   0.001 \n"}
+,{"stream_name":"stdout","time":8596.343674103,"data":"r11l-495a7899  1       0.014  0.868     -        0.000   0.030 \n"}
+,{"stream_name":"stdout","time":8596.343674793,"data":"re86-8af5384d  0       0.000  0.834     -        0.000   -0.000\n"}
+,{"stream_name":"stdout","time":8596.343675583,"data":"s5i5-18d95033  0       0.000  0.960     -        0.000   -0.000\n"}
+,{"stream_name":"stdout","time":8596.343676273,"data":"sb26-7fbdac44  0       0.000  0.991     -        0.086   -0.002\n"}
+,{"stream_name":"stdout","time":8596.343676973,"data":"sc25-635fd71a  0       0.000  0.911     -        0.024   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343677673,"data":"sk48-d8078629  0       0.000  0.894     -        0.143   -0.011\n"}
+,{"stream_name":"stdout","time":8596.343684653,"data":"sp80-589a99af  1       0.003  0.884     -        0.000   0.002 \n"}
+,{"stream_name":"stdout","time":8596.343685633,"data":"su15-1944f8ab  0       0.000  0.937     -        0.001   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343686443,"data":"tn36-ef4dde99  1       0.009  0.991     -        0.000   0.024 \n"}
+,{"stream_name":"stdout","time":8596.343687123,"data":"tr87-cd924810  0       0.000  0.957     -        0.000   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343687823,"data":"tu93-0768757b  0       0.000  0.688     -        0.014   -0.001\n"}
+,{"stream_name":"stdout","time":8596.343688513,"data":"vc33-5430563c  1       0.000  0.955     -        0.000   -0.001\n"}
+,{"stream_name":"stdout","time":8596.343689213,"data":"wa30-ee6fef47  0       0.000  0.784     -        0.013   0.000 \n"}
+,{"stream_name":"stdout","time":8596.343689913,"data":"OVERALL        8       0.049  0.902     -        0.018   0.001 \n"}
+,{"stream_name":"stdout","time":8596.343690663,"data":"metrics exit 0\n"}
+,{"stream_name":"stderr","time":8600.086460054,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":8600.086477754,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":8600.166068904,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":8600.166075304,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":8601.063051394,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":8601.202447413,"data":"[NbConvertApp] Writing 510007 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":8602.835353636,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":8603.286429351,"data":"[NbConvertApp] Writing 1506858 bytes to __results__.html\n"}
+]

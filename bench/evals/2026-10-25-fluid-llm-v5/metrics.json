@@ -1,0 +1,1269 @@
+{
+  "games": {
+    "ar25-0c556536": {
+      "levels_completed": 2,
+      "actions_per_completed_level": [
+        211,
+        399
+      ],
+      "score_estimate": 0.15113116594173212,
+      "prediction_accuracy": 0.8560099694120312,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.05431878895814782,
+      "entropy_change_per_action": 0.018633540372670808,
+      "transfer_actions": {
+        "level_1": 211.0,
+        "levels_2_plus": 399.0
+      },
+      "outcomes": {
+        "noop": 374,
+        "game_over": 7,
+        "disconfirmed": 0
+      },
+      "actions": 1123,
+      "hit_rate": 0.8560099694120312,
+      "hit_rate_halves": {
+        "first": 0.8100131752305665,
+        "second": 0.8906995230524642
+      },
+      "rule_reuse": 0.1625198517734251,
+      "tests_per_level": 52.333333333333336,
+      "impasses": 0,
+      "search_depth_mean": 3.7395790342550557,
+      "goals": {
+        "final": {
+          "open": 200,
+          "ruled_out": 72,
+          "stalled": 26,
+          "excluded": 11
+        },
+        "transitions": {
+          "open": 384,
+          "ruled_out": 72,
+          "stalled": 101,
+          "excluded": 11,
+          "probing": 1
+        }
+      },
+      "actions_vs_human": [
+        6.59375,
+        7.98
+      ]
+    },
+    "bp35-0a0ad940": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8132273630428613,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": -0.006657789613848202,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 13,
+        "disconfirmed": 0
+      },
+      "actions": 739,
+      "hit_rate": 0.8132273630428613,
+      "hit_rate_halves": {
+        "first": 0.8567931456548348,
+        "second": 0.7755426151402859
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 52.0,
+      "impasses": 0,
+      "search_depth_mean": 2.4595931830676196,
+      "goals": {
+        "final": {
+          "open": 20,
+          "stalled": 7,
+          "ruled_out": 11,
+          "excluded": 3
+        },
+        "transitions": {
+          "open": 41,
+          "ruled_out": 11,
+          "stalled": 7,
+          "probing": 1,
+          "excluded": 3
+        }
+      },
+      "actions_vs_human": null
+    },
+    "cd82-fb555c5d": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        1065
+      ],
+      "score_estimate": 0.012700092049427498,
+      "prediction_accuracy": 0.9635861537473508,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0011792452830188679,
+      "entropy_change_per_action": -0.00760233918128655,
+      "transfer_actions": {
+        "level_1": 1065.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 303,
+        "game_over": 16,
+        "disconfirmed": 0
+      },
+      "actions": 1696,
+      "hit_rate": 0.9635861537473508,
+      "hit_rate_halves": {
+        "first": 0.964171974522293,
+        "second": 0.963036714374611
+      },
+      "rule_reuse": 0.22913889629432152,
+      "tests_per_level": 119.5,
+      "impasses": 1,
+      "search_depth_mean": 3.283422459893048,
+      "goals": {
+        "final": {
+          "excluded": 19,
+          "open": 242,
+          "ruled_out": 31,
+          "stalled": 29
+        },
+        "transitions": {
+          "open": 397,
+          "ruled_out": 31,
+          "stalled": 105,
+          "excluded": 19
+        }
+      },
+      "actions_vs_human": [
+        19.363636363636363
+      ]
+    },
+    "cn04-2fe56bfb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.4480549199084668,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0031941031941031942,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 338,
+        "game_over": 54,
+        "disconfirmed": 0
+      },
+      "actions": 4070,
+      "hit_rate": 0.4480549199084668,
+      "hit_rate_halves": {
+        "first": 0.48507936507936505,
+        "second": 0.41380323054331863
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 445.0,
+      "impasses": 3,
+      "search_depth_mean": 8.006994925250309,
+      "goals": {
+        "final": {
+          "stalled": 16,
+          "open": 38,
+          "ruled_out": 74,
+          "excluded": 7
+        },
+        "transitions": {
+          "open": 135,
+          "ruled_out": 74,
+          "stalled": 16,
+          "excluded": 7
+        }
+      },
+      "actions_vs_human": null
+    },
+    "dc22-fdcac232": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        1035
+      ],
+      "score_estimate": 0.015474051180835467,
+      "prediction_accuracy": 0.9493210211841391,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.001375515818431912,
+      "entropy_change_per_action": 0.08805460750853242,
+      "transfer_actions": {
+        "level_1": 1035.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 333,
+        "game_over": 13,
+        "disconfirmed": 0
+      },
+      "actions": 1454,
+      "hit_rate": 0.9493210211841391,
+      "hit_rate_halves": {
+        "first": 0.9541492131778557,
+        "second": 0.9448679127075285
+      },
+      "rule_reuse": 0.1373805573038851,
+      "tests_per_level": 68.0,
+      "impasses": 0,
+      "search_depth_mean": 4.086212262682851,
+      "goals": {
+        "final": {
+          "open": 137,
+          "excluded": 39,
+          "stalled": 49,
+          "ruled_out": 133
+        },
+        "transitions": {
+          "open": 397,
+          "ruled_out": 133,
+          "probing": 8,
+          "excluded": 39,
+          "stalled": 88
+        }
+      },
+      "actions_vs_human": [
+        17.54237288135593
+      ]
+    },
+    "ft09-0d8bbf25": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 1.0,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.025952512424075095,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1366,
+        "game_over": 13,
+        "disconfirmed": 0
+      },
+      "actions": 1811,
+      "hit_rate": 1.0,
+      "hit_rate_halves": {
+        "first": 1.0,
+        "second": 1.0
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 25.0,
+      "impasses": 0,
+      "search_depth_mean": 3.3098847786537293,
+      "goals": {
+        "final": {
+          "open": 2,
+          "ruled_out": 1
+        },
+        "transitions": {
+          "open": 3,
+          "ruled_out": 1
+        }
+      },
+      "actions_vs_human": null
+    },
+    "g50t-5849a774": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8657876297853366,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.08410732714138287,
+      "entropy_change_per_action": -0.0005125576627370579,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 325,
+        "game_over": 14,
+        "disconfirmed": 0
+      },
+      "actions": 1938,
+      "hit_rate": 0.8657876297853366,
+      "hit_rate_halves": {
+        "first": 0.8726081258191349,
+        "second": 0.8593382079563763
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 26.0,
+      "impasses": 0,
+      "search_depth_mean": 5.966836215666327,
+      "goals": {
+        "final": {
+          "open": 32,
+          "stalled": 29,
+          "ruled_out": 6,
+          "excluded": 2
+        },
+        "transitions": {
+          "open": 69,
+          "ruled_out": 6,
+          "excluded": 2,
+          "stalled": 29
+        }
+      },
+      "actions_vs_human": null
+    },
+    "ka59-38d34dbb": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8427518427518428,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0023603461841070024,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 236,
+        "game_over": 25,
+        "disconfirmed": 0
+      },
+      "actions": 2542,
+      "hit_rate": 0.8427518427518428,
+      "hit_rate_halves": {
+        "first": 0.8456822332376729,
+        "second": 0.8400146216644327
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 165.0,
+      "impasses": 0,
+      "search_depth_mean": 5.569925890509204,
+      "goals": {
+        "final": {
+          "ruled_out": 126,
+          "stalled": 58,
+          "excluded": 40,
+          "open": 100
+        },
+        "transitions": {
+          "open": 324,
+          "ruled_out": 126,
+          "stalled": 58,
+          "excluded": 40,
+          "probing": 3
+        }
+      },
+      "actions_vs_human": null
+    },
+    "lf52-271a04aa": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        149
+      ],
+      "score_estimate": 0.08386190630233692,
+      "prediction_accuracy": 0.9043400390187738,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.15515771526001704,
+      "entropy_change_per_action": 0.0494458653026428,
+      "transfer_actions": {
+        "level_1": 149.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1060,
+        "game_over": 2,
+        "disconfirmed": 0
+      },
+      "actions": 2346,
+      "hit_rate": 0.9043400390187738,
+      "hit_rate_halves": {
+        "first": 0.9032595205434711,
+        "second": 0.9053766136107282
+      },
+      "rule_reuse": 0.2796718064789928,
+      "tests_per_level": 47.0,
+      "impasses": 2,
+      "search_depth_mean": 0.13689512502248605,
+      "goals": {
+        "final": {
+          "excluded": 15,
+          "stalled": 18,
+          "ruled_out": 51,
+          "open": 200
+        },
+        "transitions": {
+          "open": 302,
+          "ruled_out": 51,
+          "stalled": 36,
+          "excluded": 15
+        }
+      },
+      "actions_vs_human": [
+        4.65625
+      ]
+    },
+    "lp85-305b61c3": {
+      "levels_completed": 2,
+      "actions_per_completed_level": [
+        7,
+        1890
+      ],
+      "score_estimate": 2.7800235777895974,
+      "prediction_accuracy": 0.761418359355473,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.035734543391945546,
+      "entropy_change_per_action": 0.010698198198198198,
+      "transfer_actions": {
+        "level_1": 7.0,
+        "levels_2_plus": 1890.0
+      },
+      "outcomes": {
+        "noop": 1467,
+        "game_over": 29,
+        "disconfirmed": 0
+      },
+      "actions": 3526,
+      "hit_rate": 0.761418359355473,
+      "hit_rate_halves": {
+        "first": 0.7839850391023462,
+        "second": 0.7397313988824625
+      },
+      "rule_reuse": 0.39422256264361527,
+      "tests_per_level": 17.333333333333332,
+      "impasses": 6,
+      "search_depth_mean": 0.5430944963655244,
+      "goals": {
+        "final": {
+          "open": 172,
+          "stalled": 50,
+          "excluded": 31,
+          "ruled_out": 9
+        },
+        "transitions": {
+          "open": 319,
+          "excluded": 31,
+          "ruled_out": 9,
+          "stalled": 107
+        }
+      },
+      "actions_vs_human": [
+        0.4117647058823529,
+        49.73684210526316
+      ]
+    },
+    "ls20-9607627b": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        44
+      ],
+      "score_estimate": 0.8928571428571429,
+      "prediction_accuracy": 0.9504443367264501,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.008109934669970714,
+      "entropy_change_per_action": 0.0015569395017793594,
+      "transfer_actions": {
+        "level_1": 44.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 16,
+        "game_over": 59,
+        "disconfirmed": 0
+      },
+      "actions": 4439,
+      "hit_rate": 0.9504443367264501,
+      "hit_rate_halves": {
+        "first": 0.9549204478491455,
+        "second": 0.9460821847881572
+      },
+      "rule_reuse": 0.6399537595838363,
+      "tests_per_level": 3.5,
+      "impasses": 0,
+      "search_depth_mean": 10.910951652746736,
+      "goals": {
+        "final": {
+          "open": 62,
+          "stalled": 13,
+          "ruled_out": 8,
+          "confirmed": 2,
+          "excluded": 12
+        },
+        "transitions": {
+          "open": 99,
+          "ruled_out": 8,
+          "excluded": 12,
+          "stalled": 15,
+          "confirmed": 3,
+          "probing": 1
+        }
+      },
+      "actions_vs_human": [
+        2.0
+      ]
+    },
+    "m0r0-492f87ba": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        95
+      ],
+      "score_estimate": 0.47487138899881276,
+      "prediction_accuracy": 0.9627221499783268,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.010297482837528604,
+      "entropy_change_per_action": 0.014823261117445839,
+      "transfer_actions": {
+        "level_1": 95.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 407,
+        "game_over": 5,
+        "disconfirmed": 0
+      },
+      "actions": 874,
+      "hit_rate": 0.9627221499783268,
+      "hit_rate_halves": {
+        "first": 0.9583333333333334,
+        "second": 0.9667497921862012
+      },
+      "rule_reuse": 0.00045024763619990995,
+      "tests_per_level": 15.0,
+      "impasses": 2,
+      "search_depth_mean": 2.176656151419558,
+      "goals": {
+        "final": {
+          "open": 17,
+          "ruled_out": 8,
+          "excluded": 1,
+          "stalled": 1
+        },
+        "transitions": {
+          "open": 28,
+          "ruled_out": 8,
+          "stalled": 2,
+          "probing": 1,
+          "excluded": 1
+        }
+      },
+      "actions_vs_human": [
+        3.1666666666666665
+      ]
+    },
+    "r11l-495a7899": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        29
+      ],
+      "score_estimate": 2.740501670347092,
+      "prediction_accuracy": 0.7783919906639641,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.1318007662835249,
+      "transfer_actions": {
+        "level_1": 29.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 37,
+        "disconfirmed": 0
+      },
+      "actions": 1270,
+      "hit_rate": 0.7783919906639641,
+      "hit_rate_halves": {
+        "first": 0.7989585979171958,
+        "second": 0.7591292970143928
+      },
+      "rule_reuse": 0.09461058944212104,
+      "tests_per_level": 346.5,
+      "impasses": 0,
+      "search_depth_mean": 1.562578222778473,
+      "goals": {
+        "final": {
+          "excluded": 56,
+          "stalled": 133,
+          "ruled_out": 173,
+          "open": 200
+        },
+        "transitions": {
+          "open": 564,
+          "ruled_out": 173,
+          "stalled": 135,
+          "excluded": 56,
+          "probing": 7
+        }
+      },
+      "actions_vs_human": [
+        1.3181818181818181
+      ]
+    },
+    "re86-8af5384d": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.816997859981657,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.003054989816700611,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 33,
+        "game_over": 19,
+        "disconfirmed": 0
+      },
+      "actions": 1964,
+      "hit_rate": 0.816997859981657,
+      "hit_rate_halves": {
+        "first": 0.826486817903127,
+        "second": 0.8075609756097561
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 71.0,
+      "impasses": 0,
+      "search_depth_mean": 5.482954545454546,
+      "goals": {
+        "final": {
+          "stalled": 194,
+          "open": 200,
+          "ruled_out": 240,
+          "excluded": 73
+        },
+        "transitions": {
+          "open": 707,
+          "ruled_out": 240,
+          "excluded": 73,
+          "stalled": 194,
+          "probing": 10
+        }
+      },
+      "actions_vs_human": null
+    },
+    "s5i5-18d95033": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9844533972663684,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0009757457485363814,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 143,
+        "disconfirmed": 0
+      },
+      "actions": 7174,
+      "hit_rate": 0.9844533972663684,
+      "hit_rate_halves": {
+        "first": 0.9843392282424765,
+        "second": 0.984566032177286
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 26.0,
+      "impasses": 1,
+      "search_depth_mean": 0.6655700986911178,
+      "goals": {
+        "final": {
+          "open": 52,
+          "stalled": 2,
+          "excluded": 1,
+          "ruled_out": 10
+        },
+        "transitions": {
+          "open": 65,
+          "ruled_out": 10,
+          "stalled": 2,
+          "excluded": 1
+        }
+      },
+      "actions_vs_human": null
+    },
+    "sb26-7fbdac44": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9691663197335554,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0683151718357083,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 1221,
+        "game_over": 6,
+        "disconfirmed": 0
+      },
+      "actions": 2386,
+      "hit_rate": 0.9691663197335554,
+      "hit_rate_halves": {
+        "first": 0.970968274041898,
+        "second": 0.9675475426031119
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 126.0,
+      "impasses": 2,
+      "search_depth_mean": 2.0519719251336896,
+      "goals": {
+        "final": {
+          "ruled_out": 71,
+          "open": 200,
+          "stalled": 29,
+          "excluded": 3
+        },
+        "transitions": {
+          "open": 303,
+          "ruled_out": 71,
+          "stalled": 29,
+          "excluded": 3
+        }
+      },
+      "actions_vs_human": null
+    },
+    "sc25-635fd71a": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9294355859276132,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0210896309314587,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 233,
+        "game_over": 29,
+        "disconfirmed": 0
+      },
+      "actions": 1707,
+      "hit_rate": 0.9294355859276132,
+      "hit_rate_halves": {
+        "first": 0.9316580801177584,
+        "second": 0.9273721202655213
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 52.0,
+      "impasses": 0,
+      "search_depth_mean": 4.2113447218572055,
+      "goals": {
+        "final": {
+          "open": 69,
+          "excluded": 29,
+          "stalled": 52,
+          "ruled_out": 66
+        },
+        "transitions": {
+          "open": 216,
+          "ruled_out": 66,
+          "excluded": 29,
+          "probing": 3,
+          "stalled": 52
+        }
+      },
+      "actions_vs_human": null
+    },
+    "sk48-d8078629": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8410279621806478,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.03313049357674104,
+      "entropy_change_per_action": -0.02899527983816588,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 636,
+        "game_over": 5,
+        "disconfirmed": 0
+      },
+      "actions": 1479,
+      "hit_rate": 0.8410279621806478,
+      "hit_rate_halves": {
+        "first": 0.8229123390112173,
+        "second": 0.858034321372855
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 241.0,
+      "impasses": 0,
+      "search_depth_mean": 3.3967741935483873,
+      "goals": {
+        "final": {
+          "stalled": 82,
+          "ruled_out": 39,
+          "open": 200,
+          "excluded": 8
+        },
+        "transitions": {
+          "open": 329,
+          "ruled_out": 39,
+          "stalled": 82,
+          "excluded": 8
+        }
+      },
+      "actions_vs_human": null
+    },
+    "sp80-589a99af": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        1189
+      ],
+      "score_estimate": 0.005123257801827335,
+      "prediction_accuracy": 0.9743589743589743,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0012414649286157666,
+      "entropy_change_per_action": 0.005428226779252111,
+      "transfer_actions": {
+        "level_1": 1189.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 49,
+        "disconfirmed": 0
+      },
+      "actions": 1611,
+      "hit_rate": 0.9743589743589743,
+      "hit_rate_halves": {
+        "first": 0.9723991507430998,
+        "second": 0.9762109486959014
+      },
+      "rule_reuse": 0.1309739866908651,
+      "tests_per_level": 14.5,
+      "impasses": 0,
+      "search_depth_mean": 9.193138500635325,
+      "goals": {
+        "final": {
+          "open": 15,
+          "stalled": 18,
+          "excluded": 9,
+          "ruled_out": 4
+        },
+        "transitions": {
+          "open": 50,
+          "stalled": 22,
+          "excluded": 9,
+          "probing": 4,
+          "ruled_out": 4
+        }
+      },
+      "actions_vs_human": [
+        30.487179487179485
+      ]
+    },
+    "su15-1944f8ab": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        628
+      ],
+      "score_estimate": 0.0027271784746733018,
+      "prediction_accuracy": 0.8725490196078431,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.005555555555555556,
+      "entropy_change_per_action": 0.007233273056057866,
+      "transfer_actions": {
+        "level_1": 628.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 131,
+        "game_over": 28,
+        "disconfirmed": 0
+      },
+      "actions": 1080,
+      "hit_rate": 0.8725490196078431,
+      "hit_rate_halves": {
+        "first": 0.8937595129375951,
+        "second": 0.853464804163243
+      },
+      "rule_reuse": 0.0011566424322538005,
+      "tests_per_level": 37.5,
+      "impasses": 0,
+      "search_depth_mean": 4.318532110091743,
+      "goals": {
+        "final": {
+          "open": 23,
+          "ruled_out": 14,
+          "excluded": 4,
+          "stalled": 7
+        },
+        "transitions": {
+          "open": 58,
+          "ruled_out": 14,
+          "excluded": 4,
+          "stalled": 17
+        }
+      },
+      "actions_vs_human": [
+        28.545454545454547
+      ]
+    },
+    "tn36-ef4dde99": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        11
+      ],
+      "score_estimate": 3.5714285714285716,
+      "prediction_accuracy": 0.9794039253695178,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.05851063829787234,
+      "transfer_actions": {
+        "level_1": 11.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 15,
+        "disconfirmed": 0
+      },
+      "actions": 927,
+      "hit_rate": 0.9794039253695178,
+      "hit_rate_halves": {
+        "first": 0.9768250289687138,
+        "second": 0.9818611987381703
+      },
+      "rule_reuse": 0.25639122546594095,
+      "tests_per_level": 11.5,
+      "impasses": 1,
+      "search_depth_mean": 1.267910131411615,
+      "goals": {
+        "final": {
+          "open": 56,
+          "ruled_out": 5,
+          "excluded": 1,
+          "stalled": 14
+        },
+        "transitions": {
+          "open": 76,
+          "ruled_out": 5,
+          "probing": 1,
+          "excluded": 1,
+          "stalled": 14
+        }
+      },
+      "actions_vs_human": [
+        0.34375
+      ]
+    },
+    "tr87-cd924810": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.9757460317460317,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 17,
+        "disconfirmed": 0
+      },
+      "actions": 2257,
+      "hit_rate": 0.9757460317460317,
+      "hit_rate_halves": {
+        "first": 0.9752100261671947,
+        "second": 0.9762883485450197
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 20.0,
+      "impasses": 0,
+      "search_depth_mean": 4.398226260004326,
+      "goals": {
+        "final": {
+          "open": 187,
+          "stalled": 27,
+          "ruled_out": 36,
+          "excluded": 4
+        },
+        "transitions": {
+          "open": 254,
+          "ruled_out": 36,
+          "stalled": 27,
+          "excluded": 4
+        }
+      },
+      "actions_vs_human": null
+    },
+    "tu93-0768757b": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.6477495107632094,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 7,
+        "disconfirmed": 0
+      },
+      "actions": 362,
+      "hit_rate": 0.6477495107632094,
+      "hit_rate_halves": {
+        "first": 0.6359832635983264,
+        "second": 0.6580882352941176
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 4.0,
+      "impasses": 0,
+      "search_depth_mean": 3.466509988249119,
+      "goals": {
+        "final": {
+          "ruled_out": 10,
+          "open": 18,
+          "stalled": 6,
+          "excluded": 2
+        },
+        "transitions": {
+          "open": 36,
+          "ruled_out": 10,
+          "excluded": 2,
+          "stalled": 6
+        }
+      },
+      "actions_vs_human": null
+    },
+    "vc33-5430563c": {
+      "levels_completed": 1,
+      "actions_per_completed_level": [
+        120
+      ],
+      "score_estimate": 0.012152777777777778,
+      "prediction_accuracy": 0.9521174477696217,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.001364256480218281,
+      "entropy_change_per_action": 0.0160857908847185,
+      "transfer_actions": {
+        "level_1": 120.0,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 0,
+        "game_over": 28,
+        "disconfirmed": 0
+      },
+      "actions": 1466,
+      "hit_rate": 0.9521174477696217,
+      "hit_rate_halves": {
+        "first": 0.9499542961608776,
+        "second": 0.9542308551015852
+      },
+      "rule_reuse": 0.15099039259874272,
+      "tests_per_level": 10.0,
+      "impasses": 3,
+      "search_depth_mean": 1.554320203303685,
+      "goals": {
+        "final": {
+          "open": 59,
+          "ruled_out": 8,
+          "stalled": 8,
+          "excluded": 2
+        },
+        "transitions": {
+          "open": 78,
+          "ruled_out": 8,
+          "stalled": 9,
+          "excluded": 2
+        }
+      },
+      "actions_vs_human": [
+        17.142857142857142
+      ]
+    },
+    "wa30-ee6fef47": {
+      "levels_completed": 0,
+      "actions_per_completed_level": [],
+      "score_estimate": 0.0,
+      "prediction_accuracy": 0.8126436781609195,
+      "abandonment_latency": null,
+      "abandonment_latency_n": 0,
+      "drop_reasons": {},
+      "disconfirmed_repeat_rate": 0.0,
+      "entropy_change_per_action": 0.0,
+      "transfer_actions": {
+        "level_1": null,
+        "levels_2_plus": null
+      },
+      "outcomes": {
+        "noop": 4,
+        "game_over": 0,
+        "disconfirmed": 0
+      },
+      "actions": 149,
+      "hit_rate": 0.8126436781609195,
+      "hit_rate_halves": {
+        "first": 0.7666666666666667,
+        "second": 0.8555555555555555
+      },
+      "rule_reuse": 0.0,
+      "tests_per_level": 3.0,
+      "impasses": 0,
+      "search_depth_mean": 5.076023391812866,
+      "goals": {
+        "final": {
+          "open": 22,
+          "stalled": 15,
+          "ruled_out": 14,
+          "excluded": 6
+        },
+        "transitions": {
+          "open": 57,
+          "ruled_out": 14,
+          "probing": 5,
+          "excluded": 6,
+          "stalled": 15
+        }
+      },
+      "actions_vs_human": null
+    }
+  },
+  "overall": {
+    "levels_completed": 14,
+    "actions_per_completed_level": [
+      211,
+      399,
+      1065,
+      1035,
+      149,
+      7,
+      1890,
+      44,
+      95,
+      29,
+      1189,
+      628,
+      11,
+      120
+    ],
+    "score_estimate": 0.4297141112379931,
+    "prediction_accuracy": 0.9179767349166738,
+    "abandonment_latency": null,
+    "abandonment_latency_n": 0,
+    "drop_reasons": {},
+    "disconfirmed_repeat_rate": 0.02182972812065886,
+    "entropy_change_per_action": 0.010395418170406403,
+    "transfer_actions": {
+      "level_1": 381.9166666666667,
+      "levels_2_plus": 1144.5
+    },
+    "outcomes": {
+      "noop": 8483,
+      "game_over": 633
+    },
+    "actions": 50390,
+    "hit_rate": 0.9179767349166738,
+    "hit_rate_halves": {
+      "first": 0.9218962407194395,
+      "second": 0.914213186820083
+    },
+    "rule_reuse": 0.13442330227107863,
+    "tests_per_level": 72.07692307692308,
+    "impasses": 21,
+    "search_depth_mean": 3.893623707315215,
+    "goals": {
+      "final": {
+        "open": 2523,
+        "ruled_out": 1220,
+        "stalled": 883,
+        "excluded": 378,
+        "confirmed": 2
+      },
+      "transitions": {
+        "open": 5291,
+        "ruled_out": 1220,
+        "stalled": 1168,
+        "excluded": 378,
+        "probing": 45,
+        "confirmed": 3
+      }
+    },
+    "actions_vs_human": [
+      6.59375,
+      7.98,
+      19.363636363636363,
+      17.54237288135593,
+      4.65625,
+      0.4117647058823529,
+      49.73684210526316,
+      2.0,
+      3.1666666666666665,
+      1.3181818181818181,
+      30.487179487179485,
+      28.545454545454547,
+      0.34375,
+      17.142857142857142
+    ]
+  },
+  "malformed_lines": 0
+}

@@ -1,0 +1,31 @@
+INFO:arc_agi.scorecard:Initialized ScorecardManager with idle_for=0:15:00 and max_open_for=3 days, 0:00:00
+mode=offline policy=mind games=25 max_actions=20000
+2026-10-31 15:00:23,283 INFO model server http://127.0.0.1:1234/v1 answered after 0s
+cn04-2fe56bfb: 0/6 levels, 20000 actions, 413.4s, stop=max_actions
+ft09-0d8bbf25: 1/6 levels, 20000 actions, 658.5s, stop=max_actions
+lp85-305b61c3: 5/8 levels, 20000 actions, 348.3s, stop=max_actions
+cd82-fb555c5d: 2/6 levels, 20000 actions, 1052.3s, stop=max_actions
+dc22-fdcac232: 1/6 levels, 20000 actions, 1056.5s, stop=max_actions
+ka59-38d34dbb: 1/7 levels, 20000 actions, 1618.3s, stop=max_actions
+lf52-271a04aa: 2/10 levels, 20000 actions, 1208.4s, stop=max_actions
+g50t-5849a774: 1/7 levels, 20000 actions, 1676.4s, stop=max_actions
+m0r0-492f87ba: 2/6 levels, 20000 actions, 669.4s, stop=max_actions
+ar25-0c556536: 1/8 levels, 2103 actions, 1998.2s, stop=deadline
+s5i5-18d95033: 1/8 levels, 20000 actions, 455.2s, stop=max_actions
+bp35-0a0ad940: 1/9 levels, 14684 actions, 2081.4s, stop=deadline
+re86-8af5384d: 0/8 levels, 20000 actions, 510.7s, stop=max_actions
+r11l-495a7899: 1/6 levels, 20000 actions, 1073.2s, stop=max_actions
+sb26-7fbdac44: 0/8 levels, 20000 actions, 504.8s, stop=max_actions
+ls20-9607627b: 1/7 levels, 20000 actions, 1398.4s, stop=max_actions
+sc25-635fd71a: 2/6 levels, 20000 actions, 1304.6s, stop=max_actions
+vc33-5430563c: 3/7 levels, 20000 actions, 631.0s, stop=max_actions
+sk48-d8078629: 0/8 levels, 20000 actions, 1038.6s, stop=max_actions
+tn36-ef4dde99: 1/7 levels, 20000 actions, 990.3s, stop=max_actions
+tr87-cd924810: 0/6 levels, 20000 actions, 1268.6s, stop=max_actions
+wa30-ee6fef47: 0/9 levels, 20000 actions, 387.2s, stop=max_actions
+su15-1944f8ab: 1/9 levels, 20000 actions, 1336.6s, stop=max_actions
+sp80-589a99af: 1/6 levels, 20000 actions, 1581.6s, stop=max_actions
+tu93-0768757b: 5/9 levels, 20000 actions, 3328.3s, stop=max_actions
+2026-10-31 16:32:13,280 INFO Note: NumExpr detected 48 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 16.
+2026-10-31 16:32:13,280 INFO NumExpr defaulting to 16 threads.
+played 25 games, 33 levels completed, scorecard score 0.5895, 0 errors, 5510.6s; wrote /kaggle/working/submission.parquet

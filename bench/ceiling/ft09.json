@@ -1,0 +1,20 @@
+{
+ "game": "ft09",
+ "levels": 1,
+ "per_level": [
+  4
+ ],
+ "searches": [
+  {
+   "level": 1,
+   "result": "4 actions; stopped=goal; expanded=55; 61.5s"
+  },
+  {
+   "level": 2,
+   "result": "no plan; stopped=time_limit; expanded=122; 60.1s"
+  }
+ ],
+ "seconds": 121.5,
+ "score": 4.76,
+ "total_levels": 6
+}
