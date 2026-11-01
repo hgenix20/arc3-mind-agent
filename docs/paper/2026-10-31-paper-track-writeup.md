@@ -298,7 +298,7 @@ body by number.
 - Notebook: `hgenix20/arc3-mind-agent` version 13 (the submitted version). Sources
   ship inside the notebook as one compressed blob; `scripts/kaggle_mind_notebook.py`
   builds it from the repository.
-- Repository: `[K: public URL once pushed]`, branch `agent-v2`, commits 4c24d08 (agent)
+- Repository: https://github.com/hgenix20/arc3-mind-agent (public, default branch `agent-v2`, pushed 2026-11-01), commits 4c24d08 (agent)
   and 4351b0c (notebook). 22,160 lines of Python in `arcagent/`, 64 modules under
   `arcagent/mind/`, 72 test files, 1,077 tests passing, pyright and ruff clean.
 - Run: `python scripts/kaggle_mind_notebook.py --games all --config PLANNER --hybrid-moves 150`,
@@ -318,7 +318,7 @@ body by number.
 
 - [ ] Public score of 57844971 read and written into sections 3 and 7.
 - [ ] `[K]` decisions above resolved: submission to document, title, license, model
-      license, notebook visibility, repository URL.
+      license, notebook visibility. Repository URL done (pushed 2026-11-01).
 - [ ] Prior-work entries verified at the primary source or cut.
 - [ ] Body under 1,500 words (count the pasted text, not this file).
 - [ ] Cover image and figures 2 to 5 uploaded to the Media Gallery.
