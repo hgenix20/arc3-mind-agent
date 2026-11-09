@@ -1,5 +1,15 @@
 # Paper Track write-up: the agent v2 planner on ARC-AGI-3
 
+STATUS 2026-11-09: SUBMITTED. The final 1,496-word body as pasted into the Kaggle
+Writeup is `docs/paper/2026-11-09-kaggle-writeup-body.md`; figures are in
+`docs/paper/figures/kaggle-writeup/`. Writeup URL:
+https://www.kaggle.com/competitions/arc-prize-2026-paper-track/writeups/plan-simulate-check-learning-an-arc-agi-3-game
+Decisions taken for the deadline: submission documented 57844971 (public 0.33);
+repository license MIT; notebook attached private (Kaggle publishes it when the
+competition closes); Qwen3.6-27B-FP8 weights are Apache-2.0 per the model card;
+the second architecture (curiosity agent, never submitted) appears in the gaps
+section. This file is the working draft that preceded it and is kept as the record.
+
 DRAFT v0.1, 2026-10-31. Structure, figures and numbers by the harness; Kameron
 rewrites the prose before anything is pasted into Kaggle. Every number here has
 a source line in `docs/experiment-log.md`, `docs/superpowers/plans/2026-10-31-v2-gaps.md`
