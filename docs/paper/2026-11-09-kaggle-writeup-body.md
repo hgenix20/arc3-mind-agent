@@ -1,6 +1,8 @@
-# Plan, simulate, check: a planning agent that learns the rules of an ARC-AGI-3 game while it plays
+# Plan, simulate, check: learning an ARC-AGI-3 game's rules while playing it
 
-Subtitle: An offline 27B model proposes short move segments, a simulator built from learned rules rolls them out before any move is sent, and every prediction is logged against its outcome.
+Subtitle: An offline 27B model proposes move segments, a simulator built from learned rules checks them first, and every prediction is logged.
+
+Submitted to the Kaggle competition arc-prize-2026-paper-track on 2026-11-09 as the Writeup body (Project Description, markdown). Card image: `figures/kaggle-writeup/card-560x280.png`. Project links: this repository and the notebook `hgenix20/arc3-mind-agent` (version 13 = submission 57844971). Every number traces to `docs/experiment-log.md`, `docs/superpowers/plans/2026-10-31-v2-gaps.md`, `bench/evals/2026-10-31-planner-v1/` or, for the second architecture, github.com/hgenix20/arc3-curiosity-agent `docs/observations/2026-10-31-kaggle-run.md`.
 
 ## Abstract
 
@@ -20,7 +22,7 @@ Planning with a learned model of the environment has a long lineage: Sutton's Dy
 
 Perception turns each frame into a scene of things: connected same-colour components with a kind id from shape and colour.
 
-A fact states that action A on a thing of kind K in context C produces effect E. Each fact carries hits and misses and the probability (hits + 1) / (hits + misses + 2), the mean of a Beta(1,1) posterior, in three bands: certain at 0.8 and above, low below 0.3, medium between. A hypothesis becomes a fact after five consecutive hits, and misses are never forgotten.
+A fact states that action A on a thing of kind K in context C produces effect E. Each fact carries hits and misses and the probability (hits + 1) / (hits + misses + 2), the mean of a Beta(1,1) posterior, in three bands: certain at 0.8 and above, low below 0.3, medium between. A hypothesis becomes a fact after five consecutive hits.
 
 Prediction is read-only: given a scene and a move, the facts yield the next scene and a step probability, and a segment's path probability is the product of its steps, with 0.5 for any step no fact covers. Candidate paths to each open goal are ranked by EV = p_path × 100 × efficiency − p_harm × restart cost, where efficiency is the agent's own estimate of moves per level and the restart cost is the moves lost if the path kills it.
 
@@ -32,13 +34,17 @@ The controller's gates run in a fixed order: harm, segment broke, 25 fallback mo
 
 ## Results
 
-Submission 57844971 scored 0.33 on the public leaderboard. Two simpler predecessors, the model driving the fluid agent directly (57746426) and the fluid agent with no model (57637984), each scored 0.39. The next section explains why the planner scored below both.
+Submission 57844971 scored 0.33 on the public leaderboard. Two simpler predecessors, the model driving the fluid agent directly (57746426) and the fluid agent with no model (57637984), each scored 0.39.
 
 One run of the 25 public games on the competition GPU (8 workers, 5,511 s) finished 33 levels for an offline scorecard of 0.59, with six games finishing no level.
 
 Of 476,787 actions the planner made 6,268 (1.3%) and the explorer made the rest (Figure 1). The planner won 6 of the 33 levels, two of them under the human move count with zero deaths (lf52 level 1 in 10 moves against 32; tn36 level 1 in 14 against 32). Only one of the six winning moves came from a planner segment. The 1,077 planner calls took 11.0 s each and consumed 42% of all game seconds.
 
+![Figure 1. The planner's 6,268 moves by game and branch; stars mark its level wins.](https://raw.githubusercontent.com/hgenix20/arc3-mind-agent/agent-v2/docs/paper/figures/kaggle-writeup/fig1-where-the-moves-went.png)
+
 Prediction accuracy on the planner's own moves was 0.88 (per game 0.46 to 1.00; 20 of 25 games above 0.75). The step probability was monotone yet underconfident by 0.10 to 0.20 in every bin below 0.7 (Figure 2), and the median path probability was 0.04, so the expected-value ranking mostly compared noise.
+
+![Figure 2. Simulator calibration, 4,218 moves.](https://raw.githubusercontent.com/hgenix20/arc3-mind-agent/agent-v2/docs/paper/figures/kaggle-writeup/fig2-calibration.png)
 
 ## What we learned
 
@@ -69,3 +75,5 @@ Repetition did not trigger revision. Disconfirmed rules were almost never repeat
 ## Conclusion
 
 The entry is a rule store with probabilities, a simulator that reads it, a proposer and a checker, and a complete per-move record. It finished 33 public levels, scored 0.33 on the hidden set, and showed that its control logic bounded the score while its learning held. What remains are capacities: inducing a completion condition, transferring across levels, abstracting identity by role, and treating indicators as budgets. The twelve measured gaps with their evidence, the specification, the logs and the code are public in the linked repository under the MIT license.
+
+Code: https://github.com/hgenix20/arc3-mind-agent (branch agent-v2). Notebook: https://www.kaggle.com/code/hgenix20/arc3-mind-agent. Second architecture: https://github.com/hgenix20/arc3-curiosity-agent.
