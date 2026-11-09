@@ -675,3 +675,4 @@ PLANNER, `--hybrid-moves 150`.
 - Notebook sources now ship as one zlib base64 blob: the plain dict passed 1 MB and SaveKernel returned 400.
 
 - 2026-11-09 ~21:00 UTC: PAPER TRACK WRITEUP SUBMITTED to arc-prize-2026-paper-track ("Plan, simulate, check: learning an ARC-AGI-3 game's rules while playing it", 1,496 words, card image, GitHub and notebook links, Main Track). Documents 57844971 (public 0.33, read 2026-11-09). Body: docs/paper/2026-11-09-kaggle-writeup-body.md.
+- 2026-11-09 ~21:45 UTC: Writeup body revised in place on Kaggle (Update Submission, status still Submitted, 1,494 words): short topic sentences merged for readability; FK grade 13.3, Lexile estimate ~1830L; humanizer tell scan clean.
